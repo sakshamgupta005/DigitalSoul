@@ -316,6 +316,8 @@ class ShopifyBrowserActor:
                      and parsed.port in (None, 443))
         if parsed.username or parsed.password or not (local_test or live_form):
             raise ValueError("Use a Shopify admin products URL or the local practice form")
+        if click_save and not local_test:
+            raise ValueError("Live Save requires M2 effect-bound approval; use fill-only and review in Shopify")
         if not str(product_data.get("title", "")).strip():
             raise ValueError("A product title is required")
 
@@ -331,13 +333,11 @@ class ShopifyBrowserActor:
                 cand_url = (await candidate.get_url()).rstrip("/")
                 if cand_url in (target_url.rstrip("/"), new_product_url.rstrip("/")):
                     matches.append(candidate)
-                elif live_form and "admin.shopify.com/store/" in cand_url and "/products" in cand_url:
-                    matches.append(candidate)
 
         if len(matches) > 1:
             exact_new = []
             for m in matches:
-                if (await m.get_url()).rstrip("/").endswith("/products/new"):
+                if (await m.get_url()).rstrip("/") == new_product_url.rstrip("/"):
                     exact_new.append(m)
             if len(exact_new) == 1:
                 matches = exact_new
@@ -357,9 +357,17 @@ class ShopifyBrowserActor:
             await asyncio.sleep(3)
 
         current_url = await page.get_url()
+        if current_url.rstrip("/") != dest_url.rstrip("/"):
+            return {"ok":False, "errors":["Shopify redirected away from the reviewed product form"], "save":{}}
         raw = await page.evaluate(FILL_SCRIPT, product_data)
         fill = json.loads(raw) if isinstance(raw, str) else raw
         errors = list(fill.get("errors", []))
+        supported = {"title", "description", "price", "compare_at_price", "cost_per_item",
+                     "sku", "barcode", "inventory_quantity", "category", "vendor", "tags", "status"}
+        requested = {key for key in supported if product_data.get(key) is not None and product_data.get(key) != ""}
+        completed = {step.get("field") for step in fill.get("steps", [])}
+        for field in sorted(requested - completed):
+            errors.append(f"Requested field was not filled: {field}")
         save = {}
         if not errors and click_save:
             raw = await page.evaluate(CLICK_SAVE_SCRIPT)
@@ -370,11 +378,9 @@ class ShopifyBrowserActor:
                 verified = bool(saved and all(str(saved.get(k)) == str(product_data.get(k))
                                              for k in ("title", "price", "sku", "status")))
                 save = {"ok": verified, "attempted": True, "verified": verified, "product": saved}
-            elif not local_test:
-                save = {"ok": save.get("ok", False), "attempted": True, "verified": save.get("ok", False), "info": save}
             if not save.get("ok"):
                 errors.append("Save was not verified; inspect the page before retrying")
-        return {"ok": not errors, "target_url": target_url, "current_url": current_url,
+        return {"ok": not errors, "engine":"browser-use", "target_url": target_url, "current_url": current_url,
                 "filled_steps": fill.get("steps", []), "errors": errors, "save": save,
                 "status": "saved" if save.get("verified") else "filled" if not errors else "blocked",
                 "duration_seconds": round(time.monotonic() - started, 2)}

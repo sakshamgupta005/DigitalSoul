@@ -48,6 +48,33 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     app_match = re.fullmatch(r"(?:please )?(?:open|launch|start) (whatsapp|whats app|what s app|spotify)(?: please)?", command)
     if app_match:
         return {"kind": "open_app", "app": "spotify" if app_match[1] == "spotify" else "whatsapp"}
+
+    # Intent to create or add a new workflow by voice or text
+    add_match = re.match(
+        r"^(?:please\s+)?(?:add|create|new|make|record|build|generate)\s+(?:a\s+)?(?:workflow|routine|task|skill)\s*(?:called|named|for|to|:)?\s*(.*)$",
+        command,
+        re.I
+    )
+    if not add_match:
+        direct_add = re.match(
+            r"^(?:please\s+)?(?:add|create|new|make|automate)\s+(?:a\s+)?(shopify|excel|whatsapp|routine)\b\s*(.*)$",
+            command,
+            re.I
+        )
+        if direct_add:
+            add_match = direct_add
+
+    if add_match:
+        prompt_text = (add_match.group(1) + " " + add_match.group(2)).strip() if len(add_match.groups()) > 1 else add_match.group(1).strip()
+        if not prompt_text:
+            prompt_text = text
+        return {
+            "kind": "add_workflow",
+            "prompt": prompt_text,
+            "text": text,
+            "message": f"Synthesizing workflow: {prompt_text}",
+        }
+
     candidates = {command}
     for prefix in ("do the workflow ", "run the workflow ", "do workflow ", "run workflow ", "do ", "run "):
         if command.startswith(prefix):
@@ -153,12 +180,19 @@ def launch_app(app, opener=None):
     return {"kind": "app_opened", "app": app, "message": f"Opening {name}"}
 
 
-def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None):
+def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None, catalog=None):
     command = resolve(text, workflows, require_wake=require_wake, awake=awake)
     if command["kind"] == "open_app":
         if busy:
             return {"kind": "error", "message": "Stop recording or wait for replay before opening an app by voice."}
         return launch_app(command["app"], opener)
+    if command["kind"] == "add_workflow":
+        from .synthesizer import synthesize_workflow
+        try:
+            synth = synthesize_workflow(command["prompt"], catalog=catalog)
+            return {**command, **synth}
+        except Exception as exc:
+            return {"kind": "error", "message": f"Could not synthesize workflow: {exc}"}
     return command
 
 

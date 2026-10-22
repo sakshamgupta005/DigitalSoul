@@ -74,7 +74,7 @@ async function expanded(value) {
 }
 
 function view(name) {
-  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve']) $(id).hidden = id !== name;
+  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
   const tab = ['activity', 'patterns'].includes(name) ? name : 'library';
   document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   movePill();
@@ -93,7 +93,7 @@ function movePill() {
 
 function busy(value) {
   state.pending = value;
-  for (const id of ['new-recording', 'new-shopify', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) $(id).disabled = value;
+  for (const id of ['new-recording', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) if ($(id)) $(id).disabled = value;
   $('record-form').querySelector('[type=submit]').disabled = value;
 }
 
@@ -905,14 +905,22 @@ function compactVoice(message, label) {
   notice(message);
 }
 async function voiceResult(result) {
+  if (!result) return;
   if (result.kind === 'heard') {
     $('voice-text').value = result.text;
     $('voice-mic').title = `Heard: ${result.text}`;
+    const addView = $('add-workflow-view');
+    if (addView && !addView.hidden && $('ai-workflow-prompt')) {
+      $('ai-workflow-prompt').value = result.text;
+      if ($('ai-workflow-status')) $('ai-workflow-status').textContent = `Heard: "${result.text}"`;
+    }
   } else if (result.kind === 'ignored') {
     compactVoice('Say Hey Jarvis first, or click the mic off and on for a fresh command.', 'Say Hey Jarvis to wake');
   } else if (result.kind === 'workflow') {
     await showDetail(result.id);
     compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
+  } else if (['add_workflow', 'shopify', 'excel', 'whatsapp', 'workflow_created'].includes(result.kind)) {
+    await handleSynthesizedWorkflow(result);
   } else if (result.message) {
     const setup = ['dependencies_missing', 'model_missing'].includes(result.code) || /install voice|download the local/i.test(result.message);
     compactVoice(result.message, setup ? 'Voice setup needed · expand for help' : result.message);
@@ -1052,6 +1060,183 @@ function openExcelWorkflow(prefill = {}) {
 }
 $('new-excel')?.addEventListener('click', () => openExcelWorkflow());
 
+async function handleSynthesizedWorkflow(result) {
+  if (!result) return;
+  if (result.kind === 'error') {
+    notice(result.message || 'Could not synthesize workflow.');
+    if ($('ai-workflow-status')) $('ai-workflow-status').textContent = result.message || 'Synthesis failed.';
+    return;
+  }
+  await expanded(true);
+  if (result.kind === 'shopify') {
+    openShopifyWorkflow(result.product || {});
+    notice(result.message || `✨ Created Shopify product workflow: ${result.name}`);
+    compactVoice(result.message || `Ready: ${result.name}`, `Shopify: ${result.name}`);
+  } else if (result.kind === 'excel') {
+    openExcelWorkflow(result.excel || {});
+    notice(result.message || `✨ Created Excel workflow: ${result.name}`);
+    compactVoice(result.message || `Ready: ${result.name}`, `Excel: ${result.name}`);
+  } else if (result.kind === 'whatsapp') {
+    view('approve');
+    $('approve-whatsapp-view').hidden = false;
+    $('approve-shopify-view').hidden = true;
+    $('approve-excel-view').hidden = true;
+    $('approve-pattern-view').hidden = true;
+    $('run-recipient').value = result.flow?.recipient || '';
+    $('run-message').value = result.flow?.message || '';
+    $('approve-send').checked = true;
+    notice(result.message || `✨ Created WhatsApp workflow for ${result.flow?.recipient}`);
+    compactVoice(result.message || `Ready: ${result.name}`, `WhatsApp: ${result.flow?.recipient}`);
+  } else if (result.kind === 'workflow_created') {
+    await refresh();
+    if (result.id) {
+      await showDetail(result.id);
+      notice(result.message || `✨ Created routine "${result.name}" with ${result.steps?.length || 0} steps!`, 'success');
+      compactVoice(`Created "${result.name}". Expand notch to review steps.`, `Ready: ${result.name}`);
+    }
+  } else if (result.kind === 'workflow') {
+    await showDetail(result.id);
+    compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
+  } else if (result.message) {
+    notice(result.message);
+  }
+}
+
+function openAddWorkflow(initialPrompt = '') {
+  view('add-workflow-view');
+  if (initialPrompt && $('ai-workflow-prompt')) $('ai-workflow-prompt').value = initialPrompt;
+  $('ai-workflow-prompt')?.focus();
+  if ($('ai-workflow-status')) $('ai-workflow-status').textContent = 'Type what you want to automate, or click Dictate to speak.';
+}
+$('new-ai-workflow')?.addEventListener('click', () => openAddWorkflow());
+$('empty-ai-workflow')?.addEventListener('click', () => openAddWorkflow());
+$('cancel-ai-workflow')?.addEventListener('click', () => view('library'));
+
+document.querySelectorAll('.chip-suggestion').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if ($('ai-workflow-prompt')) {
+      $('ai-workflow-prompt').value = btn.dataset.prompt || '';
+      $('ai-workflow-prompt').focus();
+    }
+  });
+});
+
+$('add-workflow-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const prompt = $('ai-workflow-prompt')?.value.trim();
+  if (!prompt) {
+    notice('Please type or dictate a workflow instruction.');
+    return;
+  }
+  action(async () => {
+    notice('✨ Synthesizing workflow with AI...');
+    if ($('ai-workflow-status')) $('ai-workflow-status').textContent = 'Synthesizing workflow actions...';
+    const res = await rpc('workflow_synthesize', { prompt });
+    await handleSynthesizedWorkflow(res);
+  });
+});
+
+let speechRec = null;
+let isDictating = false;
+
+function toggleDictation() {
+  const micBtn = $('ai-workflow-mic');
+  const label = $('ai-mic-label');
+  const status = $('ai-workflow-status');
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (isDictating) {
+    isDictating = false;
+    micBtn?.classList.remove('listening');
+    if (label) label.textContent = 'Dictate';
+    if (speechRec) {
+      try { speechRec.stop(); } catch {}
+      speechRec = null;
+    }
+    if (status) status.textContent = 'Dictation stopped. Click "Synthesize & Add Workflow" or continue typing.';
+    return;
+  }
+
+  if (SpeechRecognition) {
+    isDictating = true;
+    micBtn?.classList.add('listening');
+    if (label) label.textContent = 'Stop';
+    if (status) status.textContent = '🎙️ Listening... speak your workflow prompt now.';
+
+    const rec = new SpeechRecognition();
+    speechRec = rec;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+
+    rec.onresult = (evt) => {
+      let transcript = '';
+      for (let i = evt.resultIndex; i < evt.results.length; ++i) {
+        transcript += evt.results[i][0].transcript;
+      }
+      if (transcript.trim()) {
+        const current = $('ai-workflow-prompt').value;
+        if (!current || evt.resultIndex === 0) {
+          $('ai-workflow-prompt').value = transcript.trim();
+        } else {
+          $('ai-workflow-prompt').value = current + ' ' + transcript.trim();
+        }
+        if (status) status.textContent = `🎙️ Heard: "${transcript.trim()}"`;
+      }
+    };
+
+    rec.onerror = (evt) => {
+      console.warn('SpeechRecognition error:', evt.error);
+      if (status) status.textContent = `Mic note: ${evt.error}. You can also type or use the top Jarvis mic.`;
+      toggleDictation();
+    };
+
+    rec.onend = () => {
+      if (isDictating) {
+        try { rec.start(); } catch { toggleDictation(); }
+      }
+    };
+
+    try {
+      rec.start();
+    } catch (err) {
+      console.warn('Could not start web speech:', err);
+      fallbackToNativeVoice();
+    }
+  } else {
+    fallbackToNativeVoice();
+  }
+}
+
+async function fallbackToNativeVoice() {
+  const micBtn = $('ai-workflow-mic');
+  const label = $('ai-mic-label');
+  const status = $('ai-workflow-status');
+
+  try {
+    if (voiceOn) {
+      await rpc('voice_stop');
+      voiceState(false);
+      micBtn?.classList.remove('listening');
+      if (label) label.textContent = 'Dictate';
+      if (status) status.textContent = 'Voice dictation paused.';
+    } else {
+      micBtn?.classList.add('listening');
+      if (label) label.textContent = 'Listening…';
+      if (status) status.textContent = '🎙️ Local Whisper active. Speak your workflow instruction!';
+      voiceState(true, 'Dictating workflow… click mic to stop');
+      await rpc('voice_start');
+    }
+  } catch (err) {
+    micBtn?.classList.remove('listening');
+    if (label) label.textContent = 'Dictate';
+    if (status) status.textContent = `Local mic: ${err?.message || err}. You can also type your workflow above.`;
+  }
+}
+
+$('ai-workflow-mic')?.addEventListener('click', toggleDictation);
+
 $('excel-ai-btn')?.addEventListener('click', () => action(async () => {
   const topic = $('excel-topic').value.trim() || $('excel-workbook').value.trim() || 'Expenses';
   notice('✨ AI is structuring spreadsheet rows and formulas...');
@@ -1153,7 +1338,7 @@ $('shopify-form')?.addEventListener('submit', (event) => {
     await expanded(true);
     if (report && report.ok) {
       $('shopify-progress').textContent = `${(report.filled_steps || []).length} fields filled. Review the product in Edge; live Save was not clicked.`;
-      notice(`browser-use ${report.status === 'saved' ? 'saved the practice product' : 'filled the form for review'}: "${product.title}"! (${(report.filled_steps || []).length} fields filled)`);
+      notice(`${report.status === 'saved' ? 'Saved the practice product' : 'Filled your Edge form for review'}: "${product.title}" (${(report.filled_steps || []).length} fields filled)`);
     } else {
       $('shopify-progress').textContent = `Filled ${(report?.filled_steps || []).length} fields. ${(report?.errors || ['The run did not finish.']).join('; ')}`;
       notice(`Shopify run completed: ${JSON.stringify(report?.errors || report)}`);

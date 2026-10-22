@@ -1,5 +1,28 @@
 # Shopify in your existing Edge session
 
+## Blinky-derived native fallback
+
+The notch now shares a persistent native `cua-driver mcp` connection when its
+browser-use session cannot connect. This adapts Blinky's desktop transport and
+fresh snapshot/token pattern without adding Blinky as a runtime dependency.
+The installed driver is found through PATH, its normal Windows install location,
+or `DIGITALSOUL_CUA_DRIVER`.
+
+The fallback requires the exact reviewed Shopify new-product URL to be visible
+in one Edge window. It supports exposed accessible value controls (for example,
+title and stock quantity); HTML descriptions and complex pickers still require
+browser-use. Missing/unsupported controls produce explicit field errors, not a
+success report. It never clicks a browser permission prompt or Save, never uses
+global coordinates, and does not switch engines after a browser write attempt.
+Cancellation stops later native field writes. A new run reuses the selected
+native connection, avoiding repeated browser connection attempts.
+
+Verification for this adaptation: 44 Python unit/integration checks, 6 interface
+tests, and 2 real-browser tests against synthetic forms passed. Installed CUA
+transport/window enumeration and read-only live Edge product-control discovery
+were also exercised. Live native product writes and live Shopify Save are not
+claimed. The browser tests used the isolated loopback QA endpoint on port 9345.
+
 Interactive Shopify automation uses browser-use 0.13.11's BrowserSession/Actor
 API and attaches to your regular running Edge. It does not launch a replacement
 profile or copy cookies. Headless practice tests still use isolated profiles.

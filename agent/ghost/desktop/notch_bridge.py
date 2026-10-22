@@ -161,7 +161,11 @@ def main():
                         result["steps"] = clean_steps(result["steps"])  # what you see is exactly what replays
                         result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "voice_command":
-                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run))
+                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run), catalog=catalog)
+                    elif method == "workflow_synthesize":
+                        from .synthesizer import synthesize_workflow
+                        prompt = payload.get("prompt") or ""
+                        result = synthesize_workflow(prompt, catalog=catalog)
                     elif method == "voice_start":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for replay before enabling the microphone")
