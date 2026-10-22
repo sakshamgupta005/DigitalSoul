@@ -12,6 +12,7 @@ dependencies = [
   "python-dotenv>=1.2,<2",
   "rfc8785>=0.1.4,<1",
   "cryptography>=43",
+  "pillow>=10",
   "websockets>=14,<17",
 ]
 

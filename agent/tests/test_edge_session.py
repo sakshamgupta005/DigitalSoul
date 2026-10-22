@@ -79,3 +79,27 @@ def test_missing_discovery_never_creates_isolated_browser(monkeypatch, tmp_path)
     with pytest.raises(RuntimeError, match="regular Edge"):
         asyncio.run(shopify_actor.ShopifyBrowserActor().start())
     browser.assert_not_called()
+
+
+def test_default_browser_debug_endpoint_is_found_first(monkeypatch, tmp_path):
+    from agent.ghost.browser import edge_session
+    monkeypatch.delenv("DIGITALSOUL_EDGE_CDP_URL", raising=False)
+    monkeypatch.delenv("DIGITALSOUL_BROWSER_CDP_URL", raising=False)
+    monkeypatch.delenv("DIGITALSOUL_EDGE_USER_DATA_DIR", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(edge_session, "default_browser", lambda: "brave")
+    for folder, port in (("BraveSoftware/Brave-Browser/User Data", 9333), ("Microsoft/Edge/User Data", 9444)):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "DevToolsActivePort").write_text(f"{port}\n/devtools/browser/abc\n", encoding="utf-8")
+    assert edge_session.existing_browser_endpoint() == "ws://127.0.0.1:9333/devtools/browser/abc"
+    assert edge_session.existing_edge_endpoint() == "ws://127.0.0.1:9333/devtools/browser/abc"  # old callers too
+
+
+def test_missing_debugging_names_the_users_own_browser(monkeypatch, tmp_path):
+    from agent.ghost.browser import edge_session
+    for name in ("DIGITALSOUL_EDGE_CDP_URL", "DIGITALSOUL_BROWSER_CDP_URL", "DIGITALSOUL_EDGE_USER_DATA_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(edge_session, "default_browser", lambda: "brave")
+    with pytest.raises(RuntimeError, match="brave://inspect"):
+        edge_session.existing_browser_endpoint()

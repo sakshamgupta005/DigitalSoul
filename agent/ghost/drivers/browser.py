@@ -19,12 +19,17 @@ def browser_executable():
             raise GhostError("APP_UNREACHABLE", "Browser executable does not exist", 503)
         return configured
     if os.name == "nt":
-        for root, suffix in (("PROGRAMFILES(X86)", "Microsoft/Edge/Application/msedge.exe"),
-                             ("PROGRAMFILES", "Google/Chrome/Application/chrome.exe"),
-                             ("PROGRAMFILES", "Microsoft/Edge/Application/msedge.exe")):
-            candidate = Path(os.environ.get(root, "")) / suffix
-            if candidate.is_file():
-                return str(candidate)
+        from ..browser.edge_session import browser_order
+        installs = {"brave": [("PROGRAMFILES", "BraveSoftware/Brave-Browser/Application/brave.exe"),
+                              ("LOCALAPPDATA", "BraveSoftware/Brave-Browser/Application/brave.exe")],
+                    "chrome": [("PROGRAMFILES", "Google/Chrome/Application/chrome.exe")],
+                    "edge": [("PROGRAMFILES(X86)", "Microsoft/Edge/Application/msedge.exe"),
+                             ("PROGRAMFILES", "Microsoft/Edge/Application/msedge.exe")]}
+        for name in browser_order():  # the user's default browser first
+            for root, suffix in installs[name]:
+                candidate = Path(os.environ.get(root, "")) / suffix
+                if candidate.is_file():
+                    return str(candidate)
     return None
 
 

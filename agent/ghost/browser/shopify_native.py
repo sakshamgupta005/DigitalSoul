@@ -54,12 +54,12 @@ class ShopifyNativeActor:
             "window_id":int(window["window_id"]), "include_screenshot":False,
             "max_elements":2000, "max_depth":30})
         if data.get("degraded"):
-            raise RuntimeError("Edge accessibility data is unavailable")
+            raise RuntimeError("Browser accessibility data is unavailable")
         elements = data.get("elements", [])
         address = [e for e in elements if canonical(e.get("value")) == url and
                    any(word in str(e.get("label", "")).lower() for word in ("address", "url", "search bar"))]
         if len(address) != 1:
-            raise RuntimeError("The visible Edge tab does not uniquely match the reviewed Shopify URL")
+            raise RuntimeError("The visible browser tab does not uniquely match the reviewed Shopify URL")
         return elements
 
     def execute(self, product, click_save=False):
@@ -72,7 +72,8 @@ class ShopifyNativeActor:
         if click_save:
             raise ValueError("Native Shopify only fills reviewed values; Save requires its separate approval path")
         windows = self.client.call("list_windows").get("windows", [])
-        candidates = [w for w in windows if "edge" in str(w.get("app_name", w.get("process", ""))).lower()
+        candidates = [w for w in windows if any(b in str(w.get("app_name", w.get("process", ""))).lower()
+                                                for b in ("brave", "chrome", "edge"))
                       and "shopify" in str(w.get("title", "")).lower() and not w.get("minimized")]
         matches = []
         for window in candidates:
@@ -82,7 +83,7 @@ class ShopifyNativeActor:
             except RuntimeError:
                 continue
         if len(matches) != 1:
-            raise RuntimeError("Keep the reviewed Shopify new-product tab visible in one Edge window")
+            raise RuntimeError("Keep the reviewed Shopify new-product tab visible in one browser window")
         window = matches[0]
         steps, errors = [], []
         for field, value in product.items():

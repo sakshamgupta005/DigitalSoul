@@ -5,6 +5,18 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
 
+// A DOM element stand-in with the harmless methods app.js calls (ghost/animation code shares this slice).
+function fakeNode() {
+  return {value: '', hidden: true, handlers: {}, dataset: {}, textContent: '', children: [],
+    addEventListener(name, fn) { this.handlers[name] = fn; }, removeEventListener() {},
+    setAttribute() {}, removeAttribute() {}, getAttribute: () => null, focus() {}, blur() {},
+    querySelector: () => fakeNode(), querySelectorAll: () => [], closest: () => null,
+    append() {}, appendChild() {}, replaceChildren() {}, remove() {},
+    classList: {add() {}, remove() {}, toggle() {}, contains: () => false},
+    style: {setProperty() {}, removeProperty() {}},
+    getBoundingClientRect: () => ({left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0})};
+}
+
 function harness() {
   const nodes = new Map();
   const sizes = [];
@@ -15,8 +27,7 @@ function harness() {
     state: {pending: false, expanded: true}, dragged: false,
     IDLE_LABEL: 'Idle', notice: () => {}, syncTheme: () => {}, view: () => {},
     $: id => {
-      if (!nodes.has(id)) nodes.set(id, {value: '', hidden: true, handlers: {},
-        addEventListener(name, fn) { this.handlers[name] = fn; }});
+      if (!nodes.has(id)) nodes.set(id, fakeNode());
       return nodes.get(id);
     },
     expanded: async value => { sizes.push(value); context.state.expanded = value; },
@@ -25,9 +36,19 @@ function harness() {
       if (method === 'shopify_run') return await new Promise(resolve => { complete = resolve; });
     },
     action: fn => { context.state.pending = true; running = fn().finally(() => {context.state.pending = false;}); },
+    // Browser globals used by the ghost/animation code sharing this slice of app.js; inert stand-ins.
+    tauri: undefined,
+    document: {addEventListener() {}, querySelectorAll: () => [], querySelector: () => null, hasFocus: () => true, hidden: false},
+    window: {addEventListener() {}, removeEventListener() {}, matchMedia: () => ({matches: false})},
+    matchMedia: () => ({matches: false}),
+    performance: {now: () => 0},
+    requestAnimationFrame: () => 0, cancelAnimationFrame() {},
+    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
   };
   vm.createContext(context);
-  vm.runInContext(source.slice(source.indexOf("$('toggle').addEventListener"), source.indexOf('// While recording the banner')), context);
+  // Just the toggle click handler: from its start to the first line that closes it at column 0.
+  const toggle = source.indexOf("$('toggle').addEventListener");
+  vm.runInContext(source.slice(toggle, source.indexOf('\n});', toggle) + 4), context);
   vm.runInContext(source.slice(source.indexOf('function openShopifyWorkflow'), source.indexOf("$('review-run').addEventListener")), context);
   return {context, nodes, sizes, calls, running: () => running,
     complete: result => complete(result)};

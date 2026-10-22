@@ -188,7 +188,9 @@ class Native:
         hwnd = self.user.GetForegroundWindow()
         pid = wintypes.DWORD()
         self.user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        current = executable(pid.value) if pid.value else None
+        from .whatsapp import webview_host
+        # WhatsApp's content runs in msedgewebview2.exe, which Windows can report as the foreground app.
+        current = executable(webview_host(pid.value)) if pid.value else None
         if not current or not is_whatsapp(current) or (target_path and current != target_path):
             try:
                 top = self.desktop.window(handle=hwnd).top_level_parent()

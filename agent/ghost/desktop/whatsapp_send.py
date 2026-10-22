@@ -17,6 +17,20 @@ class Refused(ValueError):
     """A deliberate stop (ambiguous chat, existing draft) that waiting longer cannot fix."""
 
 
+def whatsapp_in_front():
+    """True when the foreground window belongs to WhatsApp (its WebView2 content mapped back to the app)."""
+    import ctypes
+    from ctypes import wintypes
+    from .whatsapp import executable, webview_host
+    user = ctypes.windll.user32
+    pid = wintypes.DWORD()
+    user.GetWindowThreadProcessId(user.GetForegroundWindow(), ctypes.byref(pid))
+    try:
+        return is_whatsapp(executable(webview_host(pid.value)))
+    except Exception:
+        return False
+
+
 def recipient_of(field_name):
     match = COMPOSER.match(field_name or "")
     return match.group(1) if match else None
@@ -148,10 +162,23 @@ class WhatsAppSend:
         self.keyboard = keyboard  # injectable for tests; real keystrokes otherwise
 
     def _keyboard(self):
-        if self.keyboard is None:
-            from pywinauto.keyboard import send_keys as real
-            return real
-        return self.keyboard
+        if self.keyboard is not None:
+            return self.keyboard
+        from pywinauto.keyboard import send_keys as real
+
+        def guarded(text, **kwargs):
+            # WhatsApp can report keyboard focus in its box while another app is in front (seen live), so
+            # every keystroke first proves WhatsApp itself is the foreground app; otherwise it refuses.
+            if not whatsapp_in_front():
+                try:
+                    self.native.active(self._executable)
+                except Exception:
+                    pass
+                self.sleep(0.3)
+                if not whatsapp_in_front():
+                    raise ValueError("WhatsApp is not in front, so the ghost stopped before typing anywhere else")
+            real(text, **kwargs)
+        return guarded
 
     def _allow(self):
         if not self.guard():
@@ -245,7 +272,11 @@ class WhatsAppSend:
         boxes = [edit for edit in self._edits(recipe) if not recipient_of(edit.element_info.name)]
         if not boxes:
             self._edit_cache = None
-        return boxes[0] if boxes else None
+            return None
+        # WhatsApp can show more than one unlabelled text box; the chat search is the one named
+        # "Search or start a new chat" (typing into another one silently produces no results).
+        named = [edit for edit in boxes if "search" in (edit.element_info.name or "").lower()]
+        return (named or boxes)[0]
 
     def _result(self, recipe, wanted):
         from .flow import chat_name, _name_matches
@@ -285,13 +316,23 @@ class WhatsAppSend:
             self.sleep(0.1)
         return False
 
+    def _live_text(self, control):
+        """WhatsApp's editor replaces its DOM node as you type: a held element keeps claiming focus and
+        reporting the old text (verified live). In real runs, read the element that has focus right now."""
+        if self.keyboard is None:
+            try:
+                from pywinauto.controls.uiawrapper import UIAWrapper
+                from pywinauto.uia_defines import IUIA
+                from pywinauto.uia_element_info import UIAElementInfo
+                live = UIAWrapper(UIAElementInfo(IUIA().iuia.GetFocusedElement()))
+                if (live.element_info.name or "") == (control.element_info.name or ""):
+                    return control_text(live)
+            except Exception:
+                pass
+        return control_text(control)
+
     def _type(self, control, text):
         self._visit(control)
-        try:
-            from .ghost import act
-            act(control)
-        except Exception:
-            pass
         # Real keystrokes only: WhatsApp's editor ignores UI Automation SetValue (verified live: the search
         # box showed the text but no results appeared), so set_edit_text could leave it looking filled
         # while WhatsApp itself saw nothing.
@@ -312,6 +353,7 @@ class WhatsAppSend:
         from .flow import Native, chat_name
         validate(dict(recipe, message=message))
         self.native = self.native or Native()
+        self._executable = recipe["executable"]
         self._allow()
         self.native.open({"executable": recipe["executable"], "app_id": recipe.get("app_id")})
         window = self._wait(lambda: self._window(recipe), "the WhatsApp window")
@@ -331,8 +373,7 @@ class WhatsAppSend:
             raise
         except Exception:
             try:
-                if hasattr(window, "set_focus"):
-                    window.set_focus()
+                # (No window.set_focus(): it parks keyboard focus on the outer frame, where keys are lost.)
                 send_keys = self._keyboard()
                 send_keys("^f", pause=0.05)
                 self.sleep(0.3)
@@ -340,45 +381,29 @@ class WhatsAppSend:
                 self.sleep(0.5)
             except Exception:
                 raise
+        self._edit_cache = None  # the chat just changed: look its message box up fresh
         composer = self._wait(lambda: self._composer(recipe, self.chat), f"the message box for {self.chat!r}")
         existing = (control_text(composer) or "").strip()
         if existing and existing != message.strip():
             raise Refused("An unsent draft is already in that chat; it will not be overwritten")
         if existing != message.strip():
             self._type(composer, message)
-            self._wait(lambda: composer if (control_text(composer) or "").strip() == message.strip() else None, "the typed message")
+            self._wait(lambda: composer if (self._live_text(composer) or "").strip() == message.strip() else None, "the typed message")
 
     def send(self, recipe, message):
         try:
             self._allow()
-            window = self._wait(lambda: self._window(recipe), "the WhatsApp window")
-            try:
-                window.set_focus()
-            except Exception:
-                pass
-            composer = self._composer(recipe, self.chat)
-            if composer is not None:
-                self._visit(composer)
-                try:
-                    from .ghost import act
-                    act(composer)
-                except Exception:
-                    pass
-                self._focus(composer)
-            send_keys = self._keyboard()
-            send_keys("{ENTER}")
-            self.sleep(0.3)
-            if composer is not None and (control_text(composer) or "").strip() == message.strip():
-                try:
-                    for b in window.descendants(control_type="Button"):
-                        nm = (b.element_info.name or "").strip().lower()
-                        aid = (b.element_info.automation_id or "").strip().lower()
-                        if nm == "send" or "send" in aid:
-                            self._visit(b)
-                            from .ghost import act
-                            act(b)
-                            break
-                except Exception:
-                    pass
+            self._wait(lambda: self._window(recipe), "the WhatsApp window")
+            # No window.set_focus(): it moves Windows' keyboard focus to WhatsApp's outer frame, where
+            # keystrokes are lost (verified live). Focus the message box itself and press Enter once.
+            self._edit_cache = None
+            composer = self._wait(lambda: self._composer(recipe, self.chat), f"the message box for {self.chat!r}")
+            if (self._live_text(composer) or "").strip() != message.strip():
+                raise ValueError("Chat or message changed before sending")
+            self._visit(composer)
+            if not self._focus(composer):
+                raise ValueError("WhatsApp: the message box did not take keyboard focus")
+            self._keyboard()("{ENTER}")
+            self.sleep(0.5)
         finally:
             self._park()

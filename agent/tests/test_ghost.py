@@ -402,3 +402,9 @@ def test_whatsapp_opens_a_chat_by_moving_keyboard_focus_until_it_is_on_that_exac
     s._focused_name = lambda: rows[focus["index"]] if 0 <= focus["index"] < len(rows) else ""
     s._open_row(Field("DataItem", "Me (You) Yesterday https://example.com"))
     assert keys == ["{DOWN}", "{DOWN}", "{ENTER}"]
+
+
+def test_search_box_prefers_the_labelled_chat_search_over_other_text_boxes():
+    other, search = Field("Edit", ""), Field("Edit", "Search or start a new chat")
+    s = WhatsAppSend(native=WhatsAppNative(App([other, search, Field("Edit", "Type a message to Bob")])))
+    assert s._search_box({"executable": "x"}) is search
