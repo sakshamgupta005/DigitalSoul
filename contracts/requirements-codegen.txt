@@ -1,0 +1,6 @@
+datamodel-code-generator==0.86.0
+openapi-spec-validator==0.9.0
+pydantic==2.13.4
+black==26.10.1
+isort==8.0.1
+jsonschema>=4.26,<5

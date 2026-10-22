@@ -1,0 +1,892 @@
+openapi: 3.1.0
+info:
+  title: DigitalSoul local agent API
+  version: 1.1.0-draft
+  summary: Loopback control and data API for the desktop agent.
+  description: |
+    Draft endpoint contract derived from CONTRACTS.md §3 and the runtime
+    semantics in contracts/REVIEW.md. JSON Schema files in this directory are
+    authoritative for wire shapes. Components marked `x-spec-gap: true` have no
+    JSON schema yet and are not generated; they need owner sign-off per
+    REVIEW.md before this document is frozen.
+    This document is not an implementation and does not test runtime behavior.
+servers:
+  - url: http://127.0.0.1:7777/api/v1
+    description: Local agent (loopback only).
+security:
+  - bearerAuth: []
+tags:
+  - name: Capture
+    description: M1 observation settings, candidates and workflow drafts.
+  - name: Execution
+    description: M2 runs, approvals and guards.
+  - name: Remote
+    description: M2 phone pairing and paired devices.
+  - name: Platform
+    description: M4 audit, data deletion, stream tickets and health.
+paths:
+  /events/batch:
+    post:
+      tags: [Capture]
+      operationId: ingestEvents
+      summary: Ingest a batch of captured events.
+      description: |
+        Batches contain 1 to 200 events and at most 1 MiB of decoded JSON. The
+        whole batch is validated before any write. Duplicate event IDs with the
+        same content are no-ops; conflicting content returns 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              maxItems: 200
+              items:
+                $ref: "#/components/schemas/RawEvent"
+      responses:
+        "200":
+          description: Batch accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResult"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /settings/observation:
+    get:
+      tags: [Capture]
+      operationId: getObservationSettings
+      summary: Read observation state and allowlist.
+      responses:
+        "200":
+          description: Current observation settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservationSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Capture]
+      operationId: updateObservationSettings
+      summary: Update observation state (pause or resume).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateObservationSettings"
+      responses:
+        "200":
+          description: Updated observation settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservationSettings"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /candidates:
+    get:
+      tags: [Capture]
+      operationId: listCandidates
+      summary: List mined candidates and recommendations.
+      responses:
+        "200":
+          description: Candidates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkflowCandidate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /candidates/{id}/dismiss:
+    post:
+      tags: [Capture]
+      operationId: dismissCandidate
+      summary: Dismiss a candidate permanently.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Candidate dismissed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DismissResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /candidates/{id}/promote:
+    post:
+      tags: [Capture]
+      operationId: promoteCandidate
+      summary: Convert a candidate to a draft workflow.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "201":
+          description: Draft workflow created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /workflows:
+    get:
+      tags: [Capture]
+      operationId: listWorkflows
+      summary: List all workflows.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Workflows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workflow"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /workflows/{id}:
+    get:
+      tags: [Capture]
+      operationId: getWorkflow
+      summary: Read workflow details.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Capture]
+      operationId: updateWorkflow
+      summary: Update a draft workflow.
+      description: |
+        Optimistic concurrency: `If-Match` must carry the current version and
+        digest. A stale value returns 409.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Workflow"
+      responses:
+        "200":
+          description: Updated workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /workflows/{id}/validate:
+    post:
+      tags: [Capture]
+      operationId: validateWorkflow
+      summary: Finalize and compile the execution plan.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Validated workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /workflows/{id}/runs:
+    post:
+      tags: [Execution]
+      operationId: startRun
+      summary: Start a workflow run.
+      description: |
+        `Idempotency-Key` is required. Reusing a key with different content
+        returns 409; matching content returns the original run without executing
+        again.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRunRequest"
+      responses:
+        "201":
+          description: Run created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs:
+    get:
+      tags: [Execution]
+      operationId: listRuns
+      summary: List execution runs.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by run state. Run states are not yet schema-defined.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Runs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}:
+    get:
+      tags: [Execution]
+      operationId: getRun
+      summary: Get run details and step breakdown.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}/approve:
+    post:
+      tags: [Execution]
+      operationId: approveStep
+      summary: Approve a gated step (R1 or R2).
+      description: |
+        The approval must be outstanding, single-use and bound to the pinned
+        workflow version, step and effect hash. Stale bindings return 409 with
+        STALE_APPROVAL.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveStepRequest"
+      responses:
+        "200":
+          description: Run after approval.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}/reject:
+    post:
+      tags: [Execution]
+      operationId: rejectStep
+      summary: Reject a gated step and abort the run.
+      description: |
+        REVIEW.md §5 requires `reject` to accept the same binding fields as
+        `approve`. The spec table lists no body; this document follows REVIEW.md.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveStepRequest"
+      responses:
+        "200":
+          description: Run after rejection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}/pause:
+    post:
+      tags: [Execution]
+      operationId: pauseRun
+      summary: Pause an active run.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}/resume:
+    post:
+      tags: [Execution]
+      operationId: resumeRun
+      summary: Resume a paused run.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /runs/{id}/cancel:
+    post:
+      tags: [Execution]
+      operationId: cancelRun
+      summary: Abort execution.
+      description: Cancellation cannot undo completed external effects.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /guard/warnings:
+    get:
+      tags: [Execution]
+      operationId: listGuardWarnings
+      summary: Fetch active mistake guard warnings.
+      responses:
+        "200":
+          description: Active warnings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GuardWarning"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /guard/warnings/{id}/feedback:
+    post:
+      tags: [Execution]
+      operationId: recordGuardFeedback
+      summary: Report a false positive or request a rule update.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardFeedbackRequest"
+      responses:
+        "200":
+          description: Feedback recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardFeedbackResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /remote/pair/start:
+    post:
+      tags: [Remote]
+      operationId: startPairing
+      summary: Begin phone pairing and produce the QR payload.
+      description: Pairing capabilities are one-use and expire within five minutes (REVIEW.md §7).
+      responses:
+        "201":
+          description: Pairing session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingSession"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /remote/devices:
+    get:
+      tags: [Remote]
+      operationId: listPairedDevices
+      summary: List paired phones and devices.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Paired devices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PairedDevice"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /remote/devices/{id}:
+    delete:
+      tags: [Remote]
+      operationId: revokePairedDevice
+      summary: Revoke a paired device.
+      description: Revocation takes effect before every subsequent action (REVIEW.md §3).
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Device revoked.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /audit:
+    get:
+      tags: [Platform]
+      operationId: queryAudit
+      summary: Query the audit log with hash-chain check.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UtcTimestamp"
+        - name: to
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/UtcTimestamp"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Audit records and chain status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditResponse"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /data/delete:
+    post:
+      tags: [Platform]
+      operationId: deleteData
+      summary: Wipe data (all, per workflow, or per day).
+      description: |
+        Requires local consent and is available only on the local dashboard.
+        Remote devices cannot invoke deletion (REVIEW.md §Local HTTP).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataDeleteRequest"
+      responses:
+        "200":
+          description: Deletion completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataDeleteResult"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /stream/tickets:
+    post:
+      tags: [Platform]
+      operationId: createStreamTicket
+      summary: Mint a single-use stream ticket.
+      description: |
+        The ticket is valid for 30 seconds, is bound to the allowed Origin and
+        principal, and is consumed atomically during the WebSocket upgrade
+        (REVIEW.md §Local HTTP).
+      responses:
+        "201":
+          description: Stream ticket.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+                const: no-store
+              required: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /health:
+    get:
+      tags: [Platform]
+      operationId: getHealth
+      summary: Heartbeat and subsystem connectivity.
+      responses:
+        "200":
+          description: Health status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Local agent token from the environment or DPAPI. Never place it in a URL.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        Opaque cursor. The response mechanism for the next cursor is not yet
+        specified (x-spec-gap).
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Current workflow version and digest.
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GhostError"
+    Forbidden:
+      description: Foreign or missing Origin, or policy block (POLICY_BLOCKED).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GhostError"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GhostError"
+    Conflict:
+      description: State, version or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GhostError"
+    UnprocessableEntity:
+      description: Bad request shape or invalid value.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GhostError"
+  schemas:
+    RawEvent:
+      $ref: "./raw_event.schema.json"
+    Workflow:
+      $ref: "./workflow.schema.json"
+    GhostError:
+      $ref: "./error.schema.json"
+    UtcTimestamp:
+      type: string
+      format: date-time
+      pattern: "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+      description: UTC timestamp with a `Z` suffix (REVIEW.md).
+    IngestResult:
+      type: object
+      required: [ingested, duplicates]
+      additionalProperties: false
+      properties:
+        ingested:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+      description: REVIEW.md §Local HTTP supersedes the legacy `{ ingested }` example.
+    DismissResult:
+      type: object
+      required: [dismissed]
+      additionalProperties: false
+      properties:
+        dismissed:
+          type: boolean
+          const: true
+    GuardFeedbackResult:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          const: recorded
+    DataDeleteResult:
+      type: object
+      required: [deleted]
+      additionalProperties: false
+      properties:
+        deleted:
+          type: boolean
+          const: true
+    StreamTicket:
+      type: object
+      required: [ticket, expires_at]
+      additionalProperties: false
+      properties:
+        ticket:
+          type: string
+          minLength: 1
+        expires_at:
+          $ref: "#/components/schemas/UtcTimestamp"
+    StartRunRequest:
+      type: object
+      required: [mode, workflow_version, parameters]
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum: [supervised]
+          description: Only `supervised` is documented. Other modes are not yet specified.
+        workflow_version:
+          type: integer
+          minimum: 1
+        parameters:
+          type: object
+          description: Run inputs, validated against the workflow's declared types.
+    ApproveStepRequest:
+      type: object
+      required: [approval_id, workflow_version, step_id, effect_hash]
+      additionalProperties: false
+      properties:
+        approval_id:
+          type: string
+          minLength: 1
+        workflow_version:
+          type: integer
+          minimum: 1
+        step_id:
+          type: string
+          minLength: 1
+        effect_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: Lowercase hex SHA-256 of JCS(effect_preview) (REVIEW.md §4).
+    ObservationSettings:
+      type: object
+      description: Read/write state for observation. Not yet schema-defined.
+      x-spec-gap: true
+    UpdateObservationSettings:
+      type: object
+      description: Pause or resume observation. Not yet schema-defined.
+      x-spec-gap: true
+    WorkflowCandidate:
+      type: object
+      description: Mined candidate with recommendation. Not yet schema-defined.
+      x-spec-gap: true
+    Run:
+      type: object
+      description: Run state, step records, checkpoint and pending approval. Not yet schema-defined; CONTRACTS.md §3 shows an illustrative example only.
+      x-spec-gap: true
+    GuardWarning:
+      type: object
+      description: Guard warning payload. Not yet schema-defined.
+      x-spec-gap: true
+    GuardFeedbackRequest:
+      type: object
+      description: Feedback on a guard warning. Not yet schema-defined.
+      x-spec-gap: true
+    PairingSession:
+      type: object
+      description: Pairing session and QR payload. Not yet schema-defined.
+      x-spec-gap: true
+    PairedDevice:
+      type: object
+      description: Paired device record. Not yet schema-defined.
+      x-spec-gap: true
+    AuditResponse:
+      type: object
+      description: Audit records and hash-chain status. Not yet schema-defined.
+      x-spec-gap: true
+    DataDeleteRequest:
+      type: object
+      description: Wipe scope (all, per workflow or per day). Not yet schema-defined.
+      x-spec-gap: true
+    HealthStatus:
+      type: object
+      description: Health and subsystem connectivity. Not yet schema-defined; CONTRACTS.md §3 shows an illustrative example only.
+      x-spec-gap: true

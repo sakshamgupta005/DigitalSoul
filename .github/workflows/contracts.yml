@@ -1,0 +1,62 @@
+name: Contract validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: contracts/requirements-dev.txt
+
+      - name: Install contract validator dependencies
+        run: python -m pip install -r contracts/requirements-dev.txt
+
+      - name: Validate contracts
+        run: python contracts/validate.py
+
+  generated-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: contracts/requirements-codegen.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+
+      - name: Install codegen dependencies
+        run: |
+          python -m pip install -r contracts/requirements-codegen.txt
+          npm ci --prefix contracts
+
+      - name: Regenerate contract models and validate OpenAPI
+        run: python contracts/generate.py
+
+      - name: Fail on generated-output drift
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- agent/ghost/contracts web/src/types/contracts.ts)"
+          if [ -n "$changes" ]; then
+            echo "Generated contract files differ from the committed output:"
+            echo "$changes"
+            git --no-pager diff -- agent/ghost/contracts web/src/types/contracts.ts
+            exit 1
+          fi

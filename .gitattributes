@@ -1,0 +1,5 @@
+# Generated contract models are stored with LF regardless of each contributor's
+# core.autocrlf setting. datamodel-codegen writes CRLF on Windows and LF on Linux,
+# so without this the Linux CI drift check can fail on a CRLF commit.
+agent/ghost/contracts/*.py text eol=lf
+web/src/types/contracts.ts text eol=lf
