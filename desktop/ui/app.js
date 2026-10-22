@@ -860,6 +860,22 @@ async function showDetail(id) {
     if (explanation) {
       body.append(element('p', 'step-explanation', explanation));
     }
+    const shotPath = step.marked_screenshot_path || step.screenshot_path;
+    if (shotPath) {
+      const thumbWrap = element('div', 'step-shot-wrap');
+      const imgSrc = tauri?.tauri?.convertFileSrc ? tauri.tauri.convertFileSrc(shotPath) : `file:///${shotPath.replace(/\\/g, '/')}`;
+      const img = element('img', 'step-shot-thumb');
+      img.src = imgSrc;
+      img.alt = `Screenshot for step ${index + 1}`;
+      img.title = 'Click to open full screenshot';
+      img.loading = 'lazy';
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.open(imgSrc, '_blank');
+      });
+      thumbWrap.append(img);
+      body.append(thumbWrap);
+    }
     row.append(node, body, element('time', '', timeLabel(step.at || 0)));
     $('step-list').append(row);
   }
@@ -2261,7 +2277,13 @@ async function boot() {
       } else if (payload.event === 'recording_progress') {
         $('live-count').textContent = `${payload.step_count} steps`;
         $('live-time').textContent = $('compact-time').textContent = timeLabel(payload.elapsed);
-        $('live-last').textContent = payload.last_step ? stepLabel(payload.last_step) : 'Open an allowed app to begin.';
+        const lastStep = payload.last_step;
+        if (lastStep) {
+          const hasShot = lastStep.screenshot_path || lastStep.marked_screenshot_path;
+          $('live-last').textContent = `${stepLabel(lastStep)}${hasShot ? ' 📸' : ''}`;
+        } else {
+          $('live-last').textContent = 'Open an allowed app to begin.';
+        }
       } else if (payload.event === 'recording_saved') {
         await hideNotch(false);
         setRecording(false);

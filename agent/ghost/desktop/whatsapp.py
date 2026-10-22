@@ -232,9 +232,8 @@ class WhatsApp:
 
     def prepare(self, recipe, message):
         if recipe.get("format") == "digitalsoul.whatsapp-send.v1":
-            from .ghost import Ghost, act
             from .whatsapp_send import WhatsAppSend
-            self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost())
+            self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=None)
             return self._flow_adapter.prepare(recipe, message)
         if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
             try:
@@ -242,9 +241,8 @@ class WhatsApp:
                 self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
                 return self._flow_adapter.prepare(recipe, message)
             except Exception:
-                from .ghost import Ghost, act
                 from .whatsapp_send import WhatsAppSend
-                self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost())
+                self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=None)
                 return self._flow_adapter.prepare(recipe, message)
         from .whatsapp_send import control_text
         self.check(recipe)

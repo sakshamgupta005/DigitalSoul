@@ -312,20 +312,11 @@ class Native:
         target = find(window, spec)
         # The point comes from the freshly resolved control, never recorded pixels.
         self.active(flow["executable"])
-        self.glide_to(target)
         from .ghost import act
         act(target)  # UI Automation only; the user's pointer never moves
 
     def glide_to(self, control):
-        # The ghost is the replay's cursor: it flies to the control before acting.
-        try:
-            if not hasattr(self, "ghost"):
-                from .ghost import Ghost
-                self.ghost = Ghost()
-            self.ghost.to_control(control)
-            self.ghost.pulse()
-        except Exception:
-            pass
+        pass
 
     def park(self):
         try:

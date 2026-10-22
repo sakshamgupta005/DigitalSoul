@@ -148,12 +148,7 @@ class Desktop:
     focused = Native.focused
 
     def glide_to(self, control):
-        # The ghost is the replay's cursor: it flies to the control; the user's mouse never moves.
-        if not hasattr(self, "ghost"):
-            from .ghost import Ghost
-            self.ghost = Ghost()
-        self.ghost.to_control(control)
-        self.ghost.pulse()
+        pass
 
     def act(self, control):
         from .ghost import act
@@ -165,12 +160,6 @@ class Desktop:
 
     def cursor_click(self, x, y, button="left"):
         """Active cursor capability for whole browser and desktop execution."""
-        if hasattr(self, "ghost"):
-            try:
-                self.ghost.fly_to(x, y)
-                self.ghost.pulse()
-            except Exception:
-                pass
         try:
             self.user.SetCursorPos(int(x), int(y))
             time.sleep(0.04)
@@ -378,13 +367,7 @@ class StepRunner:
         return None
 
     def _glide(self, control):
-        # The ghost is the replay's visible cursor, so it travels there instead of jumping.
-        glide = getattr(self.native, "glide_to", None)
-        if glide:
-            try:
-                glide(control)
-            except Exception:
-                pass
+        pass
 
     def open_app(self, step):
         app_name = PureWindowsPath(step.get("path", "")).name

@@ -114,5 +114,5 @@ class ScreenCapture:
 
         filename = f"{prefix}_{int(time.time())}_{uuid.uuid4().hex[:8]}.png"
         file_path = self.output_dir / filename
-        image.save(file_path, format="PNG", optimize=True)
+        image.save(file_path, format="PNG")
         return str(file_path), image
