@@ -36,18 +36,33 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     if not isinstance(text, str) or len(text) > 512:
         raise ValueError("Use a command of at most 512 characters")
     command = normalized(text)
-    wake = command.startswith("hey jarvis ") or command == "hey jarvis"
-    if wake:
-        command = command[len("hey jarvis"):].strip()
-    if require_wake and not wake and not awake:
-        return {"kind": "ignored"}
+
+    # Wake phrase detection
+    wake = False
+    for prefix in ("hey jarvis ", "ok jarvis ", "hi jarvis ", "hello jarvis ", "jarvis "):
+        if command.startswith(prefix):
+            wake = True
+            command = command[len(prefix):].strip()
+            break
+    if not wake and command in ("hey jarvis", "ok jarvis", "hi jarvis", "hello jarvis", "jarvis"):
+        wake = True
+        command = ""
+
     if command in ("", "wake up") and wake:
-        return {"kind": "wake", "message": "I'm listening. Say Open WhatsApp, Open Spotify, or a saved workflow name."}
+        return {"kind": "wake", "message": "I'm listening. Say Open followed by an installed app, or Start followed by a workflow name."}
     if command in ("stop listening", "go to sleep"):
         return {"kind": "sleep"}
-    app_match = re.fullmatch(r"(?:please )?(?:open|launch|start) (whatsapp|whats app|what s app|spotify)(?: please)?", command)
-    if app_match:
-        return {"kind": "open_app", "app": "spotify" if app_match[1] == "spotify" else "whatsapp"}
+
+    # If wake is required and user is not awake, ignore
+    if require_wake and not wake and not awake:
+        return {"kind": "ignored"}
+
+    # Direct App Launching (Spotify / WhatsApp) when not specifically directed to a workflow action
+    is_workflow_directive = any(command.startswith(p) for p in ("do the workflow ", "run the workflow ", "execute the workflow ", "start the workflow ", "do workflow ", "run workflow ", "execute workflow ", "start workflow ", "do ", "run ", "execute "))
+    if not is_workflow_directive:
+        app_match = re.fullmatch(r"(?:please\s+)?(?:open|launch|start|play)\s+(?:the\s+)?(whatsapp|whats\s*app|what\s*s\s*app|spotify)(?:\s+app)?(?:\s+please)?", command)
+        if app_match:
+            return {"kind": "open_app", "app": "spotify" if "spotify" in app_match.group(1) else "whatsapp"}
 
     # Intent to create or add a new workflow by voice or text
     add_match = re.match(
@@ -136,8 +151,13 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
                     target_tokens.update(re.sub(r"[^\w\s]", " ", p.get("name", "").casefold()).split())
             for s in w.get("steps", []):
                 if isinstance(s, dict):
-                    if s.get("target"):
-                        target_tokens.update(re.sub(r"[^\w\s]", " ", s["target"].casefold()).split())
+                    target = s.get("target")
+                    if isinstance(target, dict):
+                        # Recorded UI targets are objects, not spoken strings.
+                        target = " ".join(v for k, v in target.items()
+                                          if k in {"name", "label", "automation_id", "control_type"} and isinstance(v, str))
+                    if isinstance(target, str):
+                        target_tokens.update(normalized(target).split())
                     if s.get("explanation"):
                         target_tokens.update(re.sub(r"[^\w\s]", " ", s["explanation"].casefold()).split())
 
@@ -159,7 +179,16 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
             return {"kind": "ambiguous", "message": "Several workflows match that ask. Choose one in Workflows."}
         return {"kind": "workflow", "id": top_items[0]["id"], "name": top_items[0]["name"]}
 
-    return {"kind": "unknown", "message": "Say Open WhatsApp, Open Spotify, or the exact name of a saved workflow."}
+    # Saved workflows take precedence over dynamically discovered applications.
+    app_query = re.fullmatch(r"(?:please\s+)?(?:open|launch|start)\s+(?:the\s+)?([\w ]+?)(?:\s+app)?(?:\s+please)?", command)
+    if app_query and not is_workflow_directive and not re.search(r"[;:/\\&|]", text):
+        from .apps import match_app
+        found = match_app(app_query.group(1))
+        if len(found) > 1:
+            return {"kind": "ambiguous", "message": "Several installed apps match. Use the full app name."}
+        if found:
+            return {"kind": "installed_app", "app": found[0]["Name"]}
+    return {"kind": "unknown", "message": "No matching workflow yet. Teach me this task with Record, then I can reuse it."}
 
 
 def launch_app(app, opener=None):
@@ -176,12 +205,32 @@ def launch_app(app, opener=None):
     except PermissionError:
         return {"kind": "error", "code": "app_launch_denied", "message": f"Windows denied opening {name}. Run DigitalSoul from your normal PowerShell instead of the restricted agent session."}
     except OSError:
+        if app == "spotify":
+            spotify_exe = os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe")
+            if os.path.isfile(spotify_exe):
+                try:
+                    opener(spotify_exe)
+                    return {"kind": "app_opened", "app": app, "message": f"Opening {name}"}
+                except Exception:
+                    pass
         return {"kind": "error", "code": "app_unavailable", "message": f"Windows could not open {name}. Check that it is installed and its app protocol is registered."}
     return {"kind": "app_opened", "app": app, "message": f"Opening {name}"}
 
 
-def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None, catalog=None):
+def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None, catalog=None, learning=None):
     command = resolve(text, workflows, require_wake=require_wake, awake=awake)
+    if command["kind"] == "unknown" and learning is not None:
+        patterns = learning.list_patterns()
+        learned = resolve(text, patterns, require_wake=require_wake, awake=awake)
+        if learned["kind"] == "workflow":
+            return {**learned, "kind": "learned_workflow"}
+        if learned["kind"] == "ambiguous":
+            return learned
+    if command["kind"] == "installed_app":
+        if busy:
+            return {"kind": "error", "message": "Wait for the active recording or replay before opening an app."}
+        from .apps import launch_installed
+        return launch_installed(command["app"], opener)
     if command["kind"] == "open_app":
         if busy:
             return {"kind": "error", "message": "Stop recording or wait for replay before opening an app by voice."}
@@ -214,14 +263,23 @@ class Listener:
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
+        reported_error = False
         try:
             for line in self.process.stdout:
                 try:
                     value = json.loads(line)
+                    reported_error |= value.get("kind") == "error"
                     self.events.put_nowait(value)
                 except (ValueError, queue.Full):
                     continue
         finally:
+            code = self.process.wait()
+            if code and not reported_error:
+                try:
+                    self.events.put_nowait({"kind": "error", "code": "worker_exited",
+                        "message": f"Voice stopped unexpectedly (exit {code}). Click the mic to retry."})
+                except queue.Full:
+                    pass
             self.finished.set()
 
     def close(self):

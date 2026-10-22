@@ -161,7 +161,7 @@ def main():
                         result["steps"] = clean_steps(result["steps"])  # what you see is exactly what replays
                         result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "voice_command":
-                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run), catalog=catalog)
+                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run or shopify_future), catalog=catalog, learning=learning_engine)
                     elif method == "workflow_synthesize":
                         from .synthesizer import synthesize_workflow
                         prompt = payload.get("prompt") or ""
@@ -365,19 +365,24 @@ def main():
                         break
                     if event.get("kind") == "transcript":
                         emit({"event": "voice", "kind": "heard", "text": event.get("text", "")})
-                        command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
-                                           awake=time.monotonic() < listener.awake_until,
-                                           busy=bool(session or replay or step_run))
+                        try:
+                            command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
+                                               awake=time.monotonic() < listener.awake_until,
+                                               busy=bool(session or replay or step_run or shopify_future), catalog=catalog, learning=learning_engine)
+                        except Exception as exc:
+                            command = {"kind": "command_error", "message": f"Could not handle voice command: {str(exc)[:200]}"}
                         if command["kind"] == "wake":
                             listener.awake_until = time.monotonic() + 12
                         elif command["kind"] == "workflow":
                             listener.awake_until = 0
                         emit({"event": "voice", **command})
-                        if command["kind"] in ("sleep", "workflow", "app_opened"):
+                        if command["kind"] == "sleep":
                             listener.close()
                             listener = None
                             emit({"event": "voice", "kind": "stopped"})
                             break
+                        elif command["kind"] in ("workflow", "app_opened", "add_workflow"):
+                            listener.awake_until = time.monotonic() + 20
                     else:
                         if event.get("kind") == "ready":
                             # The mic click authorizes the first command without a wake phrase.

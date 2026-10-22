@@ -909,6 +909,7 @@ let voicePending = false;
 let voiceFeedback = '';
 function voiceState(on, label) {
   voiceOn = on;
+  if (!on) $('voice-mic').classList.remove('hearing');
   if (on) voiceFeedback = '';
   $('voice-mic').setAttribute('aria-pressed', String(on));
   $('voice-mic').setAttribute('aria-label', on ? 'Stop local voice commands' : 'Start local voice commands');
@@ -926,6 +927,19 @@ function compactVoice(message, label) {
 }
 async function voiceResult(result) {
   if (!result) return;
+  if (result.kind === 'signal') {
+    $('voice-mic').classList.toggle('hearing', !!result.active);
+    if (result.quiet_seconds >= 8) {
+      compactVoice('No microphone sound detected. Check your input device or mute switch.', 'Mic is quiet · check input');
+    }
+    return;
+  }
+  if (result.kind === 'listening') {
+    // Preserve the command result until the next utterance starts.
+    if (voiceFeedback === 'Transcribing your voice...') voiceState(true);
+    $('voice-status').textContent = result.message;
+    return;
+  }
   if (result.kind === 'heard') {
     $('voice-text').value = result.text;
     $('voice-mic').title = `Heard: ${result.text}`;
@@ -936,9 +950,14 @@ async function voiceResult(result) {
     }
   } else if (result.kind === 'ignored') {
     compactVoice('Say Hey Jarvis first, or click the mic off and on for a fresh command.', 'Say Hey Jarvis to wake');
+  } else if (result.kind === 'learned_workflow') {
+    const pattern = await rpc('learning_detail', { id: result.id });
+    await expanded(true);
+    openPatternWorkflow(pattern);
   } else if (result.kind === 'workflow') {
     await showDetail(result.id);
-    compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
+    await expanded(true);
+    compactVoice(`Ready to run "${result.name}". Review the steps and approve replay.`, `Ready: ${result.name}`);
   } else if (['add_workflow', 'shopify', 'excel', 'whatsapp', 'workflow_created'].includes(result.kind)) {
     await handleSynthesizedWorkflow(result);
   } else if (result.message) {
@@ -1114,9 +1133,14 @@ async function handleSynthesizedWorkflow(result) {
       notice(result.message || `✨ Created routine "${result.name}" with ${result.steps?.length || 0} steps!`, 'success');
       compactVoice(`Created "${result.name}". Expand notch to review steps.`, `Ready: ${result.name}`);
     }
+  } else if (result.kind === 'learned_workflow') {
+    const pattern = await rpc('learning_detail', { id: result.id });
+    await expanded(true);
+    openPatternWorkflow(pattern);
   } else if (result.kind === 'workflow') {
     await showDetail(result.id);
-    compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
+    await expanded(true);
+    compactVoice(`Ready to run "${result.name}". Review the steps and approve replay.`, `Ready: ${result.name}`);
   } else if (result.message) {
     notice(result.message);
   }

@@ -15,6 +15,7 @@ function harness(fail = false) {
     $: (id) => {
       if (!nodes.has(id)) nodes.set(id, {
         textContent: '', attributes: {}, handlers: {},
+        classList: { toggle() {}, remove() {} },
         setAttribute(name, value) { this.attributes[name] = value; },
         addEventListener(name, fn) { this.handlers[name] = fn; },
       });
