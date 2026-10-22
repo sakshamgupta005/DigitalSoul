@@ -330,12 +330,14 @@ def test_refuses_to_guess_between_similar_chats():
     assert pressed == []
 
 
-def test_default_press_is_ui_automation_not_the_mouse(monkeypatch):
-    acted = []
-    monkeypatch.setattr(ghost, "act", acted.append)
-    row = Field("ListItem", "Alice")
-    WhatsAppSend(ghost=None)._press(row)
-    assert acted == [row]
+def test_default_press_opens_the_row_by_keyboard_never_the_mouse():
+    # WhatsApp rows take no UIA click (verified live), so the default walks keyboard focus to the row.
+    keys = []
+    row = Field("ListItem", "Alice")  # its click_input() raises: the mouse must never move
+    s = WhatsAppSend(ghost=None, sleep=lambda _: None, keyboard=lambda text, **_: keys.append(text))
+    s._focused_name = lambda: "Alice" if keys else ""
+    s._press(row)
+    assert keys == ["{DOWN}", "{ENTER}"]
 
 
 def test_whatsapp_composer_supports_webview2_window_text_and_unlabelled_field():

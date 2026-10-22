@@ -1954,7 +1954,7 @@ function openScreenProposal(proposal) {
   if (kind === 'shopify') {
     container.innerHTML = `
       <div class="screen-data-card">
-        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--brave)">🛍️ Extracted Shopify Product Details (Editable)</div>
+        <div class="screen-data-title app-brave">🛍️ Extracted Shopify Product Details (Editable)</div>
         <div class="screen-field-row"><label>Product Title</label><input id="screen-edit-title" value="${escapeHtml(ext.title || '')}" required></div>
         <div class="shop-grid">
           <div class="screen-field-row"><label>Price ($)</label><input id="screen-edit-price" type="number" step="0.01" value="${ext.price || '29.99'}"></div>
@@ -1966,7 +1966,7 @@ function openScreenProposal(proposal) {
   } else if (kind === 'excel') {
     container.innerHTML = `
       <div class="screen-data-card">
-        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--excel)">📊 Extracted Spreadsheet & Table (Editable)</div>
+        <div class="screen-data-title app-excel">📊 Extracted Spreadsheet & Table (Editable)</div>
         <div class="screen-field-row"><label>Spreadsheet Topic</label><input id="screen-edit-topic" value="${escapeHtml(ext.topic || 'Screen Data')}"></div>
         <div class="screen-field-row"><label>Columns (Headers)</label><input id="screen-edit-headers" value="${escapeHtml(Array.isArray(ext.headers) ? ext.headers.join(', ') : (ext.headers || ''))}"></div>
         <div class="screen-field-row"><label>Rows (CSV Format)</label><textarea id="screen-edit-rows" rows="3">${escapeHtml(ext.rows_csv || '')}</textarea></div>
@@ -1976,7 +1976,7 @@ function openScreenProposal(proposal) {
   } else if (kind === 'whatsapp') {
     container.innerHTML = `
       <div class="screen-data-card">
-        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--whatsapp)">💬 Extracted Communication (Editable)</div>
+        <div class="screen-data-title app-whatsapp">💬 Extracted Communication (Editable)</div>
         <div class="screen-field-row"><label>Recipient</label><input id="screen-edit-recipient" value="${escapeHtml(ext.recipient || '')}" required></div>
         <div class="screen-field-row"><label>Message</label><textarea id="screen-edit-message" rows="3" required>${escapeHtml(ext.message || '')}</textarea></div>
       </div>
@@ -1984,7 +1984,7 @@ function openScreenProposal(proposal) {
   } else {
     container.innerHTML = `
       <div class="screen-data-card">
-        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--info)">🖥️ Extracted Routine Steps (Editable)</div>
+        <div class="screen-data-title app-info">🖥️ Extracted Routine Steps (Editable)</div>
         <div class="screen-field-row"><label>Routine Name</label><input id="screen-edit-name" value="${escapeHtml(proposal.title || 'Screen Routine')}"></div>
         <div class="screen-field-row"><label>Summary / Notes</label><textarea id="screen-edit-summary" rows="3">${escapeHtml(ext.text_snippet || proposal.summary || '')}</textarea></div>
       </div>
@@ -2077,16 +2077,16 @@ function renderChainSteps(steps = []) {
   steps.forEach((s) => {
     const card = document.createElement('div');
     card.className = `chain-step-card ${s.status}`;
-    const badgeColor = s.status === 'completed' ? 'var(--ok)' : s.status === 'failed' ? 'var(--rec)' : s.status === 'blocked' ? 'var(--warn)' : 'var(--text-3)';
+    const tone = s.status === 'completed' ? 'ok' : s.status === 'failed' ? 'bad' : s.status === 'blocked' ? 'warn' : 'muted';
     card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px">
+      <div class="chain-step-name">
         <strong>${escapeHtml(s.name)}</strong>
-        <span style="font-size:10px;color:var(--text-4)">[${escapeHtml(s.app)}]</span>
+        <span class="chain-step-app">[${escapeHtml(s.app)}]</span>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        ${s.error ? `<span style="color:var(--rec);font-size:11px">${escapeHtml(s.error)}</span>` : ''}
-        ${s.setup_requirement ? `<span style="color:var(--warn);font-size:11px">${escapeHtml(s.setup_requirement)}</span>` : ''}
-        <span style="font-size:11px;font-weight:600;color:${badgeColor};text-transform:uppercase">${escapeHtml(s.status)}</span>
+      <div class="chain-step-state">
+        ${s.error ? `<span class="chain-step-error">${escapeHtml(s.error)}</span>` : ''}
+        ${s.setup_requirement ? `<span class="chain-step-setup">${escapeHtml(s.setup_requirement)}</span>` : ''}
+        <span class="chain-step-status tone-${tone}">${escapeHtml(s.status)}</span>
       </div>
     `;
     container.appendChild(card);
@@ -2098,11 +2098,11 @@ function renderChainReport(report) {
   if (!repEl) return;
   repEl.hidden = false;
   repEl.innerHTML = `
-    <div style="font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between">
+    <div class="chain-report-head">
       <span>Execution Report: ${escapeHtml(report.status.toUpperCase())}</span>
       <span>${report.duration_seconds}s</span>
     </div>
-    <div style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:8px;border-radius:var(--r-sm);white-space:pre-wrap;line-height:1.4">${escapeHtml(report.summary)}</div>
+    <div class="chain-report-body">${escapeHtml(report.summary)}</div>
   `;
 }
 

@@ -335,8 +335,8 @@ footer .text-button{font-size:11px}
 .roaming .roamer{opacity:1}
 /* The header ghost keeps its slot (no text shift) and just fades while its twin roams; one ghost on screen at a time. */
 .roaming .topbar .ghost{opacity:0}
-#empty .empty-symbol{transition:opacity .3s var(--ease)}
-.roaming #empty .empty-symbol{opacity:0}
+/* The empty-state ghost is the same character: it leaves only its shadow behind while it roams. */
+.roaming #empty .empty-symbol .ghost{opacity:0}
 
 /* ---- Ghost tricks: one short flourish every 6-15 s (scheduled in app.js) ---- */
 .ghost-float.trick-twirl{animation:twirl 1.5s var(--glide)}
@@ -394,7 +394,7 @@ footer .text-button{font-size:11px}
 @keyframes twinkle{50%{transform:scale(1.5) rotate(20deg);opacity:.6}}
 @keyframes nudge{0%,90%,100%{transform:none}93%{transform:translateY(-2px)}96%{transform:translateY(0)}}
 
-@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.workflow-card,.step-list li{opacity:1}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.workflow-card,.step-list li,.rule-card,.persona-card{opacity:1!important}}
 @media(max-width:480px){.panel{padding:0 16px 12px}.section-heading .local-tag{display:none}.form-grid{grid-template-columns:1fr}h1{font-size:19px}}
 
 /* Voice commands (Jarvis) and the Shopify flow, in the shared theme. */
@@ -438,7 +438,7 @@ footer .text-button{font-size:11px}
 .ai-input-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:14px;margin-bottom:14px;box-shadow:var(--shadow-sm);transition:border-color .2s,box-shadow .2s}
 .ai-input-card:focus-within{border-color:#a855f7;box-shadow:0 0 0 4px color-mix(in srgb,#a855f7 18%,transparent)}
 .ai-input-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.ai-mic-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;font-size:12px;font-weight:600;border-radius:20px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text-2);cursor:pointer;transition:all .2s}
+.ai-mic-btn{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;font-size:12px;font-weight:600;border-radius:20px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text-2);cursor:pointer}
 .ai-mic-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .ai-mic-btn:hover{border-color:#a855f7;color:#a855f7;background:color-mix(in srgb,#a855f7 12%,transparent)}
 .ai-mic-btn.listening{background:#ef4444;color:#fff;border-color:#dc2626;animation:pulse-red 1.5s infinite}
@@ -449,7 +449,7 @@ footer .text-button{font-size:11px}
 .ai-input-footer{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
 .quick-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 16px}
 .chips-label{font-size:11px;color:var(--text-3);margin-right:4px;font-weight:500}
-.chip-suggestion{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:5px 10px;font-size:11px;color:var(--text-2);cursor:pointer;transition:all .15s}
+.chip-suggestion{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:5px 10px;font-size:11px;color:var(--text-2);cursor:pointer}
 .chip-suggestion:hover{background:var(--surface-2);border-color:color-mix(in srgb,#a855f7 50%,var(--line));color:var(--text);transform:translateY(-1px)}
 .ai-submit-btn{background:linear-gradient(135deg,#9333ea,#6366f1);color:#fff;border:none;font-weight:600;padding:12px;border-radius:var(--r-md);cursor:pointer;transition:opacity .2s,transform .15s}
 .ai-submit-btn:hover{opacity:.94;transform:translateY(-1px);box-shadow:0 4px 14px color-mix(in srgb,#9333ea 30%,transparent)}
@@ -496,7 +496,7 @@ footer .text-button{font-size:11px}
 
 /* ---- Profiles: same card language as the library; each twin carries its own hue (--p-hue, set in app.js) ---- */
 .profile-hero-card,.persona-card,.profile-ghost{--p-color:oklch(.8 .11 var(--p-hue,265));--p-body:color-mix(in oklab,var(--p-color) 38%,var(--ghost))}
-@media(prefers-color-scheme:light){.profile-hero-card,.persona-card,.profile-ghost{--p-color:oklch(.55 .15 var(--p-hue,265));--p-body:color-mix(in oklab,var(--p-color) 22%,#fff)}}
+@media(prefers-color-scheme:light){.profile-hero-card,.persona-card,.profile-ghost{--p-color:oklch(.55 .15 var(--p-hue,265));--p-body:color-mix(in oklab,var(--p-color) 14%,#fff)}}
 .profile-header-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .profile-select-dropdown{max-width:180px;border:1px solid var(--line-2);border-radius:var(--r-sm);background-color:var(--surface-2);color:var(--text);padding:5px 28px 5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;text-overflow:ellipsis;transition:border-color .15s}
 .profile-select-dropdown:hover{border-color:var(--line-3)}
@@ -599,3 +599,44 @@ footer .text-button{font-size:11px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .empty-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:16px}
 @media(max-width:480px){.profile-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.do-input-row{flex-direction:column}.profile-select-dropdown{max-width:120px}.profile-sig{display:none}}
+
+/* ---- Classes for what used to be inline style="" (the app's CSP, style-src 'self', drops those) ---- */
+.heading-actions{display:flex;gap:6px;flex-shrink:0}
+.switch-row.grid-align{margin-top:24px}
+.switch-row.spaced{margin-top:14px}
+.eyebrow.sky{color:#0ea5e9}
+.form-category-header{display:flex;align-items:center;gap:8px;margin:12px 0 6px}
+#gform-new-header{margin-top:16px}
+.badge.memory-known{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.badge.memory-new{color:#a855f7;background:color-mix(in srgb,#a855f7 14%,transparent)}
+.eyebrow-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.action-row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.action-row .wide{flex:1;width:auto;margin:0}
+.action-row .secondary{flex:0 0 auto}
+#chain-steps-container{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+#chain-report-container{margin-top:12px;font-size:12px}
+.screen-data-title{font-weight:600;font-size:12px;margin-bottom:8px;color:var(--app)}
+.app-info{--app:var(--info)}
+.chain-step-name,.chain-step-state{display:flex;align-items:center;gap:8px;min-width:0}
+.chain-step-app{font-size:10px;color:var(--text-4)}
+.chain-step-error{color:var(--rec);font-size:11px}
+.chain-step-setup{color:var(--warn);font-size:11px}
+.chain-step-status{font-size:11px;font-weight:600;color:var(--tone);text-transform:uppercase}
+.chain-report-head{display:flex;justify-content:space-between;font-weight:600;margin-bottom:6px}
+.chain-report-body{font-family:var(--mono);font-size:11px;line-height:1.4;white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:var(--r-sm)}
+
+/* ---- Polish ---- */
+:root{--shadow-sm:0 1px 2px rgba(0,0,0,.2);--shadow-md:0 8px 22px -10px rgba(0,0,0,.55)}
+@media(prefers-color-scheme:light){:root{--shadow-sm:0 1px 2px rgba(20,20,40,.06);--shadow-md:0 8px 22px -12px rgba(20,20,40,.2)}}
+.chip-suggestion{transition:background-color .15s,border-color .15s,color .15s,transform .15s var(--ease)}
+.chip-suggestion:active{transform:scale(.97)}
+.ai-mic-btn{transition:background-color .2s,border-color .2s,color .2s}
+.mini-btn{position:relative}
+.mini-btn:after{content:'';position:absolute;inset:-6px -2px}
+#pattern-empty .empty-symbol{font-size:30px}
+#pattern-empty .empty-symbol:after{display:none}
+.workflow-card:focus-visible,.persona-card:focus-visible{outline-offset:-1px}
+/* While the ghost roams, a soft shadow keeps its spot in the header, so the gap reads as "back soon". */
+.topbar .ghost-float>*{grid-area:1/1}
+.topbar .ghost-float:before{content:'';grid-area:1/1;align-self:end;justify-self:center;width:16px;height:4px;border-radius:50%;background:color-mix(in srgb,var(--accent) 50%,transparent);filter:blur(1.5px);opacity:0;transition:opacity .3s var(--ease)}
+.roaming .topbar .ghost-float:before{opacity:.8}
