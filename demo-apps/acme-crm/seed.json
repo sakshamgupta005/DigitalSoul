@@ -1,0 +1,23 @@
+{
+  "_comment": "SYNTHETIC DEMO DATA for the Digital Ghost demo. Not real customers. Emails use the reserved example.invalid domain.",
+  "tags": ["", "Healthy", "At-risk – Watch", "At-risk – High"],
+  "customers": [
+    {"customer_id": "1042", "name": "Synthetic Demo Co 1042", "email": "billing-1042@example.invalid", "plan": "Pro", "last_login_days": 45, "tag": ""},
+    {"customer_id": "1043", "name": "Synthetic Demo Co 1043", "email": "billing-1043@example.invalid", "plan": "Basic", "last_login_days": 60, "tag": ""},
+    {"customer_id": "1044", "name": "Synthetic Demo Co 1044", "email": "billing-1044@example.invalid", "plan": "Pro", "last_login_days": 30, "tag": ""},
+    {"customer_id": "1045", "name": "Synthetic Demo Co 1045", "email": "billing-1045@example.invalid", "plan": "Pro", "last_login_days": 31, "tag": ""},
+    {"customer_id": "1046", "name": "Synthetic Demo Co 1046", "email": "billing-1046@example.invalid", "plan": "Enterprise", "last_login_days": 90, "tag": ""},
+    {"customer_id": "1047", "name": "Synthetic Demo Co 1047", "email": "billing-1047@example.invalid", "plan": "Pro", "last_login_days": 5, "tag": "Healthy"},
+    {"customer_id": "1050", "name": "Synthetic Demo Co 1050", "email": "billing-1050@example.invalid", "plan": "Basic", "last_login_days": 3, "tag": "Healthy"},
+    {"customer_id": "1051", "name": "Synthetic Demo Co 1051", "email": "billing-1051@example.invalid", "plan": "Pro", "last_login_days": 100, "tag": ""}
+  ],
+  "tickets": [
+    {"ticket_id": "T-9001", "customer_id": "1042", "subject": "Synthetic: export failing", "status": "open", "opened_days_ago": 12},
+    {"ticket_id": "T-9002", "customer_id": "1042", "subject": "Synthetic: invoice question", "status": "open", "opened_days_ago": 3},
+    {"ticket_id": "T-9003", "customer_id": "1043", "subject": "Synthetic: password reset", "status": "closed", "opened_days_ago": 40},
+    {"ticket_id": "T-9004", "customer_id": "1045", "subject": "Synthetic: API rate limits", "status": "open", "opened_days_ago": 8},
+    {"ticket_id": "T-9005", "customer_id": "1046", "subject": "Synthetic: SSO setup", "status": "open", "opened_days_ago": 21},
+    {"ticket_id": "T-9006", "customer_id": "1046", "subject": "Synthetic: seat count", "status": "open", "opened_days_ago": 2},
+    {"ticket_id": "T-9007", "customer_id": "1046", "subject": "Synthetic: data export", "status": "closed", "opened_days_ago": 70}
+  ]
+}
