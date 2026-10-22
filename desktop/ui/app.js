@@ -441,8 +441,11 @@ $('toggle').addEventListener('click', () => {
   action(async () => { await expanded(!state.expanded); if (state.expanded) syncTheme(); });
 });
 
-// While recording the banner hides completely; F8 (or the time limit) saves and brings it back.
-const hideNotch = (hidden) => tauri?.core.invoke('set_notch_hidden', { hidden }).catch(() => {});
+// Keep the compact notch visible during recording; only hide if explicitly commanded outside recording.
+const hideNotch = (hidden) => {
+  if (hidden && state.recording) return Promise.resolve();
+  return tauri?.core.invoke('set_notch_hidden', { hidden }).catch(() => {});
+};
 
 function cheer() {
   $('notch').classList.remove('cheer');
@@ -803,10 +806,11 @@ $('record-form').addEventListener('submit', (event) => {
   event.preventDefault();
   action(async () => {
     const values = new FormData(event.target);
-    const apps = [...values.getAll('app'), ...values.get('apps').split(',').map((app) => app.trim()).filter(Boolean)];
-    if (!apps.length) throw new Error('Choose at least one app to observe.');
-    const isEverything = apps.includes('*');
-    const options = { name: values.get('name').trim(), apps: isEverything ? ['*'] : apps };
+    const rawApps = [...values.getAll('app'), ...values.get('apps').split(',').map((app) => app.trim()).filter(Boolean)];
+    if (!rawApps.length) throw new Error('Choose at least one app to observe.');
+    const isEverything = rawApps.includes('*');
+    const apps = isEverything ? ['*'] : rawApps.map((a) => (a === '*' || a.toLowerCase().endsWith('.exe') ? a : `${a}.exe`));
+    const options = { name: values.get('name').trim(), apps };
     if (!isEverything && values.has('whatsapp') && apps.some((app) => /whatsapp/i.test(app))) options.whatsapp = true;
     await rpc('start', options);
     $('live-name').textContent = options.name;
@@ -816,7 +820,6 @@ $('record-form').addEventListener('submit', (event) => {
     setRecording(true);
     view('library');
     await expanded(false);
-    await hideNotch(true);
   });
 });
 

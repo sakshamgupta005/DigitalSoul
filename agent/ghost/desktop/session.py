@@ -163,10 +163,24 @@ class Session:
         self.name = options.get("name", "").strip()
         if not 1 <= len(self.name) <= 80:
             raise ValueError("Give this recording a name (1–80 characters)")
-        self.apps = options.get("apps", ["WhatsApp.exe"])
-        if not isinstance(self.apps, list) or not 1 <= len(self.apps) <= 8 or any(
-                not isinstance(app, str) or not (app == "*" or re.fullmatch(r"[\w .-]+\.exe", app, re.I)) for app in self.apps):
+        raw_apps = options.get("apps", ["WhatsApp.exe"])
+        if not isinstance(raw_apps, list) or not 1 <= len(raw_apps) <= 8:
             raise ValueError("Choose 1–8 executable names, such as WhatsApp.exe or notepad.exe")
+        normalized_apps = []
+        for app in raw_apps:
+            if not isinstance(app, str):
+                continue
+            app_clean = app.strip()
+            if app_clean == "*":
+                normalized_apps.append("*")
+            else:
+                if not app_clean.lower().endswith(".exe"):
+                    app_clean = f"{app_clean}.exe"
+                if re.fullmatch(r"[\w .-]+\.exe", app_clean, re.I):
+                    normalized_apps.append(app_clean)
+        if not normalized_apps:
+            raise ValueError("Choose 1–8 executable names, such as WhatsApp.exe or notepad.exe")
+        self.apps = normalized_apps
         self.everything = "*" in self.apps
         self.allowed = set()
         for app in self.apps:
@@ -200,12 +214,20 @@ class Session:
             # Any recording that touches WhatsApp also learns who was searched and what was typed.
             self.capture = Capture()
         self.visual_memory = None
+        self._closed = threading.Event()
+        self._visual_queue = None
+        self._visual_thread = None
         if options.get("enable_visual_memory", True):
             try:
                 from agent.ghost.collector.visual_memory import VisualMemory
                 self.visual_memory = VisualMemory()
+                self._visual_queue = queue.Queue(maxsize=256)
+                self._visual_thread = threading.Thread(target=self._process_visual_memory, daemon=True)
+                self._visual_thread.start()
             except Exception:
                 self.visual_memory = None
+                self._visual_queue = None
+                self._visual_thread = None
         self.shopify_active = options.get("shopify", True)
         self.shopify_detected = False
         self.shopify_data = {
@@ -340,31 +362,51 @@ class Session:
         self.events.pids.update(active_pids)
         return window, pid.value, path, active_pids
 
+    def _process_visual_memory(self):
+        while not self._closed.is_set():
+            try:
+                task = self._visual_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if task is None:
+                break
+            step_dict, app_name, window_title, target_name, action_kind, coords = task
+            try:
+                mem_item = self.visual_memory.capture_and_remember(
+                    app=app_name,
+                    window_title=window_title,
+                    action_kind=action_kind,
+                    coords=coords,
+                    target_name=target_name,
+                    session_id=self.name,
+                    analyze_with_omniroute=False,
+                )
+                if mem_item and mem_item.screenshot_path:
+                    step_dict["screenshot_path"] = mem_item.screenshot_path
+                if mem_item and mem_item.ocr_text:
+                    step_dict["ocr_snippet"] = mem_item.ocr_text[:120].strip()
+                if mem_item and mem_item.intent_summary:
+                    step_dict["intent"] = mem_item.intent_summary
+            except Exception:
+                pass
+            finally:
+                self._visual_queue.task_done()
+
     def append(self, step):
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
-        if self.visual_memory:
+        if self.visual_memory and self._visual_queue:
             try:
                 app_name = step.get("app") or "Desktop"
                 window_title = self.last_foreground or app_name
                 target_name = step.get("label")
                 if not target_name and isinstance(step.get("target"), dict):
                     target_name = step["target"].get("name")
-                mem_item = self.visual_memory.capture_and_remember(
-                    app=app_name,
-                    window_title=window_title,
-                    action_kind=step.get("kind", "action"),
-                    target_name=target_name,
-                    session_id=self.name,
-                    analyze_with_omniroute=True,
-                )
-                if mem_item.screenshot_path:
-                    step["screenshot_path"] = mem_item.screenshot_path
-                if mem_item.ocr_text:
-                    step["ocr_snippet"] = mem_item.ocr_text[:120].strip()
-                if mem_item.intent_summary:
-                    step["intent"] = mem_item.intent_summary
+                coords = step.get("point")
+                if not coords and isinstance(step.get("target"), dict) and "point" in step["target"]:
+                    coords = step["target"]["point"]
+                self._visual_queue.put_nowait((step, app_name, window_title, target_name, step.get("kind", "action"), coords))
             except Exception:
                 pass
         if step["kind"] == "set_text" and self.steps and self.steps[-1]["kind"] == "set_text" and (
@@ -562,6 +604,14 @@ class Session:
 
     def finish(self):
         self.events.__exit__(None, None, None)
+        self._closed.set()
+        if self._visual_queue:
+            try:
+                self._visual_queue.put_nowait(None)
+            except Exception:
+                pass
+        if self._visual_thread and self._visual_thread.is_alive():
+            self._visual_thread.join(timeout=1.0)
         flow = None
         if self.capture and self.capture.composed and not self.capture.done:
             # Typed but never sent: the routine still means "send this", with Enter on replay.

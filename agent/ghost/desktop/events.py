@@ -10,10 +10,11 @@ class WinEvents:
     def __init__(self, everything=False):
         self.everything = everything
         self.pids = set()
-        self.queue = queue.Queue(maxsize=512)
+        self.queue = queue.Queue(maxsize=4096)
         self.ready = threading.Event()
         self.closed = threading.Event()
         self.error = None
+        self._callbacks = []
 
     def __enter__(self):
         self.thread = threading.Thread(target=self._pump, daemon=True)
@@ -50,34 +51,49 @@ class WinEvents:
                         ("flags", wintypes.DWORD), ("time", wintypes.DWORD), ("extra", ctypes.c_size_t)]
 
         def enqueue(kind, point=None):
-            hwnd = user.GetForegroundWindow()
-            pid = wintypes.DWORD()
-            user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if kind != "stop" and not self.everything and pid.value not in self.pids:
-                return
             try:
-                self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
-            except queue.Full:
-                self.error = RuntimeError("Recorder event queue overflowed; repeat the demonstration more slowly")
+                hwnd = user.GetForegroundWindow()
+                pid = wintypes.DWORD()
+                user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if kind != "stop" and not self.everything and pid.value not in self.pids:
+                    return
+                try:
+                    self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
+                except queue.Full:
+                    try:
+                        self.queue.get_nowait()
+                        self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
         @callback_type
         def mouse(code, message, data):
-            if code >= 0 and message == 0x0201:  # WM_LBUTTONDOWN
-                event = ctypes.cast(data, ctypes.POINTER(Mouse)).contents
-                if not event.flags & 1:  # ignore injected mouse events
-                    enqueue("click", (event.point.x, event.point.y))
+            try:
+                if code >= 0 and message == 0x0201:  # WM_LBUTTONDOWN
+                    event = ctypes.cast(data, ctypes.POINTER(Mouse)).contents
+                    if not event.flags & 1:  # ignore injected mouse events
+                        enqueue("click", (event.point.x, event.point.y))
+            except Exception:
+                pass
             return user.CallNextHookEx(None, code, message, data)
 
         @callback_type
         def keyboard(code, message, data):
-            if code >= 0 and message == 0x0100:  # WM_KEYDOWN
-                event = ctypes.cast(data, ctypes.POINTER(Key)).contents
-                if not event.flags & 0x10:
-                    if event.vk == 0x77:
-                        enqueue("stop")  # F8, anywhere, stops recording
-                    elif event.vk == 0x0D:
-                        enqueue("enter")
+            try:
+                if code >= 0 and message == 0x0100:  # WM_KEYDOWN
+                    event = ctypes.cast(data, ctypes.POINTER(Key)).contents
+                    if not event.flags & 0x10:
+                        if event.vk == 0x77:
+                            enqueue("stop")  # F8, anywhere, stops recording
+                        elif event.vk == 0x0D:
+                            enqueue("enter")
+            except Exception:
+                pass
             return user.CallNextHookEx(None, code, message, data)
+
+        self._callbacks = [mouse, keyboard]
 
         hooks = []
         try:

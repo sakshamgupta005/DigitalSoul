@@ -243,6 +243,12 @@ def main():
                               "elapsed": round(time.monotonic() - session.started), "last_step": session.steps[-1] if session.steps else None})
                         last_update = time.monotonic()
                 except Exception as exc:
+                    try:
+                        with open(data / "bridge.log", "a", encoding="utf-8") as f:
+                            import traceback
+                            traceback.print_exc(file=f)
+                    except Exception:
+                        pass
                     emit({"event": "error", "message": str(exc)[:600]})
                     save_session()
             if replay and replay.poll() is not None:
