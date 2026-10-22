@@ -28,7 +28,11 @@ enter and successfully use in forms. Review or edit it directly when needed.
 # Semantic aliases for common Google Form questions
 FIELD_ALIASES = {
     "name": [
-        r"\b(full\s*name|your\s*name|first\s*name|name)\b",
+        r"\b(full\s*name|your\s*name|first\s*name|name|user\s*name)\b",
+        r"\bname\b",
+    ],
+    "user_name": [
+        r"\b(full\s*name|your\s*name|first\s*name|name|user\s*name)\b",
         r"\bname\b",
     ],
     "email": [

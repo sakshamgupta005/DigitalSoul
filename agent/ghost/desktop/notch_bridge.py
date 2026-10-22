@@ -1,4 +1,5 @@
 """Private Tauri stdio RPC. All native recording stays in the local Windows session."""
+import asyncio
 import json
 import queue
 import subprocess
@@ -371,7 +372,14 @@ def main():
                         }
                     elif method == "gform_inspect":
                         from ..browser.gform_actor import GFormActor
-                        result = GFormActor.inspect_url(payload.get("url", ""))
+                        from ..browser.gform_memory import GFormMemory
+                        mem = GFormMemory()
+                        # Sync in-memory profile with learned user facts
+                        for k, v in learning_engine.get_user_memory().items():
+                            val = v.get("value") if isinstance(v, dict) else str(v)
+                            if val:
+                                mem.profile[k] = val
+                        result = GFormActor.inspect_url(payload.get("url", ""), memory=mem)
                     elif method == "gform_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
