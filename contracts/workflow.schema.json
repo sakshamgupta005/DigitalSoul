@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://digitalghost.local/schemas/workflow.json",
+  "title": "Workflow",
+  "type": "object",
+  "required": [
+    "workflow_id",
+    "version",
+    "name",
+    "description",
+    "trust",
+    "provenance",
+    "parameters",
+    "steps",
+    "decision_rules",
+    "outcome_checks",
+    "remote_allowed"
+  ],
+  "properties": {
+    "workflow_id": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "trust": {
+      "type": "string",
+      "enum": ["observed", "candidate", "validated", "supervised", "trusted"]
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["evidence_episode_ids", "support", "alignment"],
+      "properties": {
+        "evidence_episode_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "support": { "type": "integer", "minimum": 1 },
+        "alignment": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkflowParameter"
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/WorkflowStep"
+      }
+    },
+    "decision_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DecisionRule"
+      }
+    },
+    "outcome_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/OutcomeCheck"
+      }
+    },
+    "remote_allowed": { "type": "boolean" }
+  },
+  "$defs": {
+    "WorkflowParameter": {
+      "type": "object",
+      "required": ["name", "type", "source", "origin", "confirmed"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["string", "string[]", "number", "boolean"] },
+        "source": { "type": "string" },
+        "origin": { "type": "string", "enum": ["observed", "inferred", "user_defined"] },
+        "confirmed": { "type": "boolean" },
+        "default_value": {}
+      }
+    },
+    "StepLocator": {
+      "type": "object",
+      "required": ["by"],
+      "properties": {
+        "by": {
+          "type": "string",
+          "enum": ["testid", "role", "label", "text", "css", "xpath", "uia"]
+        },
+        "value": { "type": "string" },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "uia_id": { "type": "string" }
+      }
+    },
+    "PrePostCondition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "url_matches",
+            "element_visible",
+            "field_equals",
+            "network_2xx",
+            "record_id_matches"
+          ]
+        },
+        "value": { "type": "string" },
+        "locator_ref": { "type": "integer" }
+      }
+    },
+    "WorkflowStep": {
+      "type": "object",
+      "required": [
+        "step_id",
+        "kind",
+        "verb",
+        "app",
+        "locators",
+        "risk",
+        "required",
+        "origin",
+        "recovery"
+      ],
+      "properties": {
+        "step_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["action", "loop", "decision", "assert"] },
+        "verb": {
+          "type": "string",
+          "enum": [
+            "navigate",
+            "click",
+            "set_field",
+            "read_field",
+            "select_option",
+            "wait_visible",
+            "assert_state"
+          ]
+        },
+        "app": { "type": "string" },
+        "locators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/StepLocator" }
+        },
+        "input": { "type": ["string", "number", "null"] },
+        "loop_iterator": {
+          "type": "object",
+          "properties": {
+            "source_param": { "type": "string" },
+            "item_name": { "type": "string" }
+          }
+        },
+        "pre": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PrePostCondition" }
+        },
+        "post": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PrePostCondition" }
+        },
+        "risk": { "type": "string", "enum": ["R0", "R1", "R2", "R3"] },
+        "required": { "type": "boolean" },
+        "origin": { "type": "string", "enum": ["observed", "inferred"] },
+        "allow_input_fallback": { "type": "boolean", "default": false },
+        "recovery": {
+          "type": "object",
+          "required": ["retries", "on_fail"],
+          "properties": {
+            "retries": { "type": "integer", "minimum": 0 },
+            "on_fail": {
+              "type": "string",
+              "enum": ["pause", "skip", "abort", "retry_then_pause"]
+            }
+          }
+        }
+      }
+    },
+    "DecisionRule": {
+      "type": "object",
+      "required": ["id", "expr", "then", "else", "origin", "supported_runs", "contradicting_runs"],
+      "properties": {
+        "id": { "type": "string" },
+        "expr": { "type": "string" },
+        "then": { "type": "string" },
+        "else": { "type": "string" },
+        "origin": { "type": "string", "enum": ["inferred", "user_defined"] },
+        "supported_runs": { "type": "integer" },
+        "contradicting_runs": { "type": "integer" }
+      }
+    },
+    "OutcomeCheck": {
+      "type": "object",
+      "required": ["type", "app", "check", "args"],
+      "properties": {
+        "type": { "type": "string", "enum": ["app_api", "db_query", "page_assertion"] },
+        "app": { "type": "string" },
+        "check": { "type": "string" },
+        "args": { "type": "object" }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "workflow_id": "wf_invalid",
+  "version": 0,
+  "name": "",
+  "description": "Missing required fields and invalid risk level",
+  "trust": "unsupported_trust_level",
+  "provenance": {
+    "evidence_episode_ids": [],
+    "support": 0,
+    "alignment": 1.5
+  },
+  "parameters": [],
+  "steps": [
+    {
+      "step_id": "s1",
+      "kind": "unknown_kind",
+      "verb": "do_something",
+      "app": "acme-crm",
+      "locators": [],
+      "risk": "R99",
+      "required": true,
+      "origin": "hallucinated",
+      "recovery": {
+        "retries": -1,
+        "on_fail": "crash"
+      }
+    }
+  ],
+  "decision_rules": [],
+  "outcome_checks": [],
+  "remote_allowed": true
+}

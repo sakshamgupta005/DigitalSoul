@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://digitalghost.local/schemas/raw_event.json",
+  "title": "RawEvent",
+  "type": "object",
+  "required": [
+    "event_id",
+    "ts",
+    "source",
+    "kind",
+    "app",
+    "target",
+    "value",
+    "page",
+    "session_id"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the captured event."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp with millisecond precision."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["extension", "desktop"],
+      "description": "Originating collector sensor."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "navigate",
+        "click",
+        "input_change",
+        "submit",
+        "focus",
+        "window_switch",
+        "clipboard_copy"
+      ],
+      "description": "Semantic category of the interaction."
+    },
+    "app": {
+      "type": "object",
+      "required": ["id", "type", "process"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["web", "native"] },
+        "domain": { "type": ["string", "null"] },
+        "process": { "type": "string" },
+        "window_title": { "type": ["string", "null"] }
+      }
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "role": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "testid": { "type": ["string", "null"] },
+        "label": { "type": ["string", "null"] },
+        "css": { "type": ["string", "null"] },
+        "xpath": { "type": ["string", "null"] },
+        "uia": {
+          "type": ["object", "null"],
+          "properties": {
+            "automation_id": { "type": ["string", "null"] },
+            "control_type": { "type": ["string", "null"] },
+            "name": { "type": ["string", "null"] }
+          }
+        },
+        "bbox": {
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
+    "value": {
+      "type": "object",
+      "required": ["redacted", "shape"],
+      "properties": {
+        "redacted": { "type": "boolean" },
+        "shape": {
+          "type": "string",
+          "enum": ["none", "text:short", "text:long", "number", "email", "secret_omitted"]
+        },
+        "text": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["url_pattern"],
+      "properties": {
+        "url_pattern": { "type": "string" },
+        "url_params": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  }
+}

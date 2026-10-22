@@ -1,0 +1,18 @@
+{
+  "msg_id": "msg_f9e8d7c6-b5a4-3210-9876-543210fedcba",
+  "from_device": "device_iphone_15_pro_sahil",
+  "to_device": "desktop_win11_sahil",
+  "kind": "command",
+  "sig": "e9821a4f0012bc556281736450192837465019283746501928374650192837461234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "payload": {
+    "command_id": "cmd_01j9b44g8",
+    "device_id": "device_iphone_15_pro_sahil",
+    "type": "approve_step",
+    "workflow_id": "wf_at_risk_seg",
+    "run_id": "run_01j9b2e4t3n2y",
+    "step_id": "s6_post_summary",
+    "params": {},
+    "issued_at": "2026-10-22T09:32:00.100Z",
+    "nonce": "77af32b901fc88a1"
+  }
+}

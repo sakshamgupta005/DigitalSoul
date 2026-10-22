@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://digitalghost.local/schemas/error.json",
+  "title": "GhostError",
+  "type": "object",
+  "required": ["error"],
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "trace_id"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "VALIDATION_ERROR",
+            "NOT_FOUND",
+            "UNAUTHORIZED",
+            "POLICY_BLOCKED",
+            "APPROVAL_REQUIRED",
+            "LOCATOR_NOT_FOUND",
+            "LOCATOR_AMBIGUOUS",
+            "PRECONDITION_FAILED",
+            "POSTCONDITION_FAILED",
+            "GUARD_TRIGGERED",
+            "APP_UNREACHABLE",
+            "DEVICE_OFFLINE",
+            "SIGNATURE_INVALID",
+            "INTERNAL"
+          ]
+        },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "run_id": { "type": ["string", "null"] },
+        "step_id": { "type": ["string", "null"] },
+        "details": { "type": "object" },
+        "trace_id": { "type": "string", "format": "uuid" }
+      }
+    }
+  }
+}

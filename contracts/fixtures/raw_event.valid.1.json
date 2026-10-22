@@ -1,0 +1,35 @@
+{
+  "event_id": "b1a2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "ts": "2026-10-22T09:14:03.120Z",
+  "source": "extension",
+  "kind": "click",
+  "app": {
+    "id": "acme-crm",
+    "type": "web",
+    "domain": "crm.acme.local",
+    "process": "chrome.exe",
+    "window_title": "Acme CRM - Customer 1042"
+  },
+  "target": {
+    "role": "combobox",
+    "name": "Customer Tag",
+    "testid": "tag-select",
+    "label": "Tag",
+    "css": "form#cust > div.field-tag > select",
+    "xpath": "/html/body/div[1]/form/div[2]/select",
+    "uia": null,
+    "bbox": [812, 640, 140, 36]
+  },
+  "value": {
+    "redacted": false,
+    "shape": "text:short",
+    "text": "At-risk – High"
+  },
+  "page": {
+    "url_pattern": "/customers/:id",
+    "url_params": {
+      "id": "1042"
+    }
+  },
+  "session_id": "99998888-7777-6666-5555-444433332222"
+}

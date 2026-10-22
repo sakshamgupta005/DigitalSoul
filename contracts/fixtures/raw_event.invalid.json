@@ -1,0 +1,25 @@
+{
+  "event_id": "invalid-uuid-format",
+  "ts": "not-a-timestamp",
+  "source": "unknown_sensor",
+  "kind": "input_change",
+  "app": {
+    "id": "acme-portal",
+    "type": "web",
+    "process": "chrome.exe"
+  },
+  "target": {
+    "role": "textbox",
+    "name": "Password",
+    "testid": "pwd-input"
+  },
+  "value": {
+    "redacted": false,
+    "shape": "secret_omitted",
+    "text": "plaintext_password_is_illegal"
+  },
+  "page": {
+    "url_pattern": "/login"
+  },
+  "session_id": "1234"
+}

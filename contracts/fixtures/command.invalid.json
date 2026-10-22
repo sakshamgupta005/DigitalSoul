@@ -1,0 +1,16 @@
+{
+  "msg_id": "msg_stale_123",
+  "from_device": "device_iphone_15_pro_sahil",
+  "to_device": "desktop_win11_sahil",
+  "kind": "command",
+  "sig": "valid_sig_on_old_payload",
+  "payload": {
+    "command_id": "cmd_stale",
+    "device_id": "device_iphone_15_pro_sahil",
+    "type": "run_workflow",
+    "workflow_id": "wf_at_risk_seg",
+    "params": {},
+    "issued_at": "2026-10-20T08:00:00.000Z",
+    "nonce": "old_nonce_already_logged"
+  }
+}
