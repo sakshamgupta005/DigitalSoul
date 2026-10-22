@@ -1,10 +1,13 @@
 """Explicit, app-scoped recorder driven by the notch's Start/Stop controls."""
 import contextlib
+import ctypes
+import functools
 import queue
 import re
 import sys
 import threading
 import time
+from ctypes import wintypes
 from pathlib import PureWindowsPath
 
 from .events import WinEvents
@@ -19,8 +22,15 @@ CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabIt
 ROOT_KINDS = ("Window", "Pane", "Document")
 # "Everything" mode still never watches DigitalSoul itself, sign-in prompts or password managers.
 NEVER_RECORD = {"digitalsoul-notch.exe", "consent.exe", "lockapp.exe", "credentialuibroker.exe", "logonui.exe",
-                "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe"}
+                "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe",
+                "enpass.exe", "nordpass.exe", "roboform.exe", "keeperpasswordmanager.exe"}
+# DigitalSoul's own windows (notch, ghost overlay), whatever executable a dev build runs as.
+OWN_TITLES = {"DigitalSoul", "DigitalSoul ghost"}
+# Fields whose text is never recorded even when the app does not flag them as passwords.
+SECRET_FIELD = re.compile(r"pass(word|code|phrase)|\bpin\b|\bcvv\b|\bcvc\b|security code|one[- ]time|\botp\b", re.I)
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+# Browser steps closer than this to the page they led to are folded into it (see compress_browsing).
+FOLD_SECONDS = 60
 
 
 def clean_control_name(control, name, kind):
@@ -53,6 +63,9 @@ def web_address(value):
     if not value or " " in value or len(value) > 2000:
         return None
     if not re.match(r"https?://", value):
+        # Chromium hides the scheme; local dev servers are plain http.
+        if re.match(r"localhost(:\d+)?(/|$|\?)", value):
+            return "http://" + value
         if not re.match(r"[\w-]+(\.[\w-]+)+(:\d+)?(/|$|\?)", value):
             return None
         value = "https://" + value
@@ -69,25 +82,85 @@ def is_video(url):
     return bool(re.match(r"https?://(www\.|m\.)?(youtube\.com/(watch|shorts/)|youtu\.be/)", url or ""))
 
 
+# A page left within this many seconds was only passed through (e.g. YouTube home on the way to a
+# video); pages you stayed on, like a video you watched before the next one, keep their own step.
+PASS_THROUGH_SECONDS = 8
+
+
+def drop_empty_visits(steps):
+    """An app that was only passed through (in front when recording started, or alt-tabbed past)
+    has nothing to replay; switching to it would just pull it in front for no reason."""
+    out = []
+    for index, step in enumerate(steps):
+        following = steps[index + 1] if index + 1 < len(steps) else None
+        if step["kind"] == "open_app" and (following is None or following["kind"] == "open_app"):
+            continue
+        out.append(step)
+    return out
+
+
 def compress_browsing(steps):
     """A URL step already captures where typing, Enter and link clicks in that browser led,
-    so those are folded into it and replay opens the exact page directly."""
+    so those are folded into it and replay opens the exact page directly. Clicks and typing well
+    before the navigation (a Like, a posted comment) did something on the previous page and stay."""
     out, droppable = [], []
     for step in steps:
         kind, path = step["kind"], step.get("path", "")
         browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
+        b_name = PureWindowsPath(path).name.lower()
         if kind == "open_url":
-            drop = {i for i in droppable if out[i].get("path") == path}
+            at = step.get("at", 0)
+            url = step.get("url", "")
+            video = is_video(url)
+            drop = {i for i in droppable if PureWindowsPath(out[i].get("path", "")).name.lower() == b_name and (
+                video or out[i]["kind"] == "open_app" or at - out[i].get("at", at) <= FOLD_SECONDS)}
             out = [s for i, s in enumerate(out) if i not in drop]
             droppable = []
-            if out and out[-1]["kind"] == "open_url" and out[-1].get("path") == path:
-                out.pop()  # passed straight through that page: open only where it ended up
+            if out and out[-1]["kind"] == "open_url" and PureWindowsPath(out[-1].get("path", "")).name.lower() == b_name:
+                prev_url = out[-1].get("url", "")
+                if (video and not is_video(prev_url)) or at - out[-1].get("at", at) <= PASS_THROUGH_SECONDS:
+                    out.pop()  # passed straight through that page: open only where it ended up
         elif browser and kind in ("open_app", "set_text", "press_enter", "click"):
             droppable.append(len(out))
         else:
             droppable = []
         out.append(step)
-    return out
+
+    # Post-pass: if a browser session concludes with an open_url to a video, drop redundant earlier
+    # intermediate homepage visits or redundant open_app steps for that same browser.
+    final_out = []
+    for i, step in enumerate(out):
+        if step["kind"] == "open_app" and PureWindowsPath(step.get("path", "")).name.lower() in BROWSER_EXES:
+            # Check if immediately followed by an open_url in the same browser
+            if i + 1 < len(out) and out[i + 1]["kind"] == "open_url" and PureWindowsPath(out[i + 1].get("path", "")).name.lower() == PureWindowsPath(step.get("path", "")).name.lower():
+                continue  # open_url directly launches the browser to that page
+        final_out.append(step)
+    return final_out
+
+
+@functools.cache
+def _user32():
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    user.WindowFromPoint.argtypes = [wintypes.POINT]
+    user.WindowFromPoint.restype = wintypes.HWND
+    user.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user.GetAncestor.restype = wintypes.HWND
+    user.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    return user
+
+
+def top_window(hwnd=None, point=None):
+    """(title, pid) of the top-level window that owns `hwnd`, or the one under a screen point."""
+    user = _user32()
+    if point is not None:
+        hwnd = user.WindowFromPoint(wintypes.POINT(*point))
+    root = user.GetAncestor(hwnd, 2) or hwnd  # GA_ROOT
+    title = ctypes.create_unicode_buffer(256)
+    user.GetWindowTextW(root, title, 256)
+    pid = wintypes.DWORD()
+    user.GetWindowThreadProcessId(root, ctypes.byref(pid))
+    return title.value, pid.value
 
 
 def wake_tree(hwnd):
@@ -102,6 +175,112 @@ def wake_tree(hwnd):
         Desktop(backend="uia").window(handle=hwnd).wrapper_object().descendants(control_type="Edit")
     except Exception:
         pass
+
+
+class BrowserWatch(threading.Thread):
+    """Reads browser address bars and YouTube's seek slider once a second, off the poll thread:
+    the first UIA lookup inside a large page can take seconds. Poll sets `target` to the
+    foreground browser window and drains `pages`; `seek` maps video URLs to the last position seen."""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.target = None  # (hwnd, path) of the foreground browser window, or None
+        self.pages = queue.Queue()
+        self.seek = {}
+        self.closed = threading.Event()
+
+    def run(self):
+        try:
+            import comtypes
+            comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+        except Exception:
+            pass
+        try:
+            from pywinauto import Desktop
+            desktop = Desktop(backend="uia")
+        except Exception:
+            return
+        bars, sliders, shown = {}, {}, {}
+        video = None  # (hwnd, url): keeps tracking playback after the user moves to another app
+        while True:
+            closing = self.closed.wait(1.0)  # one last read after stop, so the seek time is fresh
+            windows = [self.target] if self.target else []
+            if video and not any(hwnd == video[0] for hwnd, _ in windows):
+                windows.append((video[0], None))  # background video: track its time, record no page step
+            for hwnd, path in windows:
+                try:
+                    if hwnd not in bars:
+                        window = desktop.window(handle=hwnd).wrapper_object()
+                        edits = window.descendants(control_type="Edit")
+                        bar_match = None
+                        for e in edits:
+                            el = getattr(e, "element_info", None)
+                            name = (getattr(el, "name", "") or "").lower()
+                            auto_id = (getattr(el, "auto_id", "") or "").lower()
+                            cls = (getattr(el, "class_name", "") or "").lower()
+                            if any(term in name for term in ("address and search bar", "address bar", "search or type", "search or enter", "url", "location")) or "omnibox" in auto_id or "omnibox" in cls:
+                                bar_match = e
+                                break
+                        if not bar_match:
+                            for e in edits:
+                                try:
+                                    val = e.get_value() if hasattr(e, "get_value") else None
+                                except Exception:
+                                    val = None
+                                if not val:
+                                    val = field_text(e, browser=True)
+                                if val and web_address(val):
+                                    bar_match = e
+                                    break
+                        bars[hwnd] = bar_match or (edits[0] if edits else None)
+                    bar = bars.get(hwnd)
+                    if bar is None:
+                        continue
+                    url_val = None
+                    if not bar.has_keyboard_focus():
+                        try:
+                            url_val = bar.get_value() if hasattr(bar, "get_value") else None
+                        except Exception:
+                            url_val = None
+                        if not url_val:
+                            url_val = field_text(bar, browser=True)
+                    else:
+                        candidate = None
+                        try:
+                            candidate = bar.get_value() if hasattr(bar, "get_value") else None
+                        except Exception:
+                            candidate = None
+                        if not candidate:
+                            candidate = field_text(bar, browser=True)
+                        if candidate and (is_video(candidate) or web_address(candidate)):
+                            url_val = candidate
+                    url = web_address(url_val)
+                    if path and url and url != shown.get(hwnd):
+                        shown[hwnd] = url
+                        self.pages.put((hwnd, path, url))
+                    if is_video(url):
+                        video = (hwnd, url)
+                        if hwnd not in sliders:
+                            try:
+                                window = desktop.window(handle=hwnd).wrapper_object()
+                                sliders[hwnd] = next((s for s in window.descendants(control_type="Slider")
+                                                      if "seek" in (getattr(getattr(s, "element_info", None), "name", "") or "").lower()), None)
+                            except Exception:
+                                pass
+                        seek_slider = sliders.get(hwnd)
+                        if seek_slider:
+                            try:
+                                self.seek[url] = int(seek_slider.iface_range_value.CurrentValue)
+                            except Exception:
+                                pass
+                    elif video and video[0] == hwnd:
+                        video = None
+                except Exception:
+                    # Closed window, reloaded page or tree still waking: look the controls up again next time.
+                    bars.pop(hwnd, None)
+                    sliders.pop(hwnd, None)
+            if closing:
+                return
 
 
 def field_text(control, browser=False):
@@ -180,13 +359,12 @@ class Session:
         self.last_edit = None
         self.focus_key = self.focus_base = None
         self.send_snapshot = None
+        self.send_scanned = 0.0
+        self.captured = None  # (field, text) last given to Capture
         self.last_foreground = None
         self.observed_paths = {}
         self.woken = set()
-        self.omnibox = {}
-        self.url_checked = 0.0
         self.last_url = None
-        self.last_browser = None
         self.capture = None
         if options.get("recipient"):
             recipient = options["recipient"].strip()
@@ -202,6 +380,8 @@ class Session:
         self.replay_error = None
         self.events = WinEvents(everything=self.everything)
         self.events.__enter__()
+        self.watch = BrowserWatch()
+        self.watch.start()
 
     def _active_pids(self, pid, path):
         pids = {pid}
@@ -213,6 +393,19 @@ class Session:
             except (OSError, self.native.psutil.Error):
                 pass
         return pids
+
+    def _ignored(self, hwnd=None, point=None):
+        """DigitalSoul's own windows (notch, ghost) and never-record apps, judged by the top-level
+        window: in Everything mode a click on the notch must not become a step of the app behind it."""
+        try:
+            title, pid = top_window(hwnd, point)
+            if title in OWN_TITLES:
+                return True
+            if pid not in self.observed_paths:
+                self.observed_paths[pid] = executable(pid)
+            return PureWindowsPath(self.observed_paths[pid]).name.lower() in NEVER_RECORD
+        except Exception:
+            return True  # an owner we cannot identify is not recorded
 
     def _identity(self, window):
         try:
@@ -241,43 +434,37 @@ class Session:
         return control
 
     def _track_url(self, window, path):
-        """Browsers: remember the exact page whenever the address bar settles on a new one."""
-        if PureWindowsPath(path).name.lower() not in BROWSER_EXES or time.monotonic() - self.url_checked < 1.0:
-            return
-        self.url_checked = time.monotonic()
-        try:
-            bar = self.omnibox.get(window.handle)
-            if bar is None:
-                bar = next(iter(window.descendants(control_type="Edit", title="Address and search bar")), None)
-                if bar is None:
-                    return
-                self.omnibox[window.handle] = bar
-            if bar.has_keyboard_focus():
-                return  # the user is still typing there
-            url = web_address(bar.get_value())
-        except Exception:
-            self.omnibox.pop(window.handle, None)
-            return
-        if url and url != self.last_url:
-            self.last_url, self.last_browser = url, (window.handle, path)
-            self.append({"kind": "open_url", "app": PureWindowsPath(path).name, "path": path, "url": url,
-                         "label": re.sub(r"^https?://(www\.)?", "", url)[:80]})
+        """Browsers: each new page the address bar settles on (typed, a link, a tab switch) is a step."""
+        browser = window is not None and PureWindowsPath(path).name.lower() in BROWSER_EXES
+        self.watch.target = (window.handle, path) if browser else None
+        while True:
+            try:
+                _, page_path, url = self.watch.pages.get_nowait()
+            except queue.Empty:
+                return
+            if url != self.last_url:
+                self.last_url = url
+                self.append({"kind": "open_url", "app": PureWindowsPath(page_path).name, "path": page_path, "url": url,
+                             "label": re.sub(r"^https?://(www\.)?", "", url)[:80]})
 
     def _video_time(self):
-        """On stop: if the last page is a YouTube video, note where playback is so replay resumes there."""
-        if not is_video(self.last_url) or not self.last_browser:
-            return
-        try:
-            window = self.native.desktop.window(handle=self.last_browser[0]).wrapper_object()
-            seek = next(s for s in window.descendants(control_type="Slider") if "seek" in (s.element_info.name or "").lower())
-            seconds = int(seek.iface_range_value.CurrentValue)
-        except Exception:
-            return
-        for step in reversed(self.steps):
-            if step["kind"] == "open_url" and step["url"] == self.last_url:
+        """On stop: YouTube videos resume where they were last seen playing, even if the user moved on."""
+        self.watch.closed.set()
+        self.watch.join(timeout=3)
+        while True:
+            try:
+                _, page_path, url = self.watch.pages.get_nowait()
+                if url != self.last_url:
+                    self.last_url = url
+                    self.append({"kind": "open_url", "app": PureWindowsPath(page_path).name, "path": page_path, "url": url,
+                                 "label": re.sub(r"^https?://(www\.)?", "", url)[:80]})
+            except queue.Empty:
+                break
+        for step in self.steps:
+            seconds = self.watch.seek.get(step.get("url")) if step["kind"] == "open_url" else None
+            if seconds and is_video(step["url"]):
                 step["url"] = with_time(step["url"], seconds)
                 step["resume"] = seconds
-                break
 
     def _foreground(self):
         user = self.native.user
@@ -307,7 +494,7 @@ class Session:
                     exe = top_exe
             except Exception:
                 pass
-        if exe in NEVER_RECORD or not (self.everything or exe in self.allowed):
+        if exe in NEVER_RECORD or not (self.everything or exe in self.allowed) or self._ignored(hwnd):
             return None
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
         if exe == "explorer.exe":
@@ -322,8 +509,13 @@ class Session:
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
-        if step["kind"] == "set_text" and self.steps and self.steps[-1]["kind"] == "set_text" and (
-                self.steps[-1].get("target") == step.get("target") and self.steps[-1].get("path") == step.get("path")):
+        last = self.steps[-1] if self.steps else {}
+        # Typing is polled, so one field's growing (or shrinking) text replaces its previous step. Fields
+        # with the same locator but other labels (WhatsApp's search box and composer) stay separate.
+        if step["kind"] == "set_text" and last.get("kind") == "set_text" and all(
+                last.get(key) == step.get(key) for key in ("target", "path")) and (
+                last.get("field") == step.get("field") or
+                step["value"].startswith(last["value"]) or last["value"].startswith(step["value"])):
             self.steps[-1] = step
         else:
             self.steps.append(step)
@@ -355,9 +547,9 @@ class Session:
                 self.append(step)
                 self.last_foreground = path
             self._wake(window)
-            self._track_url(window, path)
             if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
+        self._track_url(active[0] if active else None, active[2] if active else None)
         while True:
             try:
                 event = self.events.queue.get_nowait()
@@ -389,6 +581,8 @@ class Session:
                         if self.capture.composed:
                             self.capture.enter()
                 else:
+                    if self._ignored(point=event["point"]):
+                        continue  # the notch's own buttons, or a never-record window
                     # Send can disappear before post-click hit-testing. Use only a
                     # recent, process-bound UIA observation to recognize the demo.
                     # These pixels are transient evidence and are never replayed.
@@ -416,20 +610,23 @@ class Session:
                         continue
                     # Climb to the nearest named control, but never past a page or window root:
                     # "Click <whole page>" cannot be replayed.
-                    leaf = control
+                    leaf, found, named = control, None, None
                     for _ in range(6):
                         name, kind = control.element_info.name or "", control.element_info.control_type
-                        if kind in ROOT_KINDS or (name and kind in CLICKABLE_KINDS):
+                        if kind in ROOT_KINDS:
                             break
-                        parent = control.parent()
-                        if parent is None:
+                        if name and kind in CLICKABLE_KINDS:
+                            found = control
                             break
-                        control = parent
-                    if kind in ROOT_KINDS:
-                        control = leaf
-                        name, kind = control.element_info.name or "", control.element_info.control_type
-                    if kind in ROOT_KINDS:
-                        continue
+                        named = named or (control if name else None)
+                        control = control.parent()
+                        if control is None:
+                            break
+                    # Fall back to the nearest named element, then the clicked element itself.
+                    control = found or named or leaf
+                    name, kind = control.element_info.name or "", control.element_info.control_type
+                    if kind in ROOT_KINDS or not (name or kind in CLICKABLE_KINDS or control.element_info.automation_id):
+                        continue  # a page root or anonymous container: nothing replayable was clicked
                     label = clean_control_name(control, name, kind)
                     spec = locator(control, editable=kind == "Edit")
                     if label and label not in ("Text field", kind) and not spec.get("name"):
@@ -445,10 +642,14 @@ class Session:
             return None
         try:
             focus = self.native.focused()
-            kinds = ("Edit",) if is_whatsapp(path) else ("Edit", "Document")
+            is_excel = "excel" in PureWindowsPath(path).name.lower()
+            # Browsers expose their editable boxes as Edit; a focused web page (Document) is the whole page,
+            # whose text must never be recorded as typing.
+            browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
+            kinds = ("Edit",) if is_whatsapp(path) or browser else (("Edit", "Document", "DataItem") if is_excel else ("Edit", "Document"))
             if focus.element_info.process_id not in active_pids or focus.element_info.control_type not in kinds:
                 return None
-            if focus.element_info.element.CurrentIsPassword:
+            if focus.element_info.element.CurrentIsPassword or SECRET_FIELD.search(focus.element_info.name or ""):
                 return None
             value = field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES)
             if not isinstance(value, str) or len(value) > 4096:
@@ -464,20 +665,38 @@ class Session:
             if not value_clean or value_clean == self.focus_base:
                 return None
             spec = locator(focus, editable=True)
+            if is_excel and focus.element_info.control_type == "DataItem":
+                spec["name"] = focus.element_info.name or ""
             self.last_edit = spec
             if not self.steps or self.steps[-1].get("value") != value_clean or self.steps[-1].get("target") != spec:
-                step = {"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
-                        "label": "Text field", "target": spec, "value": value_clean}
+                label = "Text field"
                 field = (focus.element_info.name or "").strip()
+                if is_excel and field:
+                    from .excel import clean_cell_name
+                    cell_coord = clean_cell_name(field)
+                    if cell_coord:
+                        label = f"Cell {cell_coord}"
+                step = {"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
+                        "label": label, "target": spec, "value": value_clean}
                 if field and field != value_clean and len(field) <= 160:
                     step["field"] = field  # e.g. WhatsApp's "Type a message to <chat>" names the recipient
                 self.append(step)
             if self.capture and not self.capture.done and is_whatsapp(path):
-                is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and (not self.capture.auto or self.capture.selected) and value_clean != self.capture.flow["search"].strip())
-                identity = self._identity(window) if is_msg else None
-                with contextlib.redirect_stdout(sys.stderr):
-                    self.capture.field(spec, value_clean, identity)
-                if self.capture.composed and value_clean == self.capture.flow["message"].strip():
+                # The chat-header lookup and Send-button scan walk the whole window, so they run when
+                # the text changes (and the scan every 2 s while it rests), not on every 40 ms poll.
+                if (key, value_clean) != self.captured:
+                    # Capture ignores the header once composed; only an uncomposed message needs it.
+                    is_msg = not self.capture.composed and (value_clean == self.capture.flow["message"].strip() or (
+                        (not self.capture.auto or self.capture.selected) and value_clean != self.capture.flow["search"].strip()))
+                    identity = self._identity(window) if is_msg else None
+                    with contextlib.redirect_stdout(sys.stderr):
+                        self.capture.field(spec, value_clean, identity)
+                    self.captured = (key, value_clean)
+                    if value_clean != self.capture.flow["message"].strip():
+                        self.send_snapshot = None
+                if self.capture.composed and value_clean == self.capture.flow["message"].strip() and (
+                        time.monotonic() - self.send_scanned > 2):
+                    self.send_scanned = time.monotonic()
                     buttons = [b for b in window.descendants(control_type="Button")
                                if b.is_visible() and b.is_enabled() and
                                ((b.element_info.name or "").lower().startswith("send") or
@@ -488,8 +707,6 @@ class Session:
                         self.send_snapshot = {"pid": pid, "pids": active_pids, "time": time.monotonic(),
                                               "bounds": (rect.left, rect.top, rect.right, rect.bottom),
                                               "target": locator(button), "name": button.element_info.name or "Send"}
-                elif value_clean != self.capture.flow["message"].strip():
-                    self.send_snapshot = None
         except Exception:
             # Raw evidence remains reviewable; missing identity must never create a runnable flow.
             self.replay_error = "Some editor/header evidence was unavailable; inspect the saved steps"
@@ -518,9 +735,15 @@ class Session:
                 flow = None
             if flow:
                 self.replay_error = None
-        if self.capture and not flow and not self.replay_error:
+        if not flow:
+            from .excel import derive_excel_flow
+            flow = derive_excel_flow(self.steps)
+            if flow:
+                self.replay_error = None
+        used_whatsapp = any(is_whatsapp(step.get("path", "")) and step["kind"] != "open_app" for step in self.steps)
+        if self.capture and used_whatsapp and not flow and not self.replay_error:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
         self._video_time()
-        self.steps = compress_browsing(self.steps)
+        self.steps = drop_empty_visits(compress_browsing(self.steps))
         return {"name": self.name, "apps": self.apps, "steps": self.steps, "flow": flow,
                 "duration": round(time.monotonic() - self.started, 1), "replay_error": self.replay_error}

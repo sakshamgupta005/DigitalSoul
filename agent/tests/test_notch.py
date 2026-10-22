@@ -184,7 +184,8 @@ def test_stdio_backend_replay_steps_validates_digest(tmp_path):
     data = tmp_path / ".ghost" / "notch"
     data.mkdir(parents=True, exist_ok=True)
     catalog = Catalog(data / "workflows.sqlite3")
-    steps = [{"kind": "open_app", "path": r"C:\Windows\notepad.exe", "app": "notepad.exe", "at": 0}]
+    # A program that does not exist: the worker starts and fails harmlessly instead of opening a real app.
+    steps = [{"kind": "open_app", "path": r"C:\DigitalSoulTest\missing-app.exe", "app": "missing-app.exe", "at": 0}]
     item = catalog.save({"name": "Test", "steps": steps, "duration": 1, "apps": ["*"]})
     catalog.close()
 
@@ -368,3 +369,24 @@ def test_browsing_is_folded_into_exact_pages_and_videos_resume():
     assert web_address("youtube.com/watch?v=x") == "https://youtube.com/watch?v=x"
     assert web_address("how to cook rice") is None and web_address("chrome://settings") is None
     assert with_time("https://youtube.com/watch?v=x&t=3s", 95) == "https://youtube.com/watch?v=x&t=95s"
+
+
+def test_youtube_search_collapses_to_direct_video_link():
+    from agent.ghost.desktop.session import compress_browsing
+    b = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
+    steps = [
+        {"kind": "open_app", "path": b, "at": 1.0},
+        {"kind": "set_text", "path": b, "value": "youtube.com", "at": 3.0},
+        {"kind": "press_enter", "path": b, "at": 4.0},
+        {"kind": "open_url", "path": b, "url": "https://www.youtube.com/", "at": 5.0},
+        {"kind": "click", "path": b, "label": "Search", "at": 8.0},
+        {"kind": "set_text", "path": b, "value": "lofi hip hop radio", "at": 12.0},
+        {"kind": "press_enter", "path": b, "at": 13.0},
+        {"kind": "click", "path": b, "label": "Lofi Girl Live", "at": 25.0},
+        {"kind": "open_url", "path": b, "url": "https://www.youtube.com/watch?v=jfKfPfyJRdk", "at": 27.0},
+    ]
+    folded = compress_browsing(steps)
+    # The entire search & browse journey folds directly into opening the target video
+    assert len(folded) == 1
+    assert folded[0]["kind"] == "open_url"
+    assert folded[0]["url"] == "https://www.youtube.com/watch?v=jfKfPfyJRdk"

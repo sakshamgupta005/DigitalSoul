@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], jobs: [], detail: null, pending: false };
+const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], jobs: [], detail: null, pending: false };
 const tauri = window.__TAURI__;
 const timeLabel = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 const dateLabel = (date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -53,11 +53,14 @@ const settle = (ms) => new Promise((resolve) => setTimeout(resolve, window.match
 // springs between banner and panel size, so the motion is smooth.
 async function expanded(value) {
   if (value) {
-    if (tauri) await tauri.core.invoke('set_notch_expanded', { expanded: true });
+    // Lay the panel out while the native window grows (it stays clipped until .open), not after.
     $('panel').hidden = false;
+    if (tauri) await tauri.core.invoke('set_notch_expanded', { expanded: true });
     requestAnimationFrame(() => { $('notch').classList.add('open'); movePill(); });
-    setTimeout(startRoam, 560);
+    clearTimeout(roam.timer);
+    roam.timer = setTimeout(startRoam, 560);
   } else {
+    clearTimeout(roam.timer);
     ghostHome();
     $('notch').classList.remove('open');
     if (state.expanded) await settle(420);
@@ -71,8 +74,8 @@ async function expanded(value) {
 }
 
 function view(name) {
-  for (const id of ['library', 'activity', 'detail', 'create', 'approve']) $(id).hidden = id !== name;
-  const tab = name === 'activity' ? 'activity' : 'library';
+  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve']) $(id).hidden = id !== name;
+  const tab = ['activity', 'patterns'].includes(name) ? name : 'library';
   document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   movePill();
   $('panel').dataset.view = name;
@@ -191,6 +194,7 @@ const icon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${GROUP_ICON
 // Group by what actually happened in the recording, not by the apps picked beforehand.
 function groupOf(workflow) {
   const used = workflow.used || [];
+  if (workflow.flow?.format === 'digitalsoul.excel-flow.v1' || workflow.flow?.kind === 'excel' || used.some((app) => /excel/i.test(app))) return 'office';
   if (workflow.can_run) return 'whatsapp';
   if (!workflow.step_count) return 'empty';
   if (used.some((app) => /chrome|brave|msedge|firefox/i.test(app))) return 'browser';
@@ -200,6 +204,7 @@ function groupOf(workflow) {
 }
 
 function statusOf(workflow) {
+  if (workflow.flow?.format === 'digitalsoul.excel-flow.v1' || workflow.flow?.kind === 'excel') return ['Ready to fill', 'ok'];
   if (workflow.can_run) return ['Ready to send', 'ok'];
   if (!workflow.step_count) return ['Empty', 'muted'];
   if (workflow.replay_error && !workflow.summary?.length) return ['Needs a re-record', 'warn'];
@@ -232,8 +237,22 @@ function bump(id, value) {
 }
 
 function renderWorkflows() {
-  const filter = $('search').value.toLowerCase();
-  const items = state.workflows.filter((workflow) => `${workflow.name} ${workflow.recipient || ''}`.toLowerCase().includes(filter));
+  const rawFilter = $('search').value.toLowerCase().trim();
+  const tokens = rawFilter.split(/\s+/).filter(Boolean);
+  const items = state.workflows.filter((workflow) => {
+    if (!rawFilter) return true;
+    const searchable = [
+      workflow.name,
+      workflow.intent,
+      workflow.description,
+      workflow.recipient,
+      workflow.message,
+      ...(workflow.apps || []).map((a) => a.replace(/\.exe$/i, '')),
+      ...(workflow.parameters || []).map((p) => `${p.name} ${p.label || ''} ${p.example || ''}`),
+      ...(workflow.steps || []).map((s) => `${s.action} ${s.target || ''} ${s.text || ''} ${s.explanation || ''}`)
+    ].filter(Boolean).join(' ').toLowerCase();
+    return searchable.includes(rawFilter) || tokens.every((t) => searchable.includes(t));
+  });
   bump('workflow-count', state.workflows.length);
   $('empty').hidden = state.workflows.length > 0;
   const list = $('workflow-list');
@@ -301,11 +320,107 @@ function renderJobs() {
   }
 }
 
+function renderPatterns() {
+  bump('pattern-count', state.patterns.length);
+  $('pattern-empty').hidden = state.patterns.length > 0;
+  const list = $('pattern-list');
+  list.replaceChildren();
+  if (!state.patterns.length) return;
+
+  for (const pat of state.patterns) {
+    const card = element('article', 'pattern-card');
+    const header = element('div', 'pattern-header');
+    header.append(
+      element('strong', 'pattern-title', pat.name),
+      element('span', 'pattern-badge', `🧠 Reinforced × ${pat.support}`),
+      element('span', 'pattern-consistency', `${Math.round(pat.alignment * 100)}% consistency`)
+    );
+
+    const desc = element('p', 'pattern-intent', pat.intent || 'Learned pattern across sessions');
+    const paramsBox = element('div', 'pattern-params-preview');
+    if (pat.parameters && pat.parameters.length) {
+      paramsBox.append(element('small', 'params-label', 'Learned dynamic variables:'));
+      for (const p of pat.parameters) {
+        paramsBox.append(element('span', 'param-chip', `{{${p.name}}}: ${p.default || 'any'}`));
+      }
+    } else {
+      paramsBox.append(element('small', 'params-label', `${pat.step_count} static steps verified.`));
+    }
+
+    const actions = element('div', 'pattern-card-actions');
+    const runBtn = element('button', 'primary mini-btn', '▶ Run with variables');
+    runBtn.addEventListener('click', () => openPatternWorkflow(pat));
+
+    const delBtn = element('button', 'text-button danger-text', 'Forget');
+    delBtn.addEventListener('click', () => action(async () => {
+      if (!confirmDialog(`Forget learned pattern “${pat.name}”?`)) return;
+      await rpc('learning_delete', { id: pat.id });
+      await refresh();
+      notice('Pattern removed.');
+    }));
+
+    actions.append(delBtn, runBtn);
+    card.append(header, desc, paramsBox, actions);
+    list.append(card);
+  }
+}
+
+function openPatternWorkflow(pat) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = false;
+
+  $('pattern-run-title').textContent = `Run “${pat.name}”`;
+  $('pattern-run-desc').textContent = `${pat.intent} · Learned from ${pat.support} demonstrations (${Math.round(pat.alignment * 100)}% consistency)`;
+
+  const container = $('pattern-params-container');
+  container.replaceChildren();
+
+  if (pat.parameters && pat.parameters.length) {
+    for (const p of pat.parameters) {
+      const label = element('label');
+      label.append(element('span', '', `${p.label || p.name} ({{${p.name}}})`));
+      const input = element('input');
+      input.name = p.name;
+      input.value = p.default || '';
+      input.placeholder = `e.g. ${p.default || 'Enter value'}`;
+      label.append(input);
+      container.append(label);
+    }
+  } else {
+    container.append(element('p', 'hint', `All ${pat.step_count} steps are deterministic and ready to replay.`));
+  }
+
+  $('pattern-form').onsubmit = (event) => {
+    event.preventDefault();
+    action(async () => {
+      const formParams = {};
+      container.querySelectorAll('input').forEach(inp => {
+        formParams[inp.name] = inp.value;
+      });
+      notice(`Executing learned pattern “${pat.name}” with adapted inputs...`);
+      await expanded(false);
+      const res = await rpc('learning_execute', { id: pat.id, parameters: formParams });
+      await expanded(true);
+      if (res && res.started) {
+        notice(`✅ Successfully dispatched learned pattern “${pat.name}”! (${res.steps_count} steps)`, 'success');
+      }
+    });
+  };
+}
+
 async function refresh() {
   const result = await rpc('list');
   state.workflows = result.workflows;
   state.jobs = result.jobs;
+  try {
+    const patResult = await rpc('learning_patterns');
+    state.patterns = patResult.patterns || [];
+  } catch {}
   renderWorkflows();
+  renderPatterns();
   renderJobs();
 }
 
@@ -326,11 +441,14 @@ async function showDetail(id) {
   meta.append(element('span', 'fact-chip', `${detail.steps.length} steps`), element('span', 'fact-chip', shortDuration(detail.duration)), element('span', 'fact-chip', ago(detail.created_at)));
   renderUnderstanding(detail.understanding);
   renderFlow(detail.flow);
-  $('detail-warning').textContent = detail.flow
-    ? 'WhatsApp send recognized. Check the recipient and message before replaying; it sends a real message.'
-    : 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.';
-  $('review-run').disabled = !detail.flow || state.recording || state.running;
-  $('review-run').hidden = !detail.flow;
+  const isExcelWorkflow = detail.flow?.format === 'digitalsoul.excel-flow.v1' || detail.flow?.kind === 'excel' || (detail.used || []).some(a => /excel/i.test(a));
+  $('detail-warning').textContent = isExcelWorkflow
+    ? 'Excel spreadsheet routine recognized. Review the cells and values before updating your workbook.'
+    : (detail.flow
+      ? 'WhatsApp send recognized. Check the recipient and message before replaying; it sends a real message.'
+      : 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.');
+  $('review-run').disabled = (!detail.flow && !isExcelWorkflow) || state.recording || state.running;
+  $('review-run').hidden = (!detail.flow && !isExcelWorkflow);
   $('replay-steps').hidden = !detail.steps.length;
   $('replay-steps').disabled = state.recording || state.running;
   $('step-list').replaceChildren();
@@ -443,6 +561,7 @@ function cheer() {
 // The ghost turns to look at you (2.5D) and leans in, wide-eyed, as the cursor comes near.
 function lookAt(x, y) {
   roam.cursor = [x, y];
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   for (const ghost of document.querySelectorAll('.ghost')) {
     const box = ghost.getBoundingClientRect();
     if (!box.width) continue;
@@ -475,19 +594,18 @@ function scheduleTrick() {
       const roaming = $('notch').classList.contains('roaming');
       const pool = roaming ? [...TRICKS, 'circle', 'blow', 'circle'] : TRICKS;
       const trick = pool[Math.floor(sequence(trickCount * 2) * pool.length)];
-      if (roaming && trick === 'circle') {
-        const dir = sequence(trickCount * 3) < 0.5 ? 1 : -1;
-        const heading = Math.atan2(roam.v[1], roam.v[0]) + (Math.PI / 2) * dir;
-        roam.act = { kind: 'circle', start: roam.time, until: roam.time + 2.8, dir, angle: heading + Math.PI,
-          center: [roam.p[0] + Math.cos(heading) * 34, roam.p[1] + Math.sin(heading) * 34] };
-      } else if (roaming && trick === 'blow') {
-        roam.act = { kind: 'pause', until: roam.time + 1.6 };
+      if (roaming && trick === 'circle' && !roam.act && !roam.fleeing) {
+        // Loop toward the middle of the panel so the circle never runs into a wall.
+        const box = $('notch').getBoundingClientRect();
+        const toMiddle = (box.left + box.width / 2 - roam.p[0]) * roam.v[1] - (box.top + box.height / 2 - roam.p[1]) * roam.v[0];
+        roam.act = { kind: 'circle', until: roam.time + 3.4, dir: toMiddle > 0 ? -1 : 1 };
+      } else if (roaming && trick === 'blow' && !roam.act) {
+        roam.act = { kind: 'pause', until: roam.time + 1.8 };
         roam.el.classList.add('blowing');
-        setTimeout(() => roam.el.classList.remove('blowing'), 1600);
-      }
-      if (ghost && !ghost.className.includes('trick-')) {
+        setTimeout(() => roam.el?.classList.remove('blowing'), 1800);
+      } else if (ghost && !['circle', 'blow'].includes(trick) && !ghost.className.includes('trick-')) {
         ghost.classList.add(`trick-${trick}`);
-        setTimeout(() => ghost.classList.remove(`trick-${trick}`), 1500);
+        setTimeout(() => ghost.classList.remove(`trick-${trick}`), 1900);
       }
     }
     trickCount += 1;
@@ -501,9 +619,9 @@ let curious = 1;
 let puffTimer = 0;
 const ghostSize = (size) => document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', size));
 document.addEventListener('pointerdown', () => {
-  document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', ghost.closest('.roamer') ? 1.9 : 1.5));
+  document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', ghost.closest('.roamer') ? 1.9 : 1.4));
   clearTimeout(puffTimer);
-  puffTimer = setTimeout(() => { puffTimer = 0; ghostSize(curious); }, 260);
+  puffTimer = setTimeout(() => { puffTimer = 0; ghostSize(curious); }, 380);
 });
 document.addEventListener('pointerover', (event) => {
   curious = event.target.closest('button, .workflow-card, .chip, input, textarea, select') ? 1.3 : 1;
@@ -512,7 +630,7 @@ document.addEventListener('pointerover', (event) => {
 
 // When the panel is open the ghost leaves the header to roam. From afar it drifts after you;
 // when you come close it gets shy and darts off sideways. It never blocks a click.
-const roam = { el: null, p: [0, 0], v: [0, 0], cursor: null, side: 1, fleeing: false, frame: 0, time: 0, last: 0, carry: 0 };
+const roam = { el: null, p: [0, 0], v: [0, 0], cursor: null, side: 1, fleeing: false, frame: 0, time: 0, last: 0, carry: 0, timer: 0, handoff: 0, act: null };
 const ROAM_DT = 1 / 60;
 
 // Deterministic "randomness": a few smooth waves at unrelated (irrational-ratio) speeds never
@@ -528,21 +646,32 @@ function wanderPoint(box, t) {
 }
 
 function startRoam() {
-  if (roam.frame || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // The panel may have been closed again before this delayed start fired.
+  if (roam.frame || !$('notch').classList.contains('open') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (!roam.el) {
+    // A clean copy of the header ghost: no half-played trick, puff or hover state carried over.
+    const twin = $('toggle').querySelector('.ghost-float').cloneNode(true);
+    twin.className = 'ghost-float';
+    twin.removeAttribute('style');
+    twin.querySelector('.ghost').classList.remove('near');
+    twin.querySelector('.ghost').removeAttribute('style');
     roam.el = element('div', 'roamer');
     roam.el.setAttribute('aria-hidden', 'true');
-    roam.el.append(element('i', 'wind'), element('i', 'wind'), element('i', 'gust'), element('i', 'gust'), element('i', 'gust'),
-      $('toggle').querySelector('.ghost-float').cloneNode(true));
+    roam.el.append(element('i', 'wind'), element('i', 'wind'), element('i', 'gust'), element('i', 'gust'), element('i', 'gust'), twin);
     $('notch').append(roam.el);
   }
+  clearTimeout(roam.handoff);
+  $('notch').classList.remove('homing');
+  roam.el.classList.remove('returning', 'blowing');
   const home = $('toggle').querySelector('.ghost').getBoundingClientRect();
   roam.p = [home.left + home.width / 2, home.top + home.height / 2];
-  roam.v = [0.6, 1];
+  roam.v = [0.5, 1.1];
   roam.time = 0;
   roam.carry = 0;
   roam.act = null;
+  roam.fleeing = false;
   roam.last = performance.now();
+  paintRoam();  // start exactly on the header ghost, then hand over
   $('notch').classList.add('roaming');
   const tick = (now) => {
     // Fixed time step: identical motion on fast and slow displays.
@@ -567,14 +696,15 @@ function ghostHome() {
   const home = $('toggle').querySelector('.ghost').getBoundingClientRect();
   // The header slides to the banner's centred spot while closing; aim for where it ends up.
   const shift = Math.max(0, box.width / 2 - 210);
+  roam.el.classList.remove('blowing');
   roam.el.classList.add('returning');
+  $('notch').classList.add('homing');  // reopen its spot in the header before it lands
   roam.el.style.setProperty('--wind', '0');
   roam.el.style.setProperty('--lean', '0deg');
   roam.el.style.transform = `translate(${home.left - box.left + shift + home.width / 2 - 17}px, ${home.top - box.top + home.height / 2 - 17}px)`;
-  setTimeout(() => {
-    $('notch').classList.remove('roaming');
-    setTimeout(() => roam.el.classList.remove('returning'), 260);
-  }, 300);
+  // Hand back to the header ghost once it has landed: one crossfade, never two ghosts at once.
+  clearTimeout(roam.handoff);
+  roam.handoff = setTimeout(() => $('notch').classList.remove('roaming', 'homing'), 380);
 }
 
 function stopRoam() {
@@ -620,14 +750,17 @@ function stepRoam() {
   }
   ax += drift(t * 0.6, 0) * 0.012;
   ay += drift(t * 0.52, 2.4) * 0.012;
-  if (roam.act?.kind === 'circle' && !roam.fleeing) {
-    // Loop-the-loop: chase a point travelling round a small circle.
-    const phase = roam.act.angle + (t - roam.act.start) * (Math.PI * 2 / 2.8) * roam.act.dir;
-    ax += (roam.act.center[0] + Math.cos(phase) * 34 - px) * 0.02;
-    ay += (roam.act.center[1] + Math.sin(phase) * 34 - py) * 0.02;
+  if (roam.act && (t > roam.act.until || roam.fleeing)) roam.act = null;
+  const looping = roam.act?.kind === 'circle';
+  if (roam.act?.kind === 'pause') { ax *= 0.1; ay *= 0.1; vx *= 0.94; vy *= 0.94; }
+  const field = document.activeElement?.closest?.('input, textarea, select');
+  if (field && !roam.fleeing) {
+    // Keep clear of the field being typed into: drift above or below it, never across the text.
+    const rect = field.getBoundingClientRect();
+    if (px > rect.left - 30 && px < rect.right + 30 && py > rect.top - 40 && py < rect.bottom + 40) {
+      ay += (py < (rect.top + rect.bottom) / 2 ? -1 : 1) * 0.08;
+    }
   }
-  if (roam.act?.kind === 'pause' && !roam.fleeing) { ax *= 0.1; ay *= 0.1; vx *= 0.9; vy *= 0.9; }
-  if (roam.act && t > roam.act.until) roam.act = null;
   const edge = 70;
   const room = [box.left + 22 + edge, box.right - 22 - edge, box.top + 66 + edge, box.bottom - 22 - edge];
   if (px < room[0]) ax += (room[0] - px) * 0.004;
@@ -639,9 +772,11 @@ function stepRoam() {
   const heading = Math.atan2(vy, vx);
   let turn = Math.atan2(desired[1], desired[0]) - heading;
   turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-  const limit = roam.fleeing ? 0.09 : 0.035;
-  const newHeading = heading + Math.max(-limit, Math.min(limit, turn));
-  const pace = Math.min(roam.act?.kind === 'circle' ? 3.2 : 2.6, Math.hypot(vx, vy) + (Math.hypot(...desired) - Math.hypot(vx, vy)) * 0.12);
+  const limit = roam.fleeing ? 0.075 : 0.03;
+  // Loop-the-loop: one full turn at a steady rate and speed, a clean circle about 100 px across.
+  const newHeading = looping ? heading + roam.act.dir * (Math.PI * 2) * ROAM_DT / 3.4 : heading + Math.max(-limit, Math.min(limit, turn));
+  const speed = Math.hypot(vx, vy);
+  const pace = looping ? speed + (1.55 - speed) * 0.08 : Math.min(roam.fleeing ? 2.8 : 2.1, speed + (Math.hypot(...desired) - speed) * 0.1);
   vx = Math.cos(newHeading) * pace;
   vy = Math.sin(newHeading) * pace;
   px += vx;
@@ -649,8 +784,12 @@ function stepRoam() {
   const margin = 22;
   const bounds = [box.left + margin, box.right - margin, box.top + 66, box.bottom - margin];
   // Soft walls: the steering pushes it away before it gets there, so it arcs off edges instead of bouncing.
-  px = Math.min(bounds[1], Math.max(bounds[0], px));
-  py = Math.min(bounds[3], Math.max(bounds[2], py));
+  // Outside the room (e.g. just leaving the header) it eases in rather than snapping.
+  px += (Math.min(bounds[1], Math.max(bounds[0], px)) - px) * 0.05;
+  py += (Math.min(bounds[3], Math.max(bounds[2], py)) - py) * 0.05;
+  // Never past the panel's sides or bottom, even at full flee speed (the top stays soft for the exit from the header).
+  px = Math.min(box.right - 18, Math.max(box.left + 18, px));
+  py = Math.min(box.bottom - 18, py);
   roam.p = [px, py];
   roam.v = [vx, vy];
 }
@@ -702,8 +841,12 @@ $('notch').querySelector('.topbar').addEventListener('pointerdown', (event) => {
 
 // Clicking anywhere outside DigitalSoul folds the dropdown back up.
 let dialogOpen = false;
+// Focus can bounce out and straight back (accessibility tools, voice control); only a real
+// loss of focus counts as clicking outside.
 window.addEventListener('blur', () => {
-  if (state.expanded && !state.pending && !dialogOpen) action(() => expanded(false));
+  setTimeout(() => {
+    if (!document.hasFocus() && state.expanded && !state.pending && !dialogOpen) action(() => expanded(false));
+  }, 180);
 });
 
 // Local voice commands (Jarvis).
@@ -761,6 +904,14 @@ for (const id of ['new-recording', 'empty-record']) $(id).addEventListener('clic
 for (const id of ['cancel-create', 'back']) $(id).addEventListener('click', () => view('library'));
 document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => view(button.dataset.tab)));
 $('search').addEventListener('input', renderWorkflows);
+$('search').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const query = $('search').value.trim();
+    if (!query) return;
+    action(async () => voiceResult(await rpc('voice_command', { text: query })));
+  }
+});
 $('refresh').addEventListener('click', () => action(refresh));
 
 const form = $('record-form');
@@ -817,6 +968,7 @@ function openShopifyWorkflow(prefill = {}) {
   view('approve');
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = false;
+  $('approve-excel-view').hidden = true;
   $('shopify-title').value = prefill.title || 'Vintage Washed Oversized T-Shirt';
   $('shopify-url').value = prefill.store_url || 'https://admin.shopify.com/store/gzn0vr-qn/products/new';
   $('shopify-price').value = prefill.price || '29.99';
@@ -829,6 +981,69 @@ function openShopifyWorkflow(prefill = {}) {
   $('shopify-desc').value = prefill.description || '<p>Experience premium comfort with our 100% organic cotton oversized tee.</p>';
 }
 $('new-shopify')?.addEventListener('click', () => openShopifyWorkflow());
+
+function openExcelWorkflow(prefill = {}) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = false;
+  $('excel-workbook').value = prefill.workbook || 'Active Excel Workbook';
+  $('excel-sheet').value = prefill.sheet || 'Sheet1';
+  $('excel-topic').value = prefill.topic || prefill.title || 'Monthly Expenses';
+  $('excel-headers').value = prefill.headers || 'Date, Item, Category, Amount';
+  if (prefill.rows) {
+    $('excel-rows').value = typeof prefill.rows === 'string' ? prefill.rows : prefill.rows.map(r => r.join(', ')).join('\n');
+  } else if (prefill.cells) {
+    $('excel-rows').value = prefill.cells.map(c => `${c.cell}, ${c.value}`).join('\n');
+  } else {
+    $('excel-rows').value = '2026-10-22, Social Ads, Marketing, 450.00\n2026-10-22, Software License, Tech, 120.00';
+  }
+  $('excel-formula').value = prefill.formula || '=SUM(D2:D3)';
+
+  rpc('excel_inspect', {}).then((status) => {
+    if (status && status.active) {
+      if (!prefill.workbook && status.workbook) $('excel-workbook').value = status.workbook;
+      if (!prefill.sheet && status.sheet) $('excel-sheet').value = status.sheet;
+      if (!prefill.headers && status.headers) $('excel-headers').value = status.headers;
+      notice(`📊 Connected to open Excel: ${status.workbook} · ${status.sheet} (${status.rows_count} rows)`);
+    }
+  }).catch(() => {});
+}
+$('new-excel')?.addEventListener('click', () => openExcelWorkflow());
+
+$('excel-ai-btn')?.addEventListener('click', () => action(async () => {
+  const topic = $('excel-topic').value.trim() || $('excel-workbook').value.trim() || 'Expenses';
+  notice('✨ AI is structuring spreadsheet rows and formulas...');
+  const gen = await rpc('excel_generate', { topic });
+  if (gen) {
+    $('excel-headers').value = gen.headers || $('excel-headers').value;
+    $('excel-rows').value = gen.rows || $('excel-rows').value;
+    $('excel-formula').value = gen.formula || $('excel-formula').value;
+    if (gen.sheet) $('excel-sheet').value = gen.sheet;
+    notice('✨ Generated rows and formula for Excel! Review before running.');
+  }
+}));
+
+$('excel-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => {
+    const payload = {
+      workbook: $('excel-workbook').value,
+      sheet: $('excel-sheet').value,
+      headers: $('excel-headers').value,
+      rows: $('excel-rows').value,
+      formula: $('excel-formula').value,
+      open_window: $('excel-open-window').checked,
+    };
+    notice('Updating Excel spreadsheet...');
+    const result = await rpc('excel_run', payload);
+    if (result && result.ok) {
+      notice(`✅ ${result.detail || 'Excel spreadsheet updated successfully!'}`);
+    } else {
+      notice(`Excel run: ${result?.error || result?.detail || JSON.stringify(result)}`);
+    }
+  });
+});
 
 $('shopify-ai-btn')?.addEventListener('click', () => action(async () => {
   const title = $('shopify-title').value.trim();
@@ -892,9 +1107,17 @@ $('review-run').addEventListener('click', () => {
   const detail = state.detail;
   const flow = detail?.flow;
   view('approve');
-  if (flow) {
+  if (flow?.format === 'digitalsoul.excel-flow.v1' || flow?.kind === 'excel' || (detail?.used || []).some(a => /excel/i.test(a))) {
+    openExcelWorkflow({
+      workbook: flow?.workbook || detail.name,
+      sheet: flow?.sheet || 'Sheet1',
+      title: detail.name,
+      cells: flow?.cells,
+    });
+  } else if (flow) {
     $('approve-whatsapp-view').hidden = false;
     $('approve-shopify-view').hidden = true;
+    $('approve-excel-view').hidden = true;
     $('run-recipient').value = flow.recipient;
     $('confirm-run').textContent = $('run-mode').value === 'later' ? 'Approve & schedule' : 'Approve & run';
     $('run-message').value = flow.message;
@@ -981,6 +1204,10 @@ async function boot() {
         await showDetail(payload.recording.id);
         cheer();
         notice(`Got it! I learned ${payload.recording.steps.length} steps.`, 'success');
+      } else if (payload.event === 'pattern_learned') {
+        await refresh();
+        cheer();
+        notice(`🧠 Pattern Intelligence: ${payload.result.detail}`, 'success');
       } else if (payload.event === 'replay_started') {
         state.running = true;
         $('notch').classList.add('replaying');

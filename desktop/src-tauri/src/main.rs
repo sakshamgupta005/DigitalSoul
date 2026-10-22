@@ -5,13 +5,23 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{atomic::{AtomicU64, Ordering}, mpsc, Arc, Mutex};
+use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, mpsc, Arc, Mutex};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
 type Reply = Result<Value, String>;
+
+/// True between the backend's recording_started and the end of that recording. The notch may only
+/// hide while this is set, and the backend's own end events bring it back, so a failed save, a
+/// crashed recorder or a late hide request from the webview can never leave it hidden for good.
+static RECORDING: AtomicBool = AtomicBool::new(false);
+
+fn show_notch(app: &tauri::AppHandle) {
+    RECORDING.store(false, Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window("notch") { let _ = window.show(); }
+}
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
 
 struct Bridge {
@@ -54,12 +64,18 @@ impl Bridge {
                         let _ = sender.send(result);
                     }
                 } else {
+                    match value.get("event").and_then(Value::as_str) {
+                        Some("recording_started") => RECORDING.store(true, Ordering::SeqCst),
+                        Some("recording_saved" | "error") => show_notch(&app),
+                        _ => {}
+                    }
                     let _ = app.emit("desktop-event", value);
                 }
             }
             for (_, sender) in replies.lock().unwrap().drain() {
                 let _ = sender.send(Err("Desktop backend disconnected; reopen the app".into()));
             }
+            show_notch(&app);
             let _ = app.emit("desktop-event", json!({"event":"disconnected"}));
         });
         Ok(Self { input: Mutex::new(Some(input)), child: Mutex::new(child), pending, next_id: AtomicU64::new(1) })
@@ -84,7 +100,9 @@ impl Bridge {
             self.pending.lock().unwrap().remove(&id);
             return Err(error);
         }
-        let result = receiver.recv_timeout(Duration::from_secs(20));
+        // Shopify runs a real browser (and a model call) inside the backend; give it time to finish.
+        let wait = if method.starts_with("shopify_") { 240 } else { 20 };
+        let result = receiver.recv_timeout(Duration::from_secs(wait));
         self.pending.lock().unwrap().remove(&id);
         result.map_err(|_| "Desktop command timed out; check the app before retrying".to_string())?
     }
@@ -107,7 +125,9 @@ impl Bridge {
 struct Backend(Result<Bridge, String>);
 
 #[tauri::command]
-async fn backend_request(app: tauri::AppHandle, method: String, payload: Value) -> Reply {
+async fn backend_request(app: tauri::AppHandle, window: tauri::WebviewWindow, method: String, payload: Value) -> Reply {
+    // Only the notch UI drives the backend; the ghost overlay is display-only.
+    if window.label() != "notch" { return Err("Unsupported desktop command".into()) }
     tauri::async_runtime::spawn_blocking(move || {
         let backend = app.state::<Backend>();
         match &backend.0 { Ok(bridge) => bridge.request(method, payload), Err(error) => Err(error.clone()) }
@@ -142,11 +162,13 @@ fn quit_app(app: tauri::AppHandle) { app.exit(0) }
 /// While recording the notch gets out of the way entirely; F8 stops and brings it back.
 #[tauri::command]
 fn set_notch_hidden(window: tauri::WebviewWindow, hidden: bool) -> Result<(), String> {
+    if hidden && !RECORDING.load(Ordering::SeqCst) { return Ok(()) }
     if hidden { window.hide() } else { window.show() }.map_err(|e| e.to_string())
 }
 
 /// The replay ghost: a click-through overlay that the Python replayer flies to each control it acts on.
 /// It is created once and never focused, so moving it cannot steal focus from the app being replayed.
+/// 72x72 logical leaves room for the ghost's glow inside the transparent window (no square halo).
 const GHOST_PARKED: (i32, i32) = (-4000, -4000);
 
 fn main() {
@@ -157,13 +179,13 @@ fn main() {
             app.manage(Backend(backend));
             if let Some(window) = app.get_webview_window("notch") { let _ = position(&window, false, false); }
             let ghost = tauri::WebviewWindowBuilder::new(app, "ghost-cursor", tauri::WebviewUrl::App("ghost.html".into()))
-                .title("DigitalSoul ghost").inner_size(44.0, 44.0).position(GHOST_PARKED.0 as f64, GHOST_PARKED.1 as f64)
+                .title("DigitalSoul ghost").inner_size(72.0, 72.0).position(GHOST_PARKED.0 as f64, GHOST_PARKED.1 as f64)
                 .decorations(false).transparent(true).shadow(false).resizable(false)
                 .always_on_top(true).skip_taskbar(true).focused(false).visible(true)
                 .build()?;
             let _ = ghost.set_ignore_cursor_events(true);
             // Windows ignores a far-off builder position and enforces a minimum width; park it explicitly.
-            let _ = ghost.set_size(tauri::LogicalSize::new(44.0, 44.0));
+            let _ = ghost.set_size(tauri::LogicalSize::new(72.0, 72.0));
             let _ = ghost.set_position(tauri::PhysicalPosition::new(GHOST_PARKED.0, GHOST_PARKED.1));
             Ok(())
         })

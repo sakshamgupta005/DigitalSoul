@@ -62,6 +62,43 @@ Other apps can be recorded and reviewed, but need specific guarded adapters befo
 Run is enabled. Partial/failed WhatsApp recordings stay visible with the reason
 they cannot replay; they are not presented as executable workflows.
 
+## Everything mode, hidden notch and F8
+
+Choose **Everything** (`*`) in the app picker to record across all apps instead of a
+named list. DigitalSoul's own windows (the notch and the ghost) are never recorded.
+While recording, the notch hides completely so it is not in the way. Press **F8**
+anywhere to stop: the recording is saved and the notch comes back with its steps.
+The five-minute limit, a recorder error or a failed save also bring the notch back;
+the Rust host re-shows it on those backend events even if the page misses them.
+
+In a browser, each page the address bar settles on becomes an `open_url` step with
+the exact address. Typing, Enter and link clicks that led to that page within
+10 seconds are folded into it, so replay opens the page directly instead of
+re-typing a search. YouTube watch/shorts pages are saved with `t=<seconds>s`, so
+replay resumes the video where you last saw it playing.
+
+## Replaying steps with the ghost
+
+**Replay steps** on a recording runs it again in a separate worker process. The
+approval is bound to a digest of the exact steps you reviewed; if they change, the
+replay is refused until you reopen the recording. Each step re-finds its control
+through UI Automation in the recorded app; recorded pixels are never used.
+
+The "ghost" is a small click-through overlay window that is never focused. It flies
+to each control and acts there through UIA patterns (Invoke, Select, Toggle,
+default action). Your mouse pointer is not moved. A control that offers none of
+those patterns stops the replay. Press **F8** or **Stop queued desktop jobs** to
+stop; the ghost is parked off-screen when the replay ends or is stopped.
+
+## WhatsApp send routines
+
+A recording in which you type into WhatsApp's "Type a message to <name>" box is
+saved as a send routine (`digitalsoul.whatsapp-send.v1`), even if you did not
+press Send. **Review & run** lets you change both the recipient and the message:
+the name you approve is searched and its chat must open before anything is typed.
+Recorded search/select flows (`digitalsoul.whatsapp-flow.v1`) are retargeted the
+same way. Recipient and message must be single-line (no control characters).
+
 ## Replay and schedules
 
 A complete WhatsApp flow needs observed search, contact selection, matching chat
@@ -103,13 +140,27 @@ the notch library. Replay only after reviewing the demonstrated recipient/messag
 .\.venv\Scripts\python.exe -m agent.ghost.desktop replay --recipe PATH_PRINTED_BY_RECORDING --approve-recipient "Saksham Gupta"
 ```
 
+## Limitations
+
+- Only one recording or replay runs at a time. A scheduled job that falls due
+  during a recording or replay waits, and is skipped once it is 60 seconds late.
+- **Shopify** runs block the backend while the browser works (up to 4 minutes);
+  F8 and Stop are not handled until it returns. Only `admin.shopify.com`,
+  `*.myshopify.com` or the local test form can be opened.
+- Name-based retargeting trusts WhatsApp search. Two contacts with the same
+  display name cannot be told apart; check the recipient after sending.
+- Replay needs the recorded apps to expose UIA controls. Canvas-drawn or
+  custom-drawn UIs (many games, some Electron screens) cannot be replayed.
+- Windows must stay unlocked and awake; there is no service or wake timer.
+
 ## Checks
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest agent/tests -q -p no:cacheprovider --ignore=agent/tests/test_remote.py
 .\.venv\Scripts\python.exe contracts/validate.py
 node --check desktop/ui/app.js
-cargo check --manifest-path desktop/src-tauri/Cargo.toml
+cd desktop; node --test tests/voice.test.cjs; cd ..
+cargo build --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
 Tests include persistence/restart/deletion, raw-recording trust separation, ordered

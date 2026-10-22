@@ -27,7 +27,7 @@ class Control:
         return None
 
     def click_input(self):
-        self.clicked += 1
+        raise AssertionError("replay must never move the user's mouse")
 
     def set_focus(self):
         pass
@@ -73,6 +73,9 @@ class FakeDesktop:
 
     def send_keys(self, text, **kwargs):
         self.typed.append(text)
+
+    def act(self, control):
+        control.clicked += 1
 
 
 def spec(control_type, name="", automation_id=""):
@@ -235,10 +238,49 @@ def test_replay_opens_the_exact_page_without_touching_the_mouse():
     assert opened == [(APP, "https://youtube.com/watch?v=abc&t=95s")]
 
 
-def test_clicks_go_through_the_ghost_not_the_pointer_when_available():
+def test_clicks_go_through_the_ghost_never_the_pointer():
     acted = []
     tab = Control("TabItem", "New Tab")
     desktop = FakeDesktop(Window([tab]))
     desktop.act = acted.append
     runner(desktop).click({"kind": "click", "path": APP, "label": "New Tab", "target": spec("TabItem", "New Tab")})
-    assert acted == [tab] and tab.clicked == 0
+    assert acted == [tab]  # Control.click_input would have raised
+
+
+def test_stale_controls_are_retried_instead_of_failing_the_replay():
+    class Flaky(Window):
+        calls = 0
+
+        def descendants(self, control_type, title=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("element not available")  # e.g. a COMError from a rebuilt web tree
+            return super().descendants(control_type, title)
+    tab = Control("TabItem", "New Tab")
+    desktop = FakeDesktop(Flaky([tab]))
+    clock = iter(range(100))
+    StepRunner(desktop, sleep=lambda _: None, clock=lambda: next(clock), timeout=5).click(
+        {"kind": "click", "path": APP, "label": "New Tab", "target": spec("TabItem", "New Tab")})
+    assert tab.clicked == 1
+
+
+def test_unexpected_failures_name_the_step_but_not_the_ui_text():
+    class Broken(FakeDesktop):
+        def act(self, control):
+            raise RuntimeError("private chat preview text")
+    desktop = Broken(Window([Control("Button", "Send")]))
+    with pytest.raises(ValueError) as error:
+        runner(desktop).run([{"kind": "click", "path": APP, "label": "Send", "target": spec("Button", "Send")}])
+    assert str(error.value) == "click 'Send' failed (RuntimeError)"
+
+
+def test_pacing_stays_calm_but_bounded():
+    pauses = []
+    desktop = FakeDesktop(Window([]))
+    StepRunner(desktop, sleep=pauses.append, timeout=0).run([
+        {"kind": "press_enter", "path": APP, "at": 0},
+        {"kind": "press_enter", "path": APP, "at": 0.1},
+        {"kind": "press_enter", "path": APP, "at": 30},
+        {"kind": "press_enter", "path": APP},
+    ])
+    assert [p for p in pauses if p != 0.2] == [0.5, 1.6, 0.5]
