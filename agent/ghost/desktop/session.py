@@ -135,16 +135,16 @@ class Session:
                         if not self.capture.composed and is_whatsapp(path):
                             try:
                                 focus = self.native.focused()
-                                if focus.element_info.process_id == pid and focus.element_info.control_type == "Edit":
-                                    val = focus.get_value()
-                                    if val and val != self.capture.flow["search"]:
+                                if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
+                                    val = (focus.get_value() or "").strip()
+                                    if val and val != self.capture.flow["search"].strip():
                                         ident = header(window, self.capture.flow["chat_title"])
                                         spec_edit = locator(focus, editable=True)
                                         with contextlib.redirect_stdout(sys.stderr):
                                             self.capture.field(spec_edit, val, ident)
                             except Exception:
                                 pass
-                        if self.last_edit == (self.capture.flow.get("actions") or [{}])[-1].get("target"):
+                        if self.capture.composed:
                             self.capture.enter()
                 else:
                     # Send can disappear before post-click hit-testing. Use only a
@@ -154,8 +154,8 @@ class Session:
                         try:
                             focus = self.native.focused()
                             if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
-                                val = focus.get_value()
-                                if val and val != self.capture.flow["search"]:
+                                val = (focus.get_value() or "").strip()
+                                if val and val != self.capture.flow["search"].strip():
                                     ident = header(window, self.capture.flow["chat_title"])
                                     spec_edit = locator(focus, editable=True)
                                     with contextlib.redirect_stdout(sys.stderr):
@@ -172,11 +172,14 @@ class Session:
                     control = self.native.desktop.from_point(*event["point"])
                     if control.element_info.process_id not in active_pids:
                         continue
-                    for _ in range(3):
+                    for _ in range(5):
                         name, kind = control.element_info.name or "", control.element_info.control_type
-                        if name or kind in ("Edit", "Button", "ListItem"):
+                        if name and kind in ("Edit", "Button", "ListItem", "Text"):
                             break
-                        control = control.parent()
+                        parent = control.parent()
+                        if parent is None:
+                            break
+                        control = parent
                     spec = locator(control, editable=kind == "Edit")
                     self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
                                  "label": name if kind != "Edit" else "Text field", "target": spec})
@@ -196,30 +199,32 @@ class Session:
             value = focus.get_value()
             if not isinstance(value, str) or len(value) > 4096:
                 return None
+            value_clean = value.strip()
+            if not value_clean:
+                return None
             spec = locator(focus, editable=True)
             self.last_edit = spec
-            if value:
-                if not self.steps or self.steps[-1].get("value") != value or self.steps[-1].get("target") != spec:
-                    self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
-                                 "label": "Text field", "target": spec, "value": value})
-                if self.capture and not self.capture.done and is_whatsapp(path):
-                    is_msg = (value == self.capture.flow["message"]) or (not self.capture.composed and value and value != self.capture.flow["search"])
-                    identity = header(window, self.capture.flow["chat_title"]) if is_msg else None
-                    with contextlib.redirect_stdout(sys.stderr):
-                        self.capture.field(spec, value, identity)
-                    if self.capture.composed and value == self.capture.flow["message"]:
-                        buttons = [b for b in window.descendants(control_type="Button")
-                                   if b.is_visible() and b.is_enabled() and
-                                   ((b.element_info.name or "").lower().startswith("send") or
-                                    "send" in (b.element_info.automation_id or "").lower())]
-                        if len(buttons) == 1:
-                            button = buttons[0]
-                            rect = button.rectangle()
-                            self.send_snapshot = {"pid": pid, "pids": active_pids, "time": time.monotonic(),
-                                                  "bounds": (rect.left, rect.top, rect.right, rect.bottom),
-                                                  "target": locator(button), "name": button.element_info.name or "Send"}
-                    elif value != self.capture.flow["message"]:
-                        self.send_snapshot = None
+            if not self.steps or self.steps[-1].get("value") != value_clean or self.steps[-1].get("target") != spec:
+                self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
+                             "label": "Text field", "target": spec, "value": value_clean})
+            if self.capture and not self.capture.done and is_whatsapp(path):
+                is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and value_clean != self.capture.flow["search"].strip())
+                identity = header(window, self.capture.flow["chat_title"]) if is_msg else None
+                with contextlib.redirect_stdout(sys.stderr):
+                    self.capture.field(spec, value_clean, identity)
+                if self.capture.composed and value_clean == self.capture.flow["message"].strip():
+                    buttons = [b for b in window.descendants(control_type="Button")
+                               if b.is_visible() and b.is_enabled() and
+                               ((b.element_info.name or "").lower().startswith("send") or
+                                "send" in (b.element_info.automation_id or "").lower())]
+                    if len(buttons) == 1:
+                        button = buttons[0]
+                        rect = button.rectangle()
+                        self.send_snapshot = {"pid": pid, "pids": active_pids, "time": time.monotonic(),
+                                              "bounds": (rect.left, rect.top, rect.right, rect.bottom),
+                                              "target": locator(button), "name": button.element_info.name or "Send"}
+                elif value_clean != self.capture.flow["message"].strip():
+                    self.send_snapshot = None
         except Exception:
             # Raw evidence remains reviewable; missing identity must never create a runnable flow.
             self.replay_error = "Some editor/header evidence was unavailable; inspect the saved steps"

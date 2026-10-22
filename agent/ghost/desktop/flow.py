@@ -220,16 +220,26 @@ class FlowAdapter:
                     self._wait(lambda: find(self._window(flow), flow["header"]))
                 target = self._wait(lambda: find(self._window(flow), action["target"]))
                 value = message if action["kind"] == "compose" else flow["search"]
-                if action["kind"] == "compose" and target.get_value():
+                if action["kind"] == "compose" and target.get_value() and target.get_value().strip():
                     raise ValueError("Existing message draft will not be overwritten")
                 self._allow()
-                target.set_edit_text(value)
+                try:
+                    target.set_edit_text(value)
+                except Exception:
+                    pass
+                val = target.get_value() or ""
+                if val.strip() != value.strip():
+                    target.set_focus()
+                    target.type_keys("^a{BACKSPACE}", set_foreground=False)
+                    escaped = re.sub(r'([+^%~{}()])', r'{\1}', value)
+                    target.type_keys(escaped, with_spaces=True, set_foreground=False)
                 self._wait(lambda: self._value_matches(flow, action["target"], value))
         self.ready(flow, message)
 
     def _value_matches(self, flow, spec, value):
         target = find(self._window(flow), spec)
-        if target.get_value() != value:
+        val = target.get_value() or ""
+        if val != value and val.strip() != value.strip():
             raise ValueError("Recorded field value has changed")
         return target
 
@@ -257,16 +267,19 @@ class Capture:
 
     def field(self, spec, value, chat_header=None):
         actions = self.flow["actions"]
-        if value.strip().lower() == self.flow["search"].strip().lower() and not any(a["kind"] == "search" for a in actions):
+        val_clean = (value or "").strip()
+        if not val_clean:
+            return
+        if val_clean.lower() == self.flow["search"].strip().lower() and not any(a["kind"] == "search" for a in actions):
             actions.append({"kind": "search", "target": spec})
-            self.flow["search"] = value
+            self.flow["search"] = val_clean
             print("Recorded search text.")
-        elif (value == self.flow["message"] or (not self.composed and any(a["kind"] == "select" for a in actions) and value and value != self.flow["search"])) and chat_header and not self.composed:
+        elif (val_clean == self.flow["message"].strip() or (not self.composed and any(a["kind"] == "select" for a in actions) and val_clean != self.flow["search"].strip())) and chat_header and not self.composed:
             if not any(a["kind"] == "select" for a in actions):
                 raise ValueError("Click the intended search result before composing")
             self.flow["header"] = chat_header
             self.flow["chat_title"] = chat_header.get("name") or self.flow["chat_title"]
-            self.flow["message"] = value
+            self.flow["message"] = val_clean
             actions.append({"kind": "compose", "target": spec})
             self.composed = True
             print("Recorded exact message and current chat header. Now send once to finish the demonstration.")
@@ -282,7 +295,11 @@ class Capture:
             return
         if any(a["kind"] == "search" for a in actions):
             target_names = {self.flow["chat_title"].strip().lower(), self.flow["recipient"].strip().lower()}
-            if name.strip().lower() in target_names:
+            clean_name = name.strip().lower()
+            first_line = clean_name.splitlines()[0].strip() if clean_name else ""
+            if (clean_name in target_names or 
+                first_line in target_names or 
+                any(t in clean_name for t in target_names if len(t) >= 3)):
                 actions.append({"kind": "select", "target": spec})
                 print("Recorded recipient selection.")
         elif control_type == "Button" and name.lower() in ("search", "new chat", "new message"):
@@ -313,7 +330,14 @@ def record_flow(recipient, search, chat_title, message, seconds=120):
             except (ValueError, OSError, native.psutil.Error):
                 time.sleep(0.05)
                 continue
-            events.pids.add(pid)
+            active_pids = {pid}
+            if is_whatsapp(path):
+                try:
+                    for child in native.psutil.Process(pid).children(recursive=True):
+                        active_pids.add(child.pid)
+                except (OSError, native.psutil.Error):
+                    pass
+            events.pids.update(active_pids)
             if "executable" not in capture.flow:
                 capture.flow.update(executable=path, app_id=native.app_id(pid))
                 print("Observed WhatsApp opening/activation.")
@@ -325,7 +349,7 @@ def record_flow(recipient, search, chat_title, message, seconds=120):
                     break
                 if event["kind"] == "stop":
                     raise ValueError("Recording stopped; no completed flow saved")
-                if event["pid"] != pid:
+                if event["pid"] not in active_pids:
                     continue
                 if time.monotonic() - event["time"] > 2:
                     raise ValueError("Input processing fell behind; repeat the demonstration more slowly")
@@ -333,26 +357,30 @@ def record_flow(recipient, search, chat_title, message, seconds=120):
                     capture.enter()
                 elif event["kind"] == "click":
                     control = native.desktop.from_point(*event["point"])
-                    if control.element_info.process_id != pid:
+                    if control.element_info.process_id not in active_pids:
                         continue
                     # Preserve exact contact text; lift icons inside actionable buttons.
-                    for _ in range(3):
+                    for _ in range(5):
                         name, kind = control.element_info.name or "", control.element_info.control_type
-                        if name or kind in ("Edit", "Button", "ListItem"):
+                        if name and kind in ("Edit", "Button", "ListItem", "Text"):
                             break
-                        control = control.parent()
+                        parent = control.parent()
+                        if parent is None:
+                            break
+                        control = parent
                     capture.click(locator(control), name, kind)
             if capture.done:
                 break
             try:
                 focus = native.focused()
-                if focus.element_info.process_id == pid and focus.element_info.control_type == "Edit":
-                    value = focus.get_value()
-                    chat_header = header(window, chat_title) if value == message else None
-                    capture.field(locator(focus, editable=True), value, chat_header)
+                if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
+                    value = (focus.get_value() or "").strip()
+                    if value:
+                        chat_header = header(window, chat_title) if value == message.strip() else None
+                        capture.field(locator(focus, editable=True), value, chat_header)
             except (ValueError, OSError) as exc:
                 # Unknown header while composing is a hard stop, never a guessed recipient.
-                if 'value' in locals() and value == message and not capture.composed:
+                if 'value' in locals() and value == message.strip() and not capture.composed:
                     raise ValueError(str(exc)) from exc
             time.sleep(0.04)
     if not capture.done:

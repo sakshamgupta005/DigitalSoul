@@ -228,3 +228,28 @@ def test_stop_persists_across_workers(tmp_path):
             schedule(second)
     finally:
         second.close()
+
+
+def test_check_ignores_empty_or_newline_draft(monkeypatch):
+    adapter = WhatsApp()
+    monkeypatch.setattr(adapter, "window", lambda plan: object())
+    for empty_val in ["", "\n", "   \r\n"]:
+        monkeypatch.setattr("agent.ghost.desktop.whatsapp.resolve", lambda w, spec: SimpleNamespace(get_value=lambda: empty_val))
+        assert adapter.check(recipe()) is True
+    monkeypatch.setattr("agent.ghost.desktop.whatsapp.resolve", lambda w, spec: SimpleNamespace(get_value=lambda: "real draft"))
+    with pytest.raises(ValueError, match="Clear the existing draft"):
+        adapter.check(recipe())
+
+
+def test_send_allows_matching_stripped_composer(monkeypatch):
+    adapter = WhatsApp()
+    monkeypatch.setattr(adapter, "window", lambda plan: object())
+    invoked = False
+    def fake_resolve(w, spec):
+        if spec.get("control_type") == "Button":
+            return SimpleNamespace(invoke=lambda: True)
+        return SimpleNamespace(get_value=lambda: "happy birthday\n")
+    monkeypatch.setattr("agent.ghost.desktop.whatsapp.resolve", fake_resolve)
+    # Should not raise "Composer differs from the approved message"
+    adapter.send(recipe(), "happy birthday")
+
