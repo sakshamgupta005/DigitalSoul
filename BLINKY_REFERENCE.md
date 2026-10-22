@@ -1,5 +1,12 @@
 # Blinky technical reference for DigitalSoul
 
+Notch implementation: consulted `common/src-tauri/tauri.conf.json` and the
+`common/src-tauri/src/lib.rs` transparent/always-on-top overlay setup, plus
+`common/python/utils/ui_map_cache.py` stable-reference/window-signature patterns.
+DigitalSoul's `desktop/` uses a small top-centre Tauri window and private Python
+stdio bridge. Replay resolves fresh UIA controls and binds chat identity; raw
+recordings are not executable trust grants. No Blinky runtime dependency was added.
+
 WhatsApp desktop prototype (2026-10-22): re-inspected local
 `windows/python/uia.py` before adding `agent/ghost/desktop/whatsapp.py`.
 Adapted fresh process-scoped UIA resolution and unique control matching; no Blinky

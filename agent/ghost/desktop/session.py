@@ -11,6 +11,15 @@ from .flow import Capture, Native, ancestry, header, locator, validate
 from .whatsapp import executable
 
 
+def matches_send_snapshot(snapshot, event):
+    if not snapshot or event["kind"] != "click" or event["pid"] != snapshot["pid"] or not event.get("point"):
+        return False
+    age = event["time"] - snapshot["time"]
+    x, y = event["point"]
+    left, top, right, bottom = snapshot["bounds"]
+    return 0 <= age <= 3 and left <= x < right and top <= y < bottom
+
+
 class Session:
     def __init__(self, options):
         self.name = options.get("name", "").strip()
@@ -25,6 +34,7 @@ class Session:
         self.steps = []
         self.started = time.monotonic()
         self.last_edit = None
+        self.send_snapshot = None
         self.last_foreground = None
         self.observed_paths = {}
         self.capture = None
@@ -104,6 +114,16 @@ class Session:
                     if self.capture and self.last_edit == (self.capture.flow.get("actions") or [{}])[-1].get("target"):
                         self.capture.enter()
                 else:
+                    # Send can disappear before post-click hit-testing. Use only a
+                    # recent, process-bound UIA observation to recognize the demo.
+                    # These pixels are transient evidence and are never replayed.
+                    if self.capture and self.capture.composed and matches_send_snapshot(self.send_snapshot, event):
+                        snapshot = self.send_snapshot
+                        with contextlib.redirect_stdout(sys.stderr):
+                            self.capture.click(snapshot["target"], snapshot["name"], "Button")
+                        self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
+                                     "label": "Send", "target": snapshot["target"]})
+                        continue
                     control = self.native.desktop.from_point(*event["point"])
                     if control.element_info.process_id != pid:
                         continue
@@ -141,6 +161,19 @@ class Session:
                     identity = header(window, self.capture.flow["chat_title"]) if value == self.capture.flow["message"] else None
                     with contextlib.redirect_stdout(sys.stderr):
                         self.capture.field(spec, value, identity)
+                    if self.capture.composed and value == self.capture.flow["message"]:
+                        buttons = [b for b in window.descendants(control_type="Button")
+                                   if b.is_visible() and b.is_enabled() and
+                                   ((b.element_info.name or "").lower().startswith("send") or
+                                    "send" in (b.element_info.automation_id or "").lower())]
+                        if len(buttons) == 1:
+                            button = buttons[0]
+                            rect = button.rectangle()
+                            self.send_snapshot = {"pid": pid, "time": time.monotonic(),
+                                                  "bounds": (rect.left, rect.top, rect.right, rect.bottom),
+                                                  "target": locator(button), "name": button.element_info.name or "Send"}
+                    elif value != self.capture.flow["message"]:
+                        self.send_snapshot = None
         except Exception:
             # Raw evidence remains reviewable; missing identity must never create a runnable flow.
             self.replay_error = "Some editor/header evidence was unavailable; inspect the saved steps"

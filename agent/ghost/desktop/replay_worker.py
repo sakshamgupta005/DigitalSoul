@@ -16,7 +16,7 @@ def main():
             rows = [row for row in jobs.list() if row["id"] == payload["job_id"]]
             if not rows or rows[0]["state"] != "pending":
                 break
-            jobs.tick(WhatsApp())
+            jobs.tick(WhatsApp(), job_id=payload["job_id"])
             time.sleep(0.1)
     finally:
         jobs.close()

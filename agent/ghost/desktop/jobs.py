@@ -79,12 +79,14 @@ class Jobs:
             return self.db.execute("UPDATE desktop_jobs SET state=?,detail=? WHERE id=? AND state=?" + guard,
                                    (after, detail, job_id, before)).rowcount == 1
 
-    def tick(self, adapter, now=None):
+    def tick(self, adapter, now=None, job_id=None):
         timestamp = (now or self.clock()).timestamp()
         with self.db:
             self.db.execute("UPDATE desktop_jobs SET state='missed' WHERE state='pending' AND expires < ?", (timestamp,))
-            row = self.db.execute("SELECT * FROM desktop_jobs WHERE state='pending' AND due <= ? ORDER BY due LIMIT 1",
-                                  (timestamp,)).fetchone()
+            extra = " AND id=?" if job_id else ""
+            arguments = (timestamp, job_id) if job_id else (timestamp,)
+            row = self.db.execute("SELECT * FROM desktop_jobs WHERE state='pending' AND due <= ?" + extra + " ORDER BY due LIMIT 1",
+                                  arguments).fetchone()
         if row is None or not self._transition(row["id"], "pending", "preparing"):
             return None
         job_id = row["id"]

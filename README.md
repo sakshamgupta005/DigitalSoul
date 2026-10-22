@@ -1,5 +1,12 @@
 # DigitalSoul
 
+## Windows recording notch
+
+Run `.\scripts\start-notch.ps1` to launch the Tauri notch. Start/stop desktop
+recording, inspect saved steps, and review recognized WhatsApp flows before replay
+or scheduling. Setup, current limits and validation are in
+[the notch guide](desktop/README.md). Work is on `sahil-branch`.
+
 DigitalSoul observes consented, repeated work and compiles reviewed workflows for desktop execution. The M2 execution backend is implemented here; M1 learning, M3 frontend and M4 shared application/demo infrastructure integrate through the contracts.
 
 Start with [the M2 implementation and handoff](agent/M2_IMPLEMENTATION.md), [shared contracts](CONTRACTS.md), and [contract corrections](contracts/REVIEW.md). [Blinky](BLINKY_REFERENCE.md) is the previous-product technical reference.

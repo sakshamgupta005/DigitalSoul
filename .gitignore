@@ -34,3 +34,5 @@ scratch_extract.py
 
 .ghost/
 *.egg-info/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
