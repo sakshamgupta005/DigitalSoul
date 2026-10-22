@@ -5,9 +5,10 @@
 Run `.\scripts\start-notch.ps1` to launch the Tauri notch. Start/stop desktop
 recording, inspect saved steps, and review recognized WhatsApp flows before replay
 or scheduling. Setup, current limits and validation are in
-[the notch guide](desktop/README.md). Work is on `sahil-branch`.
+[the notch guide](desktop/README.md). See [current build and test results](docs/VALIDATION.md)
+for the verified working tree and outstanding contract/integration gaps.
 
-DigitalSoul observes consented, repeated work and compiles reviewed workflows for desktop execution. The M2 execution backend is implemented here; M1 learning, M3 frontend and M4 shared application/demo infrastructure integrate through the contracts.
+DigitalSoul observes consented, repeated work and compiles reviewed workflows for desktop execution. This checkout includes the M2 backend, M1 learning modules, a shared FastAPI application, synthetic Acme demo apps and the Tauri notch. Their presence does not establish complete contract integration; see the verification report for remaining gaps.
 
 Start with [the M2 implementation and handoff](agent/M2_IMPLEMENTATION.md), [shared contracts](CONTRACTS.md), and [contract corrections](contracts/REVIEW.md). [Blinky](BLINKY_REFERENCE.md) is the previous-product technical reference.
 
@@ -21,7 +22,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m agent.ghost.api.m2_app --workflow contracts/fixtures/workflow.valid.json
 ```
 
-The host binds to `127.0.0.1:7777`. Loading a workflow file is an explicit local admission of a reviewed plan; HTTP clients cannot upload a plan and grant themselves trust. Browser execution uses **browser-use 0.13.11's CDP/Actor API**, a dedicated profile under `.ghost/chrome` and registered Acme app adapters. It detects installed Windows Edge/Chrome; optionally set `DIGITALSOUL_BROWSER_EXECUTABLE` to an installed browser. It requires M4's demo apps at `http://portal.acme.local` and `http://crm.acme.local`; those apps and hostname mappings are not included here. Static `dry_run` works without them and does not open a browser.
+The host binds to `127.0.0.1:7777`. Loading a workflow file is an explicit local admission of a reviewed plan; HTTP clients cannot upload a plan and grant themselves trust. Browser execution uses **browser-use 0.13.11's CDP/Actor API**, a dedicated profile under `.ghost/chrome` and registered Acme app adapters. It detects installed Windows Edge/Chrome; optionally set `DIGITALSOUL_BROWSER_EXECUTABLE` to an installed browser. The fixture expects `http://portal.acme.local` and `http://crm.acme.local`; the [included demo apps](demo-apps/README.md) run on loopback ports 7701/7702. Origin mapping and adapter conventions still need integration. The separate shared host `agent.ghost.app` does not yet inherit this standalone host's security boundary. Static `dry_run` works without them and does not open a browser.
 
 Read the local token into a variable, then create a dry run:
 
@@ -35,6 +36,8 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:7777/api/v1/workflows/wf_a
 Use `mode = 'supervised'` once the demo apps are running. Fetch run state from `GET /api/v1/runs/{run_id}`; supply its pending approval's `approval_id`, `workflow_version`, `step_id`, and `effect_hash` to `POST /api/v1/runs/{run_id}/approve`. Inspect `preview_data` before approving. Every R2 save/post has its own approval; earlier approvals cannot authorize later loop iterations.
 
 ## Checks
+
+Latest measured results and exact test selection: [build and contract verification](docs/VALIDATION.md).
 
 ```powershell
 .\.venv\Scripts\python.exe contracts/validate.py

@@ -15,7 +15,7 @@ import time
 from pathlib import PureWindowsPath
 
 from .flow import Native, ancestry
-from .whatsapp import executable, libraries
+from .whatsapp import executable, hosted_pid, libraries
 
 STEP_KINDS = ("open_app", "open_url", "click", "set_text", "press_enter")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
@@ -40,7 +40,8 @@ def stable_name(name):
     """The part of a control name that survives between runs: drops unread counters like "(33) "
     and trailing previews such as a chat's last message after the first comma or line break."""
     name = re.sub(r"^\(\d+\)\s*", "", name or "")
-    return re.split(r"[,\n]", name, maxsplit=1)[0].strip().lower()
+    name = name.strip('"').strip("'")
+    return re.split(r"[,\n\r\t]", name, maxsplit=1)[0].strip().lower()
 
 
 def digest(steps):
@@ -55,6 +56,26 @@ def keys(text):
 
 class Stopped(Exception):
     pass
+
+
+def _shown(control):
+    """Visible and enabled; a control that vanished mid-lookup simply doesn't count."""
+    try:
+        return control.is_visible() and control.is_enabled()
+    except Exception:
+        return False
+
+
+def _named(control):
+    try:
+        return control.element_info.name
+    except Exception:
+        return ""
+
+
+def describe(step):
+    label = step.get("label") or step.get("url") or PureWindowsPath(step.get("path", "")).name
+    return f"{step.get('kind', 'step').replace('_', ' ')} '{label}'" if label else step.get("kind", "step")
 
 
 class Desktop:
@@ -72,13 +93,15 @@ class Desktop:
     def windows(self, path):
         found = []
         is_explorer = PureWindowsPath(str(path)).name.lower() == "explorer.exe"
+        target_name = PureWindowsPath(str(path)).name.lower()
         for window in self.desktop.windows():
             try:
                 if not window.is_visible():
                     continue
                 if is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") in SHELL_CLASSES:
                     continue
-                if executable(window.element_info.process_id) == path:
+                exe_path = executable(hosted_pid(window.handle, window.element_info.process_id))
+                if exe_path == path or (exe_path and PureWindowsPath(exe_path).name.lower() == target_name):
                     found.append(window)
             except Exception:
                 continue
@@ -90,17 +113,19 @@ class Desktop:
             return None, None
         window = self.desktop.window(handle=hwnd).wrapper_object()
         try:
-            return window, executable(window.element_info.process_id)
+            return window, executable(hosted_pid(hwnd, window.element_info.process_id))
         except Exception:
             return window, None
 
     def focus(self, window):
-        hwnd = getattr(window, "handle", None)
+        hwnd = getattr(window, "handle", None) or getattr(getattr(window, "element_info", None), "handle", None)
         if not hwnd:
             return
         try:
             if self.user.IsIconic(hwnd):
                 self.user.ShowWindow(hwnd, 9)
+            else:
+                self.user.ShowWindow(hwnd, 5)
             self.user.keybd_event(0x12, 0, 0, 0)
             self.user.SetForegroundWindow(hwnd)
             self.user.keybd_event(0x12, 0, 2, 0)
@@ -115,7 +140,10 @@ class Desktop:
                 raise ValueError("Invalid recorded application identity")
             os.startfile("shell:AppsFolder\\" + app_id)
         else:
-            os.startfile(step["path"])
+            try:
+                os.startfile(step["path"])
+            except Exception:
+                subprocess.Popen([step["path"]], creationflags=0x08000000 if sys.platform == "win32" else 0)
 
     focused = Native.focused
 
@@ -154,7 +182,13 @@ class StepRunner:
         deadline = self.clock() + (self.timeout if timeout is None else timeout)
         while True:
             self._check()
-            result = attempt()
+            try:
+                result = attempt()
+            except Stopped:
+                raise
+            except Exception:
+                # Web UIs rebuild constantly; an element that went stale mid-lookup just means "try again".
+                result = None
             if result is not None:
                 return result
             if self.clock() > deadline:
@@ -199,7 +233,7 @@ class StepRunner:
         # Cheap identity checks first: web apps can expose tens of thousands of controls.
         matches = unique([item for item in window.descendants(**query)
                           if (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])])
-        matches = [item for item in matches if item.is_visible() and item.is_enabled()]
+        matches = [item for item in matches if _shown(item)]
         exact = [item for item in matches if ancestry(item) == spec.get("ancestors", [])]
         for group in (exact, matches if spec.get("name") or spec.get("automation_id") else []):
             if len(group) == 1:
@@ -213,8 +247,15 @@ class StepRunner:
                     candidates.extend(window.descendants(control_type=c_type))
                 except Exception:
                     pass
-            loose = [item for item in unique(candidates)
-                     if stable_name(item.element_info.name) == name_key and item.is_visible()]
+            # Compare names before anything else: each property read is a cross-process call.
+            loose = [item for item in unique([item for item in candidates if stable_name(_named(item)) == name_key])
+                     if _shown(item)]
+            if not loose:
+                # Substring / prefix fallback (e.g. File Explorer item details, button labels)
+                loose = [item for item in unique([
+                    item for item in candidates
+                    if name_key in stable_name(_named(item)) or stable_name(_named(item)) in name_key
+                ]) if _shown(item)]
             if len(loose) == 1:
                 return loose[0]
             if len(loose) > 1 and spec.get("ancestors"):
@@ -233,7 +274,7 @@ class StepRunner:
         return None
 
     def _glide(self, control):
-        # The ghost cursor follows the real pointer, so travel there visibly instead of jumping.
+        # The ghost is the replay's visible cursor, so it travels there instead of jumping.
         glide = getattr(self.native, "glide_to", None)
         if glide:
             try:
@@ -244,18 +285,15 @@ class StepRunner:
     def open_app(self, step):
         if not self.native.windows(step["path"]):
             self.native.launch(step)
-        self._app_window(step["path"], title=step.get("title"))
+        window = self._app_window(step["path"], title=step.get("title"))
+        self._glide(window)  # the ghost visibly arrives at the app it is about to use
 
     def click(self, step):
         window = self._app_window(step["path"])
         target = self._wait(lambda: self._find(window, step["target"]), f"'{step.get('label') or 'control'}'")
         self._app_window(step["path"])
         self._glide(target)
-        act = getattr(self.native, "act", None)
-        if act:
-            act(target)  # UI Automation only; the user's pointer stays where it is
-        else:
-            target.click_input()
+        self.native.act(target)  # UI Automation only; the user's pointer stays where it is
 
     def set_text(self, step, committed=True):
         window = self._app_window(step["path"])
@@ -276,7 +314,7 @@ class StepRunner:
             return
         self._glide(target)
         try:
-            target.set_focus()
+            target.set_focus()  # never click_input: the user's pointer must not move
         except Exception:
             pass
         try:
@@ -285,12 +323,18 @@ class StepRunner:
             target.set_edit_text(value)
         except Exception:
             self._app_window(step["path"])
-            self.native.send_keys("^a{BACKSPACE}" + keys(value), with_spaces=True, pause=0.01)
+            self.native.send_keys("^a{BACKSPACE}" + keys(value), with_spaces=True, pause=0.04)  # faster keystrokes get garbled by Windows text boxes
 
     def open_url(self, step):
         self.native.open_url(step["path"], step["url"])
-        self._app_window(step["path"])
+        window = self._app_window(step["path"])
         self.sleep(1.5)  # let the page start loading before anything else happens
+        # Show the ghost at the address bar that now holds the page, or at least at the browser.
+        try:
+            bar = next(iter(window.descendants(control_type="Edit", title="Address and search bar")), None)
+        except Exception:
+            bar = None
+        self._glide(bar or window)
 
     def press_enter(self, step):
         self._app_window(step["path"])
@@ -303,15 +347,22 @@ class StepRunner:
                 raise ValueError(f"Step {index + 1} has an unsupported action")
             self._check()
             # A softened version of the recorded rhythm: calm, but without wasting time.
-            if previous is not None and isinstance(step.get("at"), (int, float)):
-                self.sleep(min(max((step["at"] - previous) * 0.6, 0.5), 1.6))
+            if index:
+                gap = step["at"] - previous if isinstance(step.get("at"), (int, float)) and previous is not None else 0
+                self.sleep(min(max(gap * 0.6, 0.5), 1.6))
             previous = step.get("at", previous)
             progress(index, step)
-            if step["kind"] == "set_text":
-                following = steps[index + 1]["kind"] if index + 1 < len(steps) else None
-                self.set_text(step, committed=following == "press_enter")
-            else:
-                getattr(self, step["kind"])(step)
+            try:
+                if step["kind"] == "set_text":
+                    following = steps[index + 1]["kind"] if index + 1 < len(steps) else None
+                    self.set_text(step, committed=following == "press_enter")
+                else:
+                    getattr(self, step["kind"])(step)
+            except (Stopped, ValueError):
+                raise
+            except Exception as exc:
+                # Provider messages can quote private UI text; name the step and the failure type only.
+                raise ValueError(f"{describe(step)} failed ({type(exc).__name__})") from exc
         return len(steps)
 
 
@@ -343,7 +394,8 @@ def main():
             done = index
         runner.run(payload["steps"], progress)
         skipped = f" Skipped {runner.skipped} text step(s) that were only field placeholders or focus changes." if runner.skipped else ""
-        result = {"ok": True, "detail": f"Replayed {len(payload['steps'])} steps.{skipped} Check the apps to confirm the result."}
+        count = len(payload["steps"])
+        result = {"ok": True, "detail": f"Replayed {count} step{'' if count == 1 else 's'}.{skipped} Check the apps to confirm the result."}
     except Stopped as exc:
         result = {"ok": False, "detail": f"{exc} before step {done + 1}."}
     except Exception as exc:

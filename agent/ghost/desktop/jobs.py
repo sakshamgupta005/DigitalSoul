@@ -11,6 +11,8 @@ from .whatsapp import validate_recipe
 
 
 def instant(value):
+    if not isinstance(value, str):
+        raise ValueError("Choose a date and time")
     result = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if result.tzinfo is None or result.utcoffset() is None:
         raise ValueError("Include a UTC offset, for example +05:30")

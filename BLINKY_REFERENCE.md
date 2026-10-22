@@ -1,5 +1,31 @@
 # Blinky technical reference for DigitalSoul
 
+Native Shopify adaptation (2026-10-22): read the persistent `_McpChild` and
+`_CuaTransport` implementation, `get_window_elements`, and token-bound
+`set_value` in `common/python/computer_use/backends/cua_driver.py`; also read
+`windows/src-tauri/src/platform/cua.rs` and `windows/python/uia.py`'s fresh
+process/window scoping. DigitalSoul now has its own narrow persistent MCP
+transport in `agent/ghost/drivers/cua.py` and Shopify adapter in
+`agent/ghost/browser/shopify_native.py`. It uses the installed open-source
+`cua-driver`, not imports from the Blinky checkout. Only window enumeration,
+fresh accessibility reads and token-bound value writes are exposed. Exact
+Shopify URL checks, independent readback, cancellation and no automatic Save
+remain DigitalSoul-owned. The native path is selected on browser connection
+failure only; a browser write failure never triggers a second-engine replay.
+
+Re-read `common/python/tools/browser_use_tool.py`, `browser_agent.py`, and
+`browser_controller.py`. The latter's Playwright path is not imported or added
+as a dependency. Browser-use's BrowserSession/Actor remains DigitalSoul's
+primary browser engine, and model-driven arbitrary action loops are not copied.
+
+Existing Edge attachment (2026-10-22): re-read
+`common/python/tools/browser_use_tool.py`'s browser lifecycle. Its fresh
+`Browser(channel=...)` does not attach to an already-running signed-in session.
+DigitalSoul's interactive Shopify actor instead discovers Edge's user-enabled
+`DevToolsActivePort` and uses browser-use's `cdp_url` with `keep_alive=True`.
+This avoids copied profiles/cookies and reuses an exact matching product tab.
+See [existing Edge setup and verification](docs/SHOPIFY_EDGE.md).
+
 ## Voice and workflow adaptation (2026-10-22)
 
 Re-inspected `common/python/computer_use/tools.py`'s `APP_PROTOCOLS` mapping

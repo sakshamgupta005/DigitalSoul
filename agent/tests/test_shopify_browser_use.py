@@ -20,9 +20,14 @@ def local_server():
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    time.sleep(1.2)
+    for _ in range(50):
+        if server.started:
+            break
+        time.sleep(0.1)
+    assert server.started, "Local practice server failed to start"
     yield "http://127.0.0.1:7799"
     server.should_exit = True
+    thread.join(timeout=5)
 
 
 def test_shopify_ai_field_generation():
@@ -71,12 +76,14 @@ def test_browser_use_shopify_product_automation(local_server, tmp_path):
             assert len(report["filled_steps"]) >= 7
             assert report["save"].get("ok") is True
 
-            # Verify the page received and saved the submission
-            page = await actor.browser.new_page()
-            await page.goto(f"{local_server}/api/v1/shopify/test-form")
-            # Verify form elements are present and testable
-            title_val = await page.evaluate("() => document.querySelector('#product-title') !== null")
-            assert title_val in (True, "True")
+            saved = report["save"]["product"]
+            assert report["save"]["verified"] is True
+            assert saved["title"] == product.title
+            assert saved["price"] == product.price
+            assert saved["sku"] == product.sku
+            assert saved["status"] == product.status
+            raw = await actor.page.evaluate("() => document.body.getAttribute('data-saved-product')")
+            assert json.loads(raw) == saved
         finally:
             await actor.close()
 

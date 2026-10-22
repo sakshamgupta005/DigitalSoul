@@ -40,6 +40,20 @@ def test_workflow_suffix():
     assert resolve("Hey Jarvis morning workflow", [{"id": "a", "name": "Morning workflow"}])["id"] == "a"
 
 
+def test_conversational_asks_and_intent_understanding():
+    flows = [
+        {"id": "dl", "name": "Organize Files", "intent": "Browse downloads and check files in File Explorer", "apps": ["explorer.exe"]},
+        {"id": "msg", "name": "Send Update", "intent": "Open WhatsApp and send message to team", "apps": ["WhatsApp.exe"]},
+    ]
+    # Conversational phrasing with wake word
+    assert resolve("Hey Jarvis, please do Open Spotify", WORKFLOWS)["id"] == "spotify"
+    assert resolve("Hey Jarvis, can you do Say hello please", WORKFLOWS)["id"] == "hello"
+    # Intent-based ask matching
+    assert resolve("Hey Jarvis, check files in downloads", flows)["id"] == "dl"
+    assert resolve("Hey Jarvis, send a message to team on whatsapp", flows)["id"] == "msg"
+
+
+
 def test_saved_workflow_voice_lookup_over_real_stdio(tmp_path):
     import json
     import subprocess

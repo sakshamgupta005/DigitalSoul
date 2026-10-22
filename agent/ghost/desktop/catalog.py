@@ -12,8 +12,36 @@ def short(text, limit=34):
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
+def clock(seconds):
+    """A video position as m:ss, or h:mm:ss for long videos."""
+    hours, rest = divmod(int(seconds), 3600)
+    return f"{hours}:{rest // 60:02d}:{rest % 60:02d}" if hours else f"{rest // 60}:{rest % 60:02d}"
+
+
 def understand_steps(steps, flow=None, name=None):
     """Derive semantic goal, variable parameters, and contextual step explanations from observed actions."""
+    from .session import clean_steps
+    steps = clean_steps(steps)
+    if flow and (flow.get("format") == "digitalsoul.excel-flow.v1" or flow.get("kind") == "excel"):
+        wb = flow.get("workbook", "Workbook")
+        sheet = flow.get("sheet", "Sheet1")
+        cells = flow.get("cells", [])
+        return {
+            "intent": f"Update Excel workbook '{wb}' ({len(cells)} cells)",
+            "summary": f"Populated {len(cells)} cells in Excel sheet '{sheet}'",
+            "parameters": [
+                {"name": "workbook", "value": wb, "type": "string", "source": "workbook_selection"},
+                {"name": "sheet", "value": sheet, "type": "string", "source": "sheet_selection"},
+                {"name": "cells_count", "value": str(len(cells)), "type": "number", "source": "cell_updates"}
+            ],
+            "explanations": [
+                f"Connected to Excel workbook '{wb}'",
+                f"Selected sheet '{sheet}'",
+                f"Populated {len(cells)} cells with updated values",
+                "Applied cell values and verified updates"
+            ]
+        }
+
     if flow:
         recipient = flow.get("recipient", "contact")
         msg = flow.get("message", "")
@@ -44,7 +72,8 @@ def understand_steps(steps, flow=None, name=None):
     for step in steps:
         kind = step.get("kind")
         raw_app = step.get("app") or "App"
-        app = "File Explorer" if raw_app.lower() == "explorer.exe" else raw_app.replace(".exe", "").capitalize()
+        app = {"explorer.exe": "File Explorer", "calculatorapp.exe": "Calculator"}.get(
+            raw_app.lower(), raw_app.replace(".exe", "").capitalize())
         if app not in apps_touched:
             apps_touched.append(app)
         title = (step.get("title") or "").strip()
@@ -88,6 +117,12 @@ def understand_steps(steps, flow=None, name=None):
                 param_name = label.lower().replace(" ", "_") if label and label != "Text field" else f"input_{len(parameters)+1}"
                 parameters.append({"name": param_name, "value": value, "type": "string", "source": "typing"})
 
+        elif kind == "open_url":
+            resume = step.get("resume")
+            page = f"“{title}”" if title else (label or step.get("url"))
+            explanations.append(f"Opened {page}" + (f" at {clock(resume)}" if resume else ""))
+            parameters.append({"name": "url", "value": step.get("url"), "type": "url", "source": "browser"})
+
         elif kind == "press_enter":
             explanations.append("Submitted input with Enter ⏎")
         else:
@@ -106,7 +141,7 @@ def understand_steps(steps, flow=None, name=None):
     elif text_entries and any("search" in l.lower() for l, _ in text_entries):
         searches = [v for l, v in text_entries if "search" in l.lower()]
         intent = f"Searched for '{searches[-1]}' in {', '.join(apps_touched)}"
-    elif text_entries and any("url" in p.get("type", "") for p in parameters):
+    elif any(p.get("type") == "url" for p in parameters):
         urls = [p["value"] for p in parameters if p.get("type") == "url"]
         intent = f"Navigated to {urls[-1]}"
     elif files_selected:
@@ -132,13 +167,19 @@ def understand_steps(steps, flow=None, name=None):
 def summarize(value, limit=3):
     """The few things that tell recordings apart: who and what for a send, else typed text and clicks."""
     flow = value.get("flow")
+    if flow and (flow.get("format") == "digitalsoul.excel-flow.v1" or flow.get("kind") == "excel"):
+        res = [{"kind": "to", "text": flow.get("workbook", "Excel")}]
+        cells = flow.get("cells", [])
+        if cells:
+            res.append({"kind": "typed", "text": f"{len(cells)} cells: {cells[0].get('cell')}={short(cells[0].get('value', ''), 12)}"})
+        return res
     if flow:
         return [{"kind": "to", "text": flow["recipient"]}, {"kind": "message", "text": short(flow["message"])}]
     result = []
     for step in value.get("steps", []):
         if step["kind"] == "open_url" and step.get("url"):
             resume = step.get("resume")
-            text = short(step.get("label") or step["url"], 30) + (f" @ {resume // 60}:{resume % 60:02d}" if resume else "")
+            text = short(step.get("title") or step.get("label") or step["url"], 30) + (f" @ {clock(resume)}" if resume else "")
             item = {"kind": "url", "text": text}
         elif step["kind"] == "set_text" and step.get("value"):
             item = {"kind": "typed", "text": short(step["value"])}

@@ -6,6 +6,11 @@ Our previous product, Blinky (`C:\Projects\Blinky`), is a technical reference fo
 
 JSON schemas are the wire-format source of truth. This is the breaking `1.1.0-draft` revision.
 
+Generated Pydantic models are present, but generation is not proof of schema
+equivalence: current `RawEvent` models omit conditional redaction enforcement.
+See [implementation verification](../docs/VALIDATION.md) for reproduced gaps
+and actual build/test results.
+
 From the repository root:
 
 ```powershell

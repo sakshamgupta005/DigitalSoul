@@ -10,9 +10,22 @@ import time
 from pathlib import Path, PureWindowsPath
 
 
+def attach_default_desktop():
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
+
 def libraries():
     if sys.platform != "win32":
         raise RuntimeError("This adapter requires Windows")
+    attach_default_desktop()
     try:
         from pywinauto import Desktop
         import psutil
@@ -30,6 +43,19 @@ def libraries():
 def executable(pid):
     _, psutil = libraries()
     return os.path.normcase(str(Path(psutil.Process(pid).exe()).resolve()))
+
+
+def hosted_pid(hwnd, pid, user=None):
+    """Store apps (Calculator, Settings) draw inside an ApplicationFrameHost frame; the frame's
+    CoreWindow child belongs to the app itself. Returns that app's pid, else `pid`."""
+    if not hwnd:
+        return pid
+    user = user or ctypes.windll.user32
+    child = user.FindWindowExW(hwnd, None, "Windows.UI.Core.CoreWindow", None)
+    owner = ctypes.c_ulong()
+    if child and user.GetWindowThreadProcessId(child, ctypes.byref(owner)) and owner.value:
+        return owner.value
+    return pid
 
 
 def selector(control, role):
@@ -134,9 +160,10 @@ class WhatsApp:
         return window
 
     def check(self, recipe):
+        from .whatsapp_send import control_text
         window = self.window(recipe)
         composer = resolve(window, recipe["controls"]["composer"])
-        val = composer.get_value()
+        val = control_text(composer)
         if val and val.strip():
             raise ValueError("Clear the existing draft first")
         return True
@@ -151,6 +178,7 @@ class WhatsApp:
             from .flow import FlowAdapter
             self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
             return self._flow_adapter.prepare(recipe, message)
+        from .whatsapp_send import control_text
         self.check(recipe)
         composer = resolve(self.window(recipe), recipe["controls"]["composer"])
         # Literal ValuePattern assignment: braces and + are not keyboard commands.
@@ -158,7 +186,7 @@ class WhatsApp:
             composer.set_edit_text(message)
         except Exception:
             pass
-        val = composer.get_value() or ""
+        val = control_text(composer) or ""
         if val.strip() != message.strip():
             composer.set_focus()
             composer.type_keys("^a{BACKSPACE}", set_foreground=False)
@@ -168,9 +196,10 @@ class WhatsApp:
         self._ready(recipe, message)
 
     def _ready(self, recipe, message):
+        from .whatsapp_send import control_text
         window = self.window(recipe)  # fresh header and process identity after filling
         composer = resolve(window, recipe["controls"]["composer"])
-        val = composer.get_value() or ""
+        val = control_text(composer) or ""
         if val != message and val.strip() != message.strip():
             raise ValueError("Composer differs from the approved message")
         return resolve(window, recipe["controls"]["send"])

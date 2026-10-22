@@ -156,6 +156,11 @@ class Native:
                     w_exe = executable(w_pid)
                     if is_whatsapp(w_exe) and (not path or w_exe == path):
                         self.user.ShowWindow(w.handle, 9)
+                        try:
+                            self.user.keybd_event(0x12, 0, 0, 0)
+                            self.user.keybd_event(0x12, 0, 2, 0)
+                        except Exception:
+                            pass
                         self.user.SwitchToThisWindow(w.handle, True)
                         self.user.SetForegroundWindow(w.handle)
                         time.sleep(0.3)
@@ -204,6 +209,8 @@ class Native:
             hwnd = matches[0].handle
             try:
                 self.user.ShowWindow(hwnd, 9)
+                self.user.keybd_event(0x12, 0, 0, 0)
+                self.user.keybd_event(0x12, 0, 2, 0)
                 self.user.SwitchToThisWindow(hwnd, True)
                 self.user.SetForegroundWindow(hwnd)
             except Exception:
@@ -229,10 +236,18 @@ class Native:
     def glide_to(self, control):
         # The ghost is the replay's cursor: it flies to the control before acting.
         try:
-            from .ghost import Ghost
-            ghost = Ghost()
-            ghost.to_control(control)
-            ghost.pulse()
+            if not hasattr(self, "ghost"):
+                from .ghost import Ghost
+                self.ghost = Ghost()
+            self.ghost.to_control(control)
+            self.ghost.pulse()
+        except Exception:
+            pass
+
+    def park(self):
+        try:
+            if hasattr(self, "ghost"):
+                self.ghost.park()
         except Exception:
             pass
 
@@ -285,7 +300,17 @@ class FlowAdapter:
                     raise
                 time.sleep(0.15)
 
+    def _park(self):
+        getattr(self.native, "park", lambda: None)()
+
     def prepare(self, flow, message):
+        try:
+            self._prepare(flow, message)
+        except BaseException:
+            self._park()
+            raise
+
+    def _prepare(self, flow, message):
         validate(flow)
         self.native = self.native or Native()
         self._header = flow["header"]
@@ -327,12 +352,9 @@ class FlowAdapter:
                     escaped = re.sub(r'([+^%~{}()])', r'{\1}', value)
                     if hasattr(target, "element_info"):
                         try:
-                            target.set_focus()
+                            target.set_focus()  # never click_input: the user's pointer must not move
                         except Exception:
-                            try:
-                                target.click_input()
-                            except Exception:
-                                pass
+                            pass
                         time.sleep(0.3)
                         try:
                             import pywinauto.keyboard
@@ -389,6 +411,12 @@ class FlowAdapter:
         return self._value_matches(flow, flow["actions"][-1]["target"], message)
 
     def send(self, flow, message):
+        try:
+            self._send(flow, message)
+        finally:
+            self._park()
+
+    def _send(self, flow, message):
         composer = self.ready(flow, message)
         if flow["send"]["kind"] == "button":
             self.native.click(flow, flow["send"]["target"])
@@ -397,10 +425,7 @@ class FlowAdapter:
                 try:
                     composer.set_focus()
                 except Exception:
-                    try:
-                        composer.click_input()
-                    except Exception:
-                        pass
+                    pass
                 time.sleep(0.3)
                 self.ready(flow, message)
                 try:

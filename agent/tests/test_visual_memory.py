@@ -4,6 +4,8 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+import pytest
+pytest.importorskip("PIL")
 from PIL import Image, ImageDraw
 
 from agent.ghost.collector.ocr_winrt import OcrBoundingBox, OcrResult, OcrWord, WinRtOcrEngine
