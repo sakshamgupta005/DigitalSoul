@@ -14,7 +14,9 @@ from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..learning.miner import needleman_wunsch_alignment
+from ..learning.skill_recorder import SensitiveDataFilter, export_skill_markdown, parse_skill_markdown
 from .catalog import short, understand_steps
+
 
 
 def step_to_token(step: Dict[str, Any]) -> str:
@@ -146,17 +148,35 @@ class LearningEngine:
                 )
             """)
 
-    def record_episode(self, steps: List[Dict[str, Any]], name: Optional[str] = None, flow: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def record_episode(
+        self,
+        steps: List[Dict[str, Any]],
+        name: Optional[str] = None,
+        flow: Optional[Dict[str, Any]] = None,
+        voice_notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Record an observed workflow episode, extract tokens, and match against patterns or past episodes."""
         from .session import clean_steps
-        steps = clean_steps(steps)
-        if not steps:
+        raw_steps = clean_steps(steps)
+        if not raw_steps:
             return {"action": "ignored", "detail": "Empty or non-substantive step list"}
+
+        # On-device privacy filtering (inspired by microsoft/skill-recorder)
+        steps = []
+        for s in raw_steps:
+            clean_s, _ = SensitiveDataFilter.redact_step(s)
+            steps.append(clean_s)
+
+        scrubbed_voice, _ = SensitiveDataFilter.redact_text(voice_notes) if voice_notes else (None, 0)
 
         ep_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         tokens = [step_to_token(s) for s in steps]
         understanding = understand_steps(steps, flow=flow, name=name)
+        if scrubbed_voice:
+            understanding["voice_notes"] = scrubbed_voice
+            if not name:
+                name = scrubbed_voice.split(".")[0].strip()[:60].capitalize()
 
         with self.db:
             self.db.execute(
@@ -164,6 +184,7 @@ class LearningEngine:
                 (ep_id, str(uuid.uuid4()), name or understanding.get("intent") or "Demonstration",
                  now, json.dumps(steps, ensure_ascii=False), json.dumps(tokens), json.dumps(understanding))
             )
+
 
         # 1. Check if this aligns with any existing learned pattern
         patterns = self.list_patterns()
@@ -411,9 +432,83 @@ class LearningEngine:
 
         return steps
 
+    def export_skill(self, item_id: str) -> str:
+        """Export a learned pattern or recorded demonstration to standard Microsoft SKILL.md format."""
+        pattern = self.get_pattern(item_id)
+        if pattern:
+            return export_skill_markdown(pattern)
+        row = self.db.execute("SELECT id, name, steps_json, summary_json FROM episodes WHERE id = ?", (item_id,)).fetchone()
+        if row:
+            steps = json.loads(row[2])
+            summary = json.loads(row[3]) if row[3] else {}
+            return export_skill_markdown({
+                "name": row[1],
+                "intent": summary.get("intent", row[1]),
+                "steps": steps,
+                "parameters": summary.get("parameters", []),
+                "support": 1,
+            })
+        raise ValueError(f"Pattern or episode '{item_id}' not found")
+
+    def import_skill(self, markdown_text: str) -> Dict[str, Any]:
+        """Import a standard Microsoft SKILL.md document into learned patterns."""
+        candidate = parse_skill_markdown(markdown_text)
+        desktop_steps = []
+        for s in candidate.steps:
+            target_name = s.locators[0].value if s.locators else "Element"
+            desktop_steps.append({
+                "kind": "click" if s.verb == "click" else ("set_text" if s.verb in ("set_field", "set_text") else "action"),
+                "app": s.app,
+                "label": target_name,
+                "value": s.input if isinstance(s.input, str) else "",
+                "target": {"name": target_name},
+            })
+        now = datetime.now(timezone.utc).isoformat()
+        pat_id = f"pattern_{uuid.uuid4().hex[:8]}"
+        params = candidate.parameters or []
+        with self.db:
+            self.db.execute("""
+                INSERT INTO learned_patterns VALUES (?,?,?,?,?,?,?,?,?,?)
+            """, (
+                pat_id, candidate.name, candidate.description, 1, 1.0,
+                json.dumps(desktop_steps, ensure_ascii=False), json.dumps(params),
+                json.dumps([f"import_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"]),
+                now, now
+            ))
+        return {
+            "action": "imported",
+            "pattern_id": pat_id,
+            "name": candidate.name,
+            "step_count": len(desktop_steps),
+            "parameters": params,
+        }
+
+    def evaluate_skill(self, item_id: str) -> Dict[str, Any]:
+        """Evaluate locator resilience, guardrails, and privacy posture of a pattern or episode."""
+        from ..learning.skill_recorder import SkillQualityEvaluator, parse_skill_markdown
+        skill_md = self.export_skill(item_id)
+        candidate = parse_skill_markdown(skill_md)
+        report = SkillQualityEvaluator.evaluate(candidate)
+        return report.model_dump()
+
+    def optimize_skill(self, item_id: str) -> Dict[str, Any]:
+        """Optimize a pattern or episode with noise compaction, multi-strategy locators, and quality scoring."""
+        from ..learning.skill_recorder import SkillOptimizer
+        pattern = self.get_pattern(item_id)
+        steps = pattern["skeleton"] if pattern else None
+        if not steps:
+            row = self.db.execute("SELECT steps_json FROM episodes WHERE id = ?", (item_id,)).fetchone()
+            if row:
+                steps = json.loads(row[0])
+        if not steps:
+            raise ValueError(f"Pattern or episode '{item_id}' not found")
+        return SkillOptimizer.optimize(steps)
+
+
     def delete_pattern(self, pattern_id: str):
         with self.db:
             self.db.execute("DELETE FROM learned_patterns WHERE id = ?", (pattern_id,))
 
     def close(self):
         self.db.close()
+

@@ -16,6 +16,14 @@ from .whatsapp import executable, hosted_pid, WHATSAPP_EXES, is_whatsapp
 
 # Chromium browsers spread one window across child processes.
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
+
+
+def exe_name(path):
+    if not path:
+        return ""
+    s = str(path)
+    idx = max(s.rfind("\\"), s.rfind("/"))
+    return s[idx + 1:].lower() if idx != -1 else s.lower()
 CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabItem", "CheckBox", "RadioButton",
                    "DataItem", "TreeItem", "Text", "Image", "ComboBox", "SplitButton")
 # Clicking a page or window root says nothing about what was clicked (typing is captured separately).
@@ -181,7 +189,7 @@ def drop_non_substantive_steps(steps):
     current_visit = []
     current_app = None
     for step in steps:
-        app = PureWindowsPath(step.get("path") or step.get("app") or "").name.lower()
+        app = exe_name(step.get("path") or step.get("app") or "")
         if step.get("kind") == "open_app" or (current_app is not None and app != current_app):
             if current_visit:
                 visits.append(current_visit)
@@ -208,21 +216,25 @@ def drop_non_substantive_steps(steps):
 
         # B. Drop blank / new tab pages that had no interaction
         no_blanks = []
+        n_cleaned = len(cleaned)
         for i, s in enumerate(cleaned):
             if s.get("kind") == "open_url" and is_blank_url(s.get("url")):
-                following = cleaned[i + 1:]
-                if any(f.get("kind") == "open_url" for f in following) or not any(is_substantive_step(f) for f in following):
+                has_next_url = any(cleaned[j].get("kind") == "open_url" for j in range(i + 1, n_cleaned))
+                has_subsequent_action = any(is_substantive_step(cleaned[j]) for j in range(i + 1, n_cleaned))
+                if has_next_url or not has_subsequent_action:
                     continue
             no_blanks.append(s)
 
         # C. Drop dead-end chat / item clicks (superseded by another item selection before any action)
         no_dead_ends = []
+        n_blanks = len(no_blanks)
         for i, s in enumerate(no_blanks):
             c_type = (s.get("target") or {}).get("control_type")
             is_item = s.get("kind") == "click" and c_type in ("ListItem", "DataItem", "TreeItem")
             if is_item:
                 superseded = False
-                for follow in no_blanks[i + 1:]:
+                for j in range(i + 1, n_blanks):
+                    follow = no_blanks[j]
                     if is_substantive_step(follow):
                         break
                     follow_ctype = (follow.get("target") or {}).get("control_type")
@@ -266,7 +278,7 @@ def clean_steps(steps):
     out = []
     for index, step in enumerate(steps):
         target = step.get("target") or {}
-        browser = PureWindowsPath(step.get("path", "")).name.lower() in BROWSER_EXES
+        browser = exe_name(step.get("path", "")) in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
         if step["kind"] == "click" and (browser or (target.get("control_type") and target.get("control_type") not in CLICKABLE_KINDS)
                                         or str(target.get("automation_id", "")).startswith("Appid:")):
@@ -300,19 +312,19 @@ def compress_browsing(steps):
     out, droppable = [], []
     for step in steps:
         kind, path = step["kind"], step.get("path", "")
-        browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
-        b_name = PureWindowsPath(path).name.lower()
+        browser = exe_name(path) in BROWSER_EXES
+        b_name = exe_name(path)
         if kind == "open_url":
             at = step.get("at", 0)
             url = step.get("url", "")
             video = is_video(url)
             typed = any(out[i]["kind"] == "set_text" and "address" in (out[i].get("field") or "").lower()
-                        and PureWindowsPath(out[i].get("path", "")).name.lower() == b_name for i in droppable)
-            drop = {i for i in droppable if PureWindowsPath(out[i].get("path", "")).name.lower() == b_name and (
+                        and exe_name(out[i].get("path", "")) == b_name for i in droppable)
+            drop = {i for i in droppable if exe_name(out[i].get("path", "")) == b_name and (
                 video or out[i]["kind"] == "open_app" or at - out[i].get("at", at) <= FOLD_SECONDS)}
             out = [s for i, s in enumerate(out) if i not in drop]
             droppable = []
-            if out and out[-1]["kind"] == "open_url" and PureWindowsPath(out[-1].get("path", "")).name.lower() == b_name:
+            if out and out[-1]["kind"] == "open_url" and exe_name(out[-1].get("path", "")) == b_name:
                 prev_url = out[-1].get("url", "")
                 # A page you left by typing in the address bar was somewhere you went, however briefly;
                 # results pages, and a site's own pages on the way to its video, were only a way there.
@@ -1023,14 +1035,16 @@ class Session:
 
     def finish(self):
         self.events.__exit__(None, None, None)
-        self._closed.set()
-        if self._visual_queue:
+        if hasattr(self, "_closed"):
+            self._closed.set()
+        if getattr(self, "_visual_queue", None):
             try:
                 self._visual_queue.put_nowait(None)
             except Exception:
                 pass
-        if self._visual_thread and self._visual_thread.is_alive():
+        if getattr(self, "_visual_thread", None) and self._visual_thread.is_alive():
             self._visual_thread.join(timeout=1.0)
+
         flow = None
         if self.capture and self.capture.composed and not self.capture.done:
             # Typed but never sent: the routine still means "send this", with Enter on replay.

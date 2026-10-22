@@ -41,6 +41,16 @@ from agent.ghost.learning.hypothesis import (
     generate_heuristic_hypotheses,
     enhance_candidate_with_llm,
 )
+from agent.ghost.learning.skill_recorder import (
+    SensitiveDataFilter,
+    SkillSynthesizer,
+    export_skill_markdown,
+    parse_skill_markdown,
+    ActionCompactor,
+    SkillQualityReport,
+    SkillQualityEvaluator,
+    SkillOptimizer,
+)
 
 __all__ = [
     "NormalizedAction",
@@ -66,4 +76,14 @@ __all__ = [
     "compute_episode_duration_seconds",
     "generate_heuristic_hypotheses",
     "enhance_candidate_with_llm",
+    "SensitiveDataFilter",
+    "SkillSynthesizer",
+    "export_skill_markdown",
+    "parse_skill_markdown",
+    "ActionCompactor",
+    "SkillQualityReport",
+    "SkillQualityEvaluator",
+    "SkillOptimizer",
 ]
+
+

@@ -14,6 +14,7 @@ from contracts import (
     OutcomeCheck,
     Provenance,
     Recovery,
+    Trust,
 )
 from agent.ghost.learning.models import WorkflowCandidate, CandidateStep
 
@@ -116,6 +117,16 @@ def compile_workflow(
                 args=c.get("args", {}),
             )
         )
+    if not compiled_checks:
+        app_name = candidate.steps[0].app if candidate.steps else "app"
+        compiled_checks.append(
+            OutcomeCheck(
+                type="page_assertion",
+                app=app_name,
+                check="workflow_completed",
+                args={},
+            )
+        )
 
     # Instantiate and validate Workflow
     workflow = Workflow(
@@ -123,7 +134,7 @@ def compile_workflow(
         version=version,
         name=name or candidate.name,
         description=description or candidate.description,
-        trust=trust,
+        trust=Trust(trust) if isinstance(trust, str) else trust,
         provenance=provenance,
         parameters=compiled_params,
         steps=compiled_steps,

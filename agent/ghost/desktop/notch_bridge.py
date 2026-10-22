@@ -277,8 +277,12 @@ def main():
                     elif method == "shopify_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
-                        from ..browser.shopify_session import ShopifySession
                         product_data = payload.get("product") or {}
+                        if "store_url" in product_data:
+                            shopify_url(product_data["store_url"])
+                        from ..browser.shopify_session import ShopifySession
+
+
                         click_save = payload.get("click_save", False)
                         if shopify_session is None:
                             shopify_session = ShopifySession()
@@ -310,8 +314,34 @@ def main():
                     elif method == "learning_delete":
                         learning_engine.delete_pattern(payload["id"])
                         result = {"deleted": True}
+                    elif method == "export_skill":
+                        result = {"skill_markdown": learning_engine.export_skill(payload["id"])}
+                    elif method == "import_skill":
+                        result = learning_engine.import_skill(payload["skill_markdown"])
+                    elif method == "demonstration_synthesize":
+                        from ..learning.skill_recorder import SkillSynthesizer
+                        synth = SkillSynthesizer()
+                        res = synth.synthesize(
+                            steps=payload.get("steps", []),
+                            voice_notes=payload.get("voice_notes"),
+                            screen_context=payload.get("screen_context"),
+                            app_name=payload.get("app_name"),
+                        )
+                        result = {
+                            "candidate": res["candidate"].model_dump(mode="json"),
+                            "skill_markdown": res["skill_markdown"],
+                            "redacted_count": res["redacted_count"],
+                        }
+
+                    elif method == "evaluate_skill":
+                        result = learning_engine.evaluate_skill(payload["id"])
+
+                    elif method == "optimize_skill":
+                        result = learning_engine.optimize_skill(payload["id"])
                     else:
                         raise ValueError("Unknown desktop command")
+
+
                     emit({"id": request_id, "ok": True, "result": result})
                 except Exception as exc:
                     emit({"id": request_id, "ok": False, "error": str(exc)[:600]})

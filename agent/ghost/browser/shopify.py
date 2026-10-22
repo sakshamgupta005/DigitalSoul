@@ -107,8 +107,7 @@ def generate_product_fields(partial: Dict[str, Any]) -> Dict[str, Any]:
 
     # Attempt OmniRoute / LLM enhancement if configured
     client = OmniRouteClient()
-    probe = client.probe(inference=False) if client.settings.model else {}
-    if probe.get("reachable") and client.settings.model:
+    if client.settings.model and client.probe(inference=False).get("reachable"):
         prompt = (
             f"You are a Shopify e-commerce merchandising specialist. "
             f"Given this partial product info: Title: '{base.title}', Category: '{base.category}', Base Price: '{base.price}'. "

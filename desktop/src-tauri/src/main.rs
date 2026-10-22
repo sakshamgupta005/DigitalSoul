@@ -82,9 +82,11 @@ impl Bridge {
     }
 
     fn request(&self, method: String, payload: Value) -> Reply {
-        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize"].contains(&method.as_str()) {
+        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize", "export_skill", "import_skill", "demonstration_synthesize", "evaluate_skill", "optimize_skill"].contains(&method.as_str()) {
             return Err("Unsupported desktop command".into());
         }
+
+
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
         let line = serde_json::to_string(&json!({"id":id,"method":method,"payload":payload})).map_err(|e| e.to_string())?;
         if line.len() > 65536 { return Err("Desktop request too large".into()) }

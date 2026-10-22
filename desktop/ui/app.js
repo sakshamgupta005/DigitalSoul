@@ -364,6 +364,22 @@ function renderPatterns() {
     const runBtn = element('button', 'primary mini-btn', '▶ Run with variables');
     runBtn.addEventListener('click', () => openPatternWorkflow(pat));
 
+    const exportBtn = element('button', 'secondary mini-btn', '📄 SKILL.md');
+    exportBtn.title = 'Export to Microsoft SKILL.md format';
+    exportBtn.addEventListener('click', () => action(async () => {
+      const res = await rpc('export_skill', { id: pat.id });
+      try { await navigator.clipboard.writeText(res.skill_markdown); } catch {}
+      notice('Copied standard SKILL.md definition to clipboard!', 'success');
+    }));
+
+    const auditBtn = element('button', 'secondary mini-btn', '🛡️ Audit');
+    auditBtn.title = 'Audit skill quality, resilience & privacy';
+    auditBtn.addEventListener('click', () => action(async () => {
+      const rep = await rpc('evaluate_skill', { id: pat.id });
+      const summary = `Skill Quality: Grade ${rep.grade} (${rep.score}/100)\n\nLocators: ${rep.dimension_scores.locators}/25 · Guardrails: ${rep.dimension_scores.guardrails}/25\nParams: ${rep.dimension_scores.parameters}/25 · Privacy: ${rep.dimension_scores.privacy}/25\n\nStrengths:\n• ${rep.strengths.join('\n• ')}\n\nTips:\n• ${rep.improvement_tips.join('\n• ')}`;
+      alert(summary);
+    }));
+
     const delBtn = element('button', 'text-button danger-text', 'Forget');
     delBtn.addEventListener('click', () => action(async () => {
       if (!confirmDialog(`Forget learned pattern “${pat.name}”?`)) return;
@@ -372,11 +388,12 @@ function renderPatterns() {
       notice('Pattern removed.');
     }));
 
-    actions.append(delBtn, runBtn);
+    actions.append(delBtn, auditBtn, exportBtn, runBtn);
     card.append(header, desc, paramsBox, actions);
     list.append(card);
   }
 }
+
 
 function openPatternWorkflow(pat) {
   view('approve');
@@ -1423,6 +1440,11 @@ function confirmDialog(message) {
   dialogOpen = true;
   try { return window.confirm(message); } finally { setTimeout(() => { dialogOpen = false; }, 300); }
 }
+function promptDialog(message, defaultValue = '') {
+  dialogOpen = true;
+  try { return window.prompt(message, defaultValue); } finally { setTimeout(() => { dialogOpen = false; }, 300); }
+}
+
 $('stop-all').addEventListener('click', () => action(async () => { await rpc('stop_jobs'); await refresh(); notice('Desktop stop is latched. Pending jobs were cancelled; an invocation already started cannot be undone.'); }));
 $('resume-all').addEventListener('click', () => action(async () => { await rpc('resume_jobs'); notice('Desktop worker re-armed. Cancelled jobs stay cancelled.'); }));
 $('delete-workflow').addEventListener('click', () => action(async () => {
@@ -1498,8 +1520,16 @@ async function boot() {
   state.connected = true;
   $('connection').className = 'connection online';
   $('connection').title = 'Local desktop backend connected';
+  $('import-skill-btn')?.addEventListener('click', () => action(async () => {
+    const md = promptDialog('Paste standard Microsoft SKILL.md specification:');
+    if (!md || !md.trim()) return;
+    const res = await rpc('import_skill', { skill_markdown: md.trim() });
+    await refresh();
+    notice(`Imported skill "${res.name}" with ${res.step_count} verified steps.`, 'success');
+  }));
   await refresh();
 }
+
 boot().catch(async (error) => {
   $('connection').className = 'connection error';
   await expanded(true).catch(() => {});
