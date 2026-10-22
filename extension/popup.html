@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DigitalSoul Observer</title>
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-active {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #38bdf8;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .info-card {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #94a3b8;
+      margin-bottom: 12px;
+      border: 1px solid #334155;
+    }
+    .btn {
+      width: 100%;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: #38bdf8;
+      color: #0f172a;
+      transition: background 0.15s ease;
+    }
+    .btn:hover {
+      background: #7dd3fc;
+    }
+    .btn-secondary {
+      background: #334155;
+      color: #f8fafc;
+      margin-top: 8px;
+    }
+    .btn-secondary:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">DigitalSoul</div>
+    <div class="badge badge-active">
+      <span class="dot"></span>
+      <span>Observing</span>
+    </div>
+  </div>
+  <div class="info-card">
+    Semantic action observer is actively monitoring consented internal workflows. Passwords & payment fields are redacted at source.
+  </div>
+  <button id="toggleBtn" class="btn">Pause Observation</button>
+  <button id="dashboardBtn" class="btn btn-secondary">Open Local Dashboard</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

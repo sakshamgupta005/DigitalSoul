@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "DigitalSoul Observer",
+  "version": "1.1.0",
+  "description": "Consented semantic workflow observer for DigitalSoul personal twin.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:7777/*",
+    "http://localhost:*/*",
+    "http://*.acme.local/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DigitalSoul Observer"
+  }
+}
