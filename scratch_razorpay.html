@@ -1,0 +1,407 @@
+<!doctype html>
+  <html lang="en-IN" style="overscroll-behavior-y:none"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><script>
+(function() {
+  'use strict';
+  try {
+    var root = document.documentElement;
+    if (!root) return;
+
+    var ATTRIBUTE = "data-rzp-navbar-auth";
+    var PREVIEW_PARAM = "navbar_go_to_dashboard_preview";
+    var PREVIEW_VALUES = ["1","true","enabled","on"];
+
+    // The same predicate the session SDK and the React hook use — see authHintCookies.ts.
+    
+var RZP_AUTH_HINT_COOKIE_NAMES = ["rzp_mid","midExists","_rzp__rp3x"];
+var RZP_AUTH_HINT_IGNORED_VALUES = ["false"];
+function rzpReadAuthHintCookieValues(cookieString) {
+  var values = [];
+  var pairs = String(cookieString || '').split(';');
+  for (var i = 0; i < pairs.length; i++) {
+    var trimmed = pairs[i].replace(/^\s+|\s+$/g, '');
+    var equalsIndex = trimmed.indexOf('=');
+    if (equalsIndex === -1) continue;
+    var name = trimmed.slice(0, equalsIndex).replace(/^\s+|\s+$/g, '');
+    var value = trimmed.slice(equalsIndex + 1).replace(/^\s+|\s+$/g, '');
+    if (
+      RZP_AUTH_HINT_COOKIE_NAMES.indexOf(name) !== -1 &&
+      value !== '' &&
+      RZP_AUTH_HINT_IGNORED_VALUES.indexOf(value) === -1
+    ) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+function rzpHasAuthHintCookie(cookieString) {
+  return rzpReadAuthHintCookieValues(cookieString).length > 0;
+}
+
+    var hasAuthHintCookie = rzpHasAuthHintCookie(document.cookie);
+
+    // QA opens the experiment with a preview query param and no login cookies; keep the
+    // placeholder behaviour identical for them so previews reflect the real UX.
+    var isPreview = false;
+    try {
+      var previewValue = new URLSearchParams(window.location.search).get(PREVIEW_PARAM);
+      isPreview = previewValue !== null && PREVIEW_VALUES.indexOf(previewValue.toLowerCase()) !== -1;
+    } catch (previewError) {
+      isPreview = false;
+    }
+
+    // Mirrors the gate in useNavbarDashboardSession exactly. Anything the hook will settle
+    // as logged-out without a probe must not get a placeholder here either — otherwise the
+    // CTA is hidden until hydration for visitors this experiment does not even apply to.
+    // (The country gate is applied server-side: the script is not emitted outside India.)
+    var isExperimentEnabled = false;
+    if (!isPreview && !(isExperimentEnabled && hasAuthHintCookie)) return;
+
+    root.setAttribute(ATTRIBUTE, "pending");
+
+    // Safety net: React normally flips this to 'resolved' as soon as the session probe
+    // settles. If the bundle never boots, this guarantees the CTA still becomes usable.
+    window.setTimeout(function() {
+      if (root.getAttribute(ATTRIBUTE) === "pending") {
+        root.setAttribute(ATTRIBUTE, "resolved");
+      }
+    }, 2500);
+  } catch (error) {
+    // Never let the navbar placeholder break page rendering.
+  }
+})();
+</script><title data-rh="true">AI Builder Jobs at Razorpay | Hiring AI Talent</title><meta data-rh="true" property="og:title" content="AI Builder Jobs at Razorpay | Hiring AI Talent"/><meta data-rh="true" name="referrer" content="no-referrer-when-downgrade"/><meta data-rh="true" name="twitter:title" content="AI Builder Jobs at Razorpay | Hiring AI Talent"/><meta data-rh="true" name="description" content="Join Razorpay as an AI Builder and work on cutting-edge AI products, automation, and fintech innovation. Explore AI builder jobs and grow your career with Razorpay."/><meta data-rh="true" property="og:description" content="Join Razorpay as an AI Builder and work on cutting-edge AI products, automation, and fintech innovation. Explore AI builder jobs and grow your career with Razorpay."/><meta data-rh="true" name="twitter:description" content="Join Razorpay as an AI Builder and work on cutting-edge AI products, automation, and fintech innovation. Explore AI builder jobs and grow your career with Razorpay."/><meta data-rh="true" property="og:type" content="website"/><meta data-rh="true" property="og:url" content="https://razorpay.com/ai-builders/"/><meta data-rh="true" property="og:site_name" content="Razorpay"/><meta data-rh="true" property="og:image" content="https://cdn.razorpay.com/static/assets/ai-builders/images/meta-banner-ai-builders.webp"/><meta data-rh="true" property="twitter:image" content="https://cdn.razorpay.com/static/assets/ai-builders/images/meta-banner-ai-builders.webp"/><meta data-rh="true" property="twitter:site" content="@razorpay"/><meta data-rh="true" name="twitter:card" content="summary_large_image"/><meta data-rh="true" name="twitter:creator" content="Razorpay"/><meta data-rh="true" property="fb:app_id" content="413603529019368"/><meta data-rh="true" property="fb:pages" content="384638338316241"/><meta data-rh="true" name="google-site-verification" content="wSok6NPdreqsrAYRsHIGFCh3NObaVqODHBgE-IdgvgE"/><link data-rh="true" rel="icon" type="image/png" href="/build/browser/static/static/favicon-default.png"/><link data-rh="true" rel="canonical" href="https://razorpay.com/ai-builders/"/><link data-rh="true" rel="preconnect" href="https://fonts.googleapis.com"/><link data-rh="true" rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/><link data-rh="true" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Inter+Tight:ital,wght@0,100..900;1,100..900&amp;family=TASA+Orbiter+Display:wght@400;500;600&amp;display=swap"/><link data-rh="true" rel="preload" as="font" href="/build/browser/static/node_modules/@fontsource/lato/files/lato-latin-400-normal.woff2" type="font/woff2" crossorigin="anonymous"/><link data-rh="true" rel="preload" as="font" href="/build/browser/static/node_modules/@fontsource/lato/files/lato-latin-700-normal.woff2" type="font/woff2" crossorigin="anonymous"/><link data-rh="true" rel="preload" as="font" href="/build/browser/static/node_modules/@fontsource/lato/files/lato-latin-400-italic.woff2" type="font/woff2" crossorigin="anonymous"/><link data-rh="true" rel="preload" as="font" href="/build/browser/static/node_modules/@fontsource/lato/files/lato-latin-700-italic.woff2" type="font/woff2" crossorigin="anonymous"/><script data-rh="true" async="" src="https://www.googletagmanager.com/gtag/js?id=G-F42RZ69DW8"></script><script data-rh="true">window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', "G-F42RZ69DW8");</script><script data-rh="true">
+      try {
+        // addSegment source: https://segment.com/docs/connections/sources/catalog/libraries/website/javascript/quickstart/
+        addSegment = function(k) {
+          !function(){var analytics=window.analytics=window.analytics||[];if(!analytics.initialize)if(analytics.invoked)window.console&&console.error&&console.error("Segment snippet included twice.");else{analytics.invoked=!0;analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","once","off","on","addSourceMiddleware","addIntegrationMiddleware","setAnonymousId","addDestinationMiddleware"];analytics.factory=function(e){return function(){var t=Array.prototype.slice.call(arguments);t.unshift(e);analytics.push(t);return analytics}};for(var e=0;e<analytics.methods.length;e++){var key=analytics.methods[e];analytics[key]=analytics.factory(key)}analytics.load=function(key,e){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.setAttribute('data-seg-script', 's');t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n);analytics._loadOptions=e};analytics._writeKey=k;analytics.SNIPPET_VERSION="4.15.2";
+          analytics.load(k);
+          analytics.page();
+          }}();
+        }
+        removeSegment = function() {
+          script = document.querySelector('[data-seg-script=s]');
+          script && script.remove();
+        }
+        var segmentsApiKey = "YNK2Ge3yl0IaYj8PLndL5V6vfPZPQxZo";
+        if (window.prevSegKey !== segmentsApiKey) {
+          removeSegment();
+          addSegment(segmentsApiKey);
+        }
+        window.prevSegKey = segmentsApiKey;
+      } catch (e) {
+        console.error(e);
+      }
+    </script><script data-rh="true" async="" src="https://accounts.razorpay.com/registersw.min.js"></script><script data-rh="true" type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"AI Builder Jobs at Razorpay | Hiring AI Talent","description":"Join Razorpay as an AI Builder and work on cutting-edge AI products, automation, and fintech innovation. Explore AI builder jobs and grow your career with Razorpay.","url":"https://razorpay.com/ai-builders/","image":"https://cdn.razorpay.com/static/assets/ai-builders/images/meta-banner-ai-builders.webp","isPartOf":{"@type":"WebSite","name":"Razorpay","url":"https://razorpay.com/"},"potentialAction":{"@type":"ApplyAction","name":"Apply for AI Builders","target":"https://razorpay.typeform.com/to/Aj64eENJ"}}</script><link data-chunk="main" rel="preload" as="script" href="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/runtime.c49e51c7.js"/><link data-chunk="main" rel="preload" as="script" href="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/module.sentry.3779e9f8.js"/><link data-chunk="main" rel="preload" as="script" href="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/8441.34d2ab84.js"/><link data-chunk="main" rel="preload" as="script" href="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/main.75f43d83.js"/><style data-styled="" data-styled-version="5.3.9"></style></head><body style="margin:0"><div id="root"><!--$!--><template data-msg="The server did not finish this Suspense boundary: The server used &quot;renderToString&quot; which does not support Suspense. If you intended for this Suspense boundary to render the fallback content on the server consider throwing an Error somewhere within the Suspense boundary. If you intended to have the server wait for the suspended component please switch to &quot;renderToPipeableStream&quot; which supports Suspense on the server" data-stck="
+    at ct (/frontend-website/build/server/main.js:2:954550)
+    at ae (/frontend-website/node_modules/styled-components/dist/styled-components.cjs.js:1:13282)
+    at exports.ThemeProvider (/frontend-website/node_modules/styled-components/dist/styled-components.cjs.js:1:24936)
+    at FloatingDelayGroup (/frontend-website/node_modules/@floating-ui/react/dist/floating-ui.react.umd.js:1241:7)
+    at dt (/frontend-website/build/server/main.js:2:955172)
+    at h (/frontend-website/build/server/main.js:2:9147978)
+    at Lazy
+    at Suspense
+    at Zn (/frontend-website/build/server/main.js:2:4354210)
+    at Routes (/frontend-website/node_modules/react-router/umd/react-router.development.js:887:7)
+    at i (/frontend-website/build/server/main.js:2:3694067)
+    at Hydrate (/frontend-website/node_modules/@tanstack/react-query/build/lib/Hydrate.js:46:3)
+    at Vn (/frontend-website/build/server/main.js:2:4355505)
+    at QueryClientProvider (/frontend-website/node_modules/@tanstack/react-query/build/lib/QueryClientProvider.js:64:3)
+    at Router (/frontend-website/node_modules/react-router/umd/react-router.development.js:821:17)
+    at StaticRouter (/frontend-website/node_modules/react-router-dom/server.js:14:3)
+    at C (/frontend-website/build/server/main.js:2:8938925)
+    at e (/frontend-website/node_modules/react-helmet-async/lib/index.js:1:7301)
+    at t (/frontend-website/build/server/main.js:2:3370652)
+    at ChunkExtractorManager (/frontend-website/node_modules/@loadable/server/lib/ChunkExtractorManager.js:13:3)
+    at ae (/frontend-website/node_modules/styled-components/dist/styled-components.cjs.js:1:13282)"></template><!--/$--></div><script>(function () {
+  'use strict';
+  try {
+    if (window.__rzpSessionInitialized__) return;
+    window.__rzpSessionInitialized__ = true;
+    if (!window.fetch || !window.Promise) return;
+    var STATE_ANONYMOUS = "anonymous";
+    var STATE_UNKNOWN = "unknown";
+    var STATE_LOGGED_IN = "logged-in";
+    var STATE_LOGGED_OUT = "logged-out";
+    var DEFINITIVE_STATES = ["logged-in","refreshable","logged-out"];
+    var LOGGED_IN_STATES = ["logged-in","refreshable"];
+    var REASON = {"noSessionCookie":"no_session_cookie","unsupportedCountry":"unsupported_country","probeInconclusive":"probe_inconclusive","probeFailed":"probe_failed","apiError":"api_error","unrecognisedAnswer":"unrecognised_answer"};
+    var SERVER_REASONS = ["no_session_cookie","unsupported_country","probe_inconclusive","probe_failed"];
+    var KNOWN_REASONS = ["no_session_cookie","unsupported_country","probe_inconclusive","probe_failed","api_error","unrecognised_answer"];
+var RZP_AUTH_HINT_COOKIE_NAMES = ["rzp_mid","midExists","_rzp__rp3x"];
+var RZP_AUTH_HINT_IGNORED_VALUES = ["false"];
+function rzpReadAuthHintCookieValues(cookieString) {
+  var values = [];
+  var pairs = String(cookieString || '').split(';');
+  for (var i = 0; i < pairs.length; i++) {
+    var trimmed = pairs[i].replace(/^\s+|\s+$/g, '');
+    var equalsIndex = trimmed.indexOf('=');
+    if (equalsIndex === -1) continue;
+    var name = trimmed.slice(0, equalsIndex).replace(/^\s+|\s+$/g, '');
+    var value = trimmed.slice(equalsIndex + 1).replace(/^\s+|\s+$/g, '');
+    if (
+      RZP_AUTH_HINT_COOKIE_NAMES.indexOf(name) !== -1 &&
+      value !== '' &&
+      RZP_AUTH_HINT_IGNORED_VALUES.indexOf(value) === -1
+    ) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+function rzpHasAuthHintCookie(cookieString) {
+  return rzpReadAuthHintCookieValues(cookieString).length > 0;
+}
+    var statePromise = null;
+    var stateReason = null;
+    function getAuthHintKey() {
+      try {
+        return rzpReadAuthHintCookieValues(document.cookie).join('|');
+      } catch (err) {
+        return '';
+      }
+    }
+    function readCachedState(hintKey) {
+      try {
+        var raw = window.sessionStorage.getItem("rzp_navbar_session_state_v2");
+        if (!raw) return null;
+        var cached = JSON.parse(raw);
+        if (!cached || cached.hintKey !== hintKey) return null;
+        if (typeof cached.timestamp !== 'number') return null;
+        var isDefinitive = DEFINITIVE_STATES.indexOf(cached.state) !== -1;
+        if (!isDefinitive && cached.state !== STATE_UNKNOWN) return null;
+        var ttl = 120000;
+        if (cached.state === STATE_LOGGED_OUT) {
+          ttl = 60000;
+        } else if (isDefinitive) {
+          ttl = 300000;
+        }
+        var age = Date.now() - cached.timestamp;
+        if (age < 0 || age > ttl) return null;
+        stateReason =
+          cached.state === STATE_UNKNOWN && KNOWN_REASONS.indexOf(cached.reason) !== -1
+            ? cached.reason
+            : null;
+        return cached.state;
+      } catch (err) {
+        return null;
+      }
+    }
+    function writeCachedState(hintKey, state, reason) {
+      stateReason = state === STATE_UNKNOWN ? reason : null;
+      try {
+        window.sessionStorage.setItem(
+          "rzp_navbar_session_state_v2",
+          JSON.stringify({
+            state: state,
+            reason: stateReason,
+            isLoggedIn: isLoggedInState(state),
+            timestamp: Date.now(),
+            hintKey: hintKey
+          })
+        );
+      } catch (err) {
+      }
+    }
+    function findGoToDashboardVariant() {
+      var splitzData = window.__LAMBDA_SPLITZ_DATA__;
+      if (!splitzData || typeof splitzData !== 'object') return undefined;
+      var experimentNames = Object.keys(splitzData);
+      for (var i = 0; i < experimentNames.length; i++) {
+        var candidate = splitzData[experimentNames[i]];
+        if (candidate && candidate.experimentId === "Ss28iSei4zeehg") {
+          return candidate;
+        }
+      }
+      return null;
+    }
+    function isVariantOn(variant) {
+      var variables = (variant && variant.variables) || [];
+      for (var j = 0; j < variables.length; j++) {
+        var variable = variables[j] || {};
+        if (
+          (variable.key === 'result' && variable.value === 'on') ||
+          (variable.key === 'enabled' && variable.value === 'true') ||
+          (variable.key === 'variant' && variable.value === 'on')
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function isGoToDashboardExperimentEnabled() {
+      try {
+        var variant = findGoToDashboardVariant();
+        if (!variant) return true;
+        return isVariantOn(variant);
+      } catch (err) {
+        return true;
+      }
+    }
+    function isNavbarPreviewEnabled() {
+      try {
+        var value = new URLSearchParams(window.location.search).get("navbar_go_to_dashboard_preview");
+        return value !== null && ["1","true","enabled","on"].indexOf(value.toLowerCase()) !== -1;
+      } catch (err) {
+        return false;
+      }
+    }
+    function isOneTapGateEnabled() {
+      try {
+        return isNavbarPreviewEnabled() || isVariantOn(findGoToDashboardVariant());
+      } catch (err) {
+        return false;
+      }
+    }
+    function normalizeServerState(data) {
+      if (!data || typeof data !== 'object') return STATE_UNKNOWN;
+      if (typeof data.state === 'string') {
+        if (DEFINITIVE_STATES.indexOf(data.state) !== -1) return data.state;
+        if (data.state === STATE_UNKNOWN) return STATE_UNKNOWN;
+      }
+      if (typeof data.state === 'string' || typeof data.isLoggedIn !== 'boolean') {
+        return STATE_UNKNOWN;
+      }
+      return data.isLoggedIn ? STATE_LOGGED_IN : STATE_LOGGED_OUT;
+    }
+    function readServerAnswer(data) {
+      var state = normalizeServerState(data);
+      if (state !== STATE_UNKNOWN) return { state: state, reason: null };
+      if (data && data.state === STATE_UNKNOWN) {
+        if (data.reason === undefined) return { state: state, reason: null };
+        var isServerReason = SERVER_REASONS.indexOf(data.reason) !== -1;
+        return { state: state, reason: isServerReason ? data.reason : REASON.unrecognisedAnswer };
+      }
+      return { state: state, reason: REASON.unrecognisedAnswer };
+    }
+    function resolveSessionState() {
+      var hintKey = getAuthHintKey();
+      if (!hintKey) {
+        return Promise.resolve(STATE_ANONYMOUS);
+      }
+      var countryCode = window.__COUNTRY_CODE__ || "IN";
+      if (countryCode !== "IN") {
+        stateReason = REASON.unsupportedCountry;
+        return Promise.resolve(STATE_UNKNOWN);
+      }
+      var cachedState = readCachedState(hintKey);
+      if (cachedState !== null) {
+        return Promise.resolve(cachedState);
+      }
+      return window.fetch("/api/navbar-session", {
+        credentials: 'include',
+        headers: { 'x-razorpay-user-merchant-region': countryCode }
+      })
+        .then(function (response) {
+          if (!response.ok) return null;
+          return response.json();
+        })
+        .then(function (data) {
+          var answer =
+            data === null
+              ? { state: STATE_UNKNOWN, reason: REASON.apiError }
+              : readServerAnswer(data);
+          writeCachedState(hintKey, answer.state, answer.reason);
+          return answer.state;
+        })
+        .catch(function () {
+          writeCachedState(hintKey, STATE_UNKNOWN, REASON.apiError);
+          return STATE_UNKNOWN;
+        });
+    }
+    function isLoggedInState(state) {
+      return LOGGED_IN_STATES.indexOf(state) !== -1;
+    }
+    function getState() {
+      if (!statePromise) {
+        statePromise = resolveSessionState().then(function (state) {
+          try {
+            window.dispatchEvent(
+              new CustomEvent("rzp:session", {
+                detail: {
+                  state: state,
+                  isLoggedIn: isGoToDashboardExperimentEnabled() && isLoggedInState(state)
+                }
+              })
+            );
+          } catch (err) {
+          }
+          return state;
+        });
+      }
+      return statePromise;
+    }
+    window.RazorpaySession = {
+      getState: getState,
+      isOneTapGateEnabled: isOneTapGateEnabled,
+      getStateReason: function () {
+        return stateReason;
+      },
+      isLoggedIn: function () {
+        if (!isGoToDashboardExperimentEnabled()) {
+          return Promise.resolve(false);
+        }
+        return getState().then(isLoggedInState);
+      }
+    };
+  } catch (err) {
+  }
+})();</script><script id="__LOADABLE_REQUIRED_CHUNKS__" type="application/json">[]</script><script id="__LOADABLE_REQUIRED_CHUNKS___ext" type="application/json">{"namedChunks":[]}</script><script async="" data-chunk="main" src="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/runtime.c49e51c7.js"></script><script async="" data-chunk="main" src="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/module.sentry.3779e9f8.js"></script><script async="" data-chunk="main" src="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/8441.34d2ab84.js"></script><script async="" data-chunk="main" src="/build/browser/b7b5cf74be3980c9d47484f800b9442586f90acb/js/modern/main.75f43d83.js"></script><script>
+(function() {
+  'use strict';
+  try {
+    var root = typeof window !== 'undefined' ? window : globalThis;
+    if (root.__webMcpInitialized__) return;
+
+    var ctx =
+      (typeof document !== 'undefined' && document.modelContext) ||
+      (typeof navigator !== 'undefined' && navigator.modelContext);
+
+    if (!ctx || typeof ctx.registerTool !== 'function') return;
+    root.__webMcpInitialized__ = true;
+
+    var PRODUCTS = {"payment-gateway":{"name":"Payment Gateway","tagline":"India's most trusted payment gateway","description":"Razorpay Payment Gateway lets Indian businesses accept domestic and international payments via cards, UPI, netbanking, wallets, EMI, Pay Later, and more. Supports 100+ payment methods with smart routing and real-time settlements.","pricing":{"standard":"2% flat fee on all transactions","international_cards":"Up to 3% + taxes per transaction","upi":"Free (0% MDR for most transactions)","note":"No setup fees, no AMC. Pricing may vary by business type and volume. Visit razorpay.com\u002Fpricing for full details."},"features":["100+ payment methods: cards, UPI, netbanking, wallets, BNPL, EMI, Pay Later","Smart routing and intelligent retries for higher success rates","Shopify, WooCommerce, Magento, and 100+ platform plugins","Payment Pages and Payment Links — no-code options available","Real-time dashboard with settlement tracking","PCI DSS compliant, AI-powered fraud detection","Instant refunds and chargeback management","RBI-authorised Payment Aggregator"],"use_cases":["E-commerce","SaaS","Marketplaces","D2C brands","EdTech","Healthcare","Offline + Online (O2O)"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpayment-gateway\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"magic-checkout":{"name":"Magic Checkout","tagline":"One-click checkout for D2C brands — 40% more conversions","description":"Razorpay Magic Checkout is a one-click checkout experience for D2C and e-commerce brands. It pre-fills address and payment details for 100Mn+ users, reducing checkout time and boosting conversions by up to 40% while cutting RTO (return-to-origin) by 50%.","pricing":{"note":"Magic Checkout pricing is based on GMV and plan tier. Contact Razorpay sales for pricing."},"features":["40% improvement in checkout conversion rate","50% reduction in RTO (Return to Origin) for COD orders","Pre-filled details for 100Mn+ Razorpay network users","AI-powered COD risk scoring to reduce fraud","100% RTO cost protection available","Works with all major e-commerce platforms","No additional integration — works on top of existing Razorpay Payment Gateway"],"use_cases":["D2C brands","E-commerce stores","Fashion and lifestyle","FMCG","Electronics"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fmagic\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"optimizer":{"name":"Optimizer — Intelligent Payment Routing","tagline":"Multi-gateway orchestration for 10% higher success rates","description":"Razorpay Optimizer is a payment orchestration layer that connects 15+ payment processors via a single API. It uses AI-driven smart routing to automatically select the best payment gateway for each transaction, improving success rates by up to 10% and reducing processing fees by 15–30%.","pricing":{"note":"Optimizer pricing is usage-based. Contact Razorpay for details."},"features":["Connect 15+ payment processors via single API integration","AI-driven smart router auto-selects best gateway per transaction","DIY routing dashboard — create custom routing rules without code","Up to 10% success rate improvement vs single-gateway setup","15–30% reduction in payment processing fees","Real-time failover — auto-retries on alternate gateway on failure","Unified analytics across all connected gateways"],"use_cases":["Large e-commerce platforms","Enterprise SaaS","Aggregators with high transaction volumes","Businesses already using multiple payment gateways"],"more_info":"https:\u002F\u002Frazorpay.com\u002Foptimizer-intelligent-payments-routing\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"payment-links":{"name":"Payment Links","tagline":"Accept payments without a website — share a link","description":"Razorpay Payment Links let businesses collect payments instantly by sharing a URL via WhatsApp, SMS, or email. No website or tech integration needed. Supports all Indian payment methods.","pricing":{"note":"Standard payment gateway charges apply per transaction (2% flat). No additional fee for creating links."},"features":["Create and share payment links in seconds from Dashboard or API","Supports all payment methods: cards, UPI, netbanking, wallets","Customizable amount, description, and expiry date","Bulk link creation via CSV or API","Partial payments supported","Real-time payment notifications and dashboard tracking","Works on WhatsApp, SMS, email, and social media"],"use_cases":["Freelancers and consultants","Small businesses","Offline merchants","Event registrations","Invoice collections"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpayment-links\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"payment-pages":{"name":"Payment Pages","tagline":"No-code hosted payment pages — go live in minutes","description":"Razorpay Payment Pages are no-code hosted pages for accepting one-time or recurring payments, donations, registrations, or event fees. Fully customizable, shareable via link, with built-in payment collection and confirmation.","pricing":{"note":"Standard payment gateway charges apply (2% flat). No additional fee for creating Payment Pages."},"features":["No-code setup — create and launch in minutes from Dashboard","Supports one-time payments, recurring billing, and donations","Custom branding, logo, and colors","Built-in inventory and quantity management","Automatic payment confirmation emails to customers","Analytics and payment tracking in Dashboard","Embeddable as a button on any website"],"use_cases":["NGOs and donations","Event registrations","Course fees","Membership payments","Product pre-orders"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpayment-pages\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"payment-buttons":{"name":"Payment Buttons","tagline":"Add a payment button to any website in 5 minutes","description":"Razorpay Payment Buttons let businesses embed a payment button on any website or blog with a single line of code — no backend required. Ideal for collecting fixed-amount payments, donations, or fees from a static website.","pricing":{"note":"Standard payment gateway charges apply (2% flat). No additional fee."},"features":["Single line of code — paste into any website HTML","No backend or server required","Supports fixed or custom amounts","Accepts all payment methods via Razorpay Checkout","Payments tracked in Razorpay Dashboard"],"use_cases":["Blogs","Static websites","NGOs","Schools and institutions","Individual sellers"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpayment-buttons\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"pos":{"name":"POS — Point of Sale","tagline":"Smart payment terminals for in-store and offline payments","description":"Razorpay POS provides smart payment terminals for offline and in-store payment acceptance. Includes India's first self-healing POS devices with auto network reconnection (SignalHeal), crash prevention during peak hours (SpeedHeal), and on-device diagnostics.","pricing":{"note":"POS device pricing and transaction fees available on request. Contact Razorpay sales."},"features":["Accepts cards (swipe, chip, tap), UPI QR, and wallets","Self-healing POS: SignalHeal (auto network reconnection), SpeedHeal (crash prevention), PowerHeal, and Self-Assist diagnostics","Unified online + offline payment dashboard","EMI on debit and credit cards","Supports Android-based smart POS and traditional POS terminals","Real-time settlement into bank account"],"use_cases":["Retail stores","Restaurants","Healthcare clinics","Salons and spas","Offline D2C brands","Field sales teams"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpos\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"qr-code":{"name":"QR Code Payments","tagline":"Static and dynamic QR codes for instant UPI and card payments","description":"Razorpay QR Codes enable merchants to accept payments via UPI and cards by displaying a QR code. Supports both static QR (fixed merchant ID) and dynamic QR (generated per transaction with a specific amount).","pricing":{"note":"Standard payment gateway charges apply. UPI QR payments are typically at 0% MDR."},"features":["Static QR for countertop display — reusable across transactions","Dynamic QR per transaction — customer scans and pays exact amount","Supports UPI (all major apps) and card payments","Instant payment confirmation via webhook","Works for online and offline use cases","Track payments per QR in Dashboard"],"use_cases":["Retail counter payments","Restaurant table payments","Field collection agents","Event ticketing","Kiosks"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fqr-code\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"subscriptions":{"name":"Subscriptions","tagline":"Recurring billing on cards, UPI, and netbanking — one integration","description":"Razorpay Subscriptions lets businesses automate recurring billing across all payment methods — cards, UPI Autopay, e-Mandate, and Physical NACH. Supports flexible billing models, free trials, custom discounting, and plan upgrades without disrupting billing cycles.","pricing":{"note":"Charged as per underlying payment method rates (2% for domestic cards). Contact sales for subscription-specific pricing."},"features":["Supports cards, UPI Autopay, e-Mandate, and Physical NACH","Fixed, as-presented, and usage-based billing models","Free trials and custom discount periods","Seamless in-plan upgrades without billing disruption","Automated invoice generation and customer notifications","Webhook-driven integration for billing events","Dashboard to monitor, pause, cancel, or reactivate subscriptions"],"use_cases":["SaaS platforms","Streaming and content","EdTech","Health and fitness memberships","Digital subscriptions"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fsubscriptions\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"upi-autopay":{"name":"UPI Autopay","tagline":"Automated recurring UPI payments — set, forget, get paid","description":"Razorpay UPI Autopay enables businesses to collect recurring payments automatically via UPI. Customers authorize once via a ₹1 mandate; subsequent debits happen automatically on schedule. Covers 60+ UPI apps with intelligent retries recovering 8% more failed payments.","pricing":{"note":"Pricing is customized based on business model, volumes, and use case. Contact Razorpay sales for a quote."},"features":["100% UPI app coverage — 60+ apps including GPay, PhonePe, Paytm","₹1 registration mandates for high conversion","Pre-debit notifications sent 24–48 hours before every charge","Intelligent retry mechanism — 8% more collections vs standard","Irrevocable mandates for lending use cases","Smart Intent — shows customer's preferred UPI app at checkout","Dynamic QR codes for mandate registration","T+0 \u002F T+1 settlements for lenders","Reserve Pay, Turbo UPI, and One Time Mandate available"],"use_cases":["Lending EMI collections","Mutual fund SIPs","SaaS subscriptions","EdTech courses","Insurance premiums","Content platforms"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fupi-autopay\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"e-mandate":{"name":"e-Mandate \u002F e-NACH","tagline":"Recurring payments via netbanking — paperless, automated","description":"Razorpay e-NACH and e-Mandate enable businesses to automate recurring collections directly from customer bank accounts via netbanking. Fully digital — mandate setup takes 2 working days vs 21 for physical ECS.","pricing":{"note":"Pricing is customized. Contact Razorpay sales for rates."},"features":["e-NACH: governed by NPCI, covers 40+ banks","e-Mandate: bank-controlled, available at 4–5 major banks","2-day mandate processing vs 21 days for physical ECS","One-time netbanking authorization — no further customer intervention needed","Registration via Razorpay Checkout or secure Registration Links","Webhook support for real-time mandate and payment status"],"use_cases":["Insurance premium collection","Loan EMI \u002F NBFC repayments","Utility bills","School fees","Mutual fund SIPs"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fe-mandate\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"international-payments":{"name":"International Payments","tagline":"Accept global payments and bank transfers — built for Indian exporters","description":"Razorpay offers two ways to accept international payments: (1) International Payment Gateway for card and wallet payments from 180+ countries in 135+ currencies at up to 3%. (2) MoneySaver Export Account — virtual multi-currency accounts for SWIFT, ACH, SEPA, and FPS bank transfers at just 1% with zero forex markup. RBI PA-CB licensed.","pricing":{"international_cards_wallets":"Up to 3% + taxes per card\u002Fwallet transaction","bank_transfers_moneysaver":"1% flat fee, zero forex markup, no hidden charges","savings":"Save up to 75% vs traditional bank wire fees","note":"PayPal transactions are charged at PayPal's rates."},"features":["180+ countries, 135+ currencies supported","Apple Pay and Google Pay — 1-tap checkout, 95% success rates","Virtual local account details: USD (ACH), GBP (FPS), EUR (SEPA), UAE (IBAN), SWIFT","Auto-generated FIRC for RBI compliance","Works with Amazon US, Upwork, Toptal, Freelancer, Deel","90–95% card success rates with intelligent routing","AI-powered fraud detection and chargeback protection","RBI PA-CB licensed"],"use_cases":["Goods exports","SaaS with global customers","Freelancers","D2C brands selling globally","Marketplace sellers","Travel & OTAs"],"more_info":"https:\u002F\u002Frazorpay.com\u002Faccept-international-payments\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"route":{"name":"Route — Split Payments","tagline":"Split and distribute payments across vendors, partners, and accounts","description":"Razorpay Route allows marketplaces, aggregators, and platforms to split incoming payments and transfer funds to multiple linked accounts automatically. Supports configurable hold logic, Transfer APIs, and escrow-style flows.","pricing":{"note":"Route pricing is based on transfer volumes. Contact Razorpay sales for rates."},"features":["Split payments across multiple linked accounts instantly","Configurable hold logic — delay settlements by custom rules","Transfer APIs for automated payout flows","Linked Account management via Dashboard or API","Supports marketplace vendor payouts, insurance commission splits, mutual fund settlements","Reversal support for refunds and cancellations"],"use_cases":["Marketplaces","E-commerce aggregators","Insurance platforms","Real estate platforms","Mutual fund distributors"],"more_info":"https:\u002F\u002Frazorpay.com\u002Froute\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"instant-settlements":{"name":"Instant Settlements","tagline":"Get your money in minutes — on-demand and same-day settlements","description":"Razorpay Instant Settlements lets businesses access their payment proceeds immediately — on-demand or same-day — instead of waiting for the standard T+2 settlement cycle. Available from Day 1 with zero setup fees.","pricing":{"note":"A small fee applies per instant settlement request. Contact Razorpay for current rates."},"features":["On-demand settlement — withdraw funds anytime, even weekends and holidays","Same-day settlement for faster cash flow","Available from Day 1 of onboarding — no minimum tenure required","Zero setup fees","Works across all payment methods in your Razorpay account","Configurable settlement schedules"],"use_cases":["D2C brands with high working capital needs","Startups","Businesses with seasonal cash flow","SMEs managing vendor payments"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fsettlement\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"engage":{"name":"Razorpay Engage","tagline":"Payment-powered loyalty and rewards marketing","description":"Razorpay Engage is a growth marketing suite that lets businesses run rewards programs, issue gift cards, create branded wallets, and run targeted loyalty campaigns — all powered by Razorpay's payments infrastructure.","pricing":{"note":"Engage pricing is based on program size and usage. Contact Razorpay for details."},"features":["Rewards and loyalty program management","Gift card issuance and redemption","Branded digital wallets","Targeted campaigns based on payment behavior","Integration with Razorpay payment data for personalized offers","Analytics on campaign ROI and redemption rates"],"use_cases":["D2C brands","Retail chains","Food & beverage businesses","Subscription platforms","E-commerce marketplaces"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fengage\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"razorpayx":{"name":"RazorpayX — Business Banking","tagline":"Business banking and financial operations for modern businesses","description":"RazorpayX is Razorpay's business banking and financial operations platform. It offers current accounts, automated API payouts with AI-powered multi-bank routing, vendor payments, payout links, corporate cards, escrow management, and embedded lending — all in one dashboard integrated with payment collections.","pricing":{"note":"RazorpayX pricing varies by product. Current accounts, payouts, and corporate cards have separate pricing. Contact Razorpay for details."},"features":["Business current accounts — guided opening, debit cards, cheque book","API payouts with AI-powered multi-bank routing (NEFT\u002FRTGS\u002FIMPS\u002FUPI)","Vendor payments with OCR invoice capture and multi-layer approvals","Corporate cards — unsecured credit up to ₹2Cr, 1% cashback, 30% off on 500+ SaaS tools","Payout Links — send refunds and vendor payments without collecting bank details","Automated TDS calculation and filing","Accounting integrations with Tally and Zoho","Digital lending and working capital access","Unified dashboard linking collections and payouts"],"use_cases":["Startups","D2C businesses","SaaS companies","Marketplaces","Businesses with high vendor\u002Ffreelancer payouts"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fx\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"vendor-payments":{"name":"Vendor Payments","tagline":"End-to-end accounts payable automation","description":"Razorpay Vendor Payments automates the full accounts payable cycle — from invoice capture to payment. Uses OCR for invoice data extraction, multi-layer approval workflows, automated TDS calculation and filing with NSDL, and integrated payouts via all rails.","pricing":{"note":"Contact Razorpay for vendor payments pricing."},"features":["OCR-powered invoice capture — extract data from PDFs and images automatically","Multi-layer approval workflows with role-based access","Automated TDS calculation, deduction, and NSDL filing","Payouts via NEFT, RTGS, IMPS, and UPI","Vendor onboarding and bank detail verification","GST reconciliation and compliance support","Integration with Tally, Zoho Books, and other accounting tools"],"use_cases":["Businesses with large vendor bases","Startups scaling operations","E-commerce companies with supplier payments","Companies with complex TDS obligations"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fx\u002Fvendor-payments\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"payout-links":{"name":"Payout Links","tagline":"Send money without collecting bank details","description":"Razorpay Payout Links let businesses send payouts to vendors, customers, or employees via a shareable link — the recipient enters their own bank details or UPI ID. No need to pre-collect bank information. Ideal for refunds, cashbacks, rewards, and vendor disbursements.","pricing":{"note":"Small fee per payout transaction. Contact Razorpay for current rates."},"features":["Recipient enters their own bank\u002FUPI details — no pre-collection needed","Payout via UPI, IMPS, NEFT, or directly to card","Create links via Dashboard or API","Bulk payout link generation via CSV","Expiry date configurable per link","Real-time status tracking in Dashboard"],"use_cases":["Customer refunds","Employee expense reimbursements","Freelancer payments","Cashbacks and rewards","Insurance claim disbursements"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fx\u002Fpayout-links\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"payroll":{"name":"Razorpay Payroll","tagline":"Automated payroll and compliance for Indian businesses","description":"Razorpay Payroll automates salary processing, statutory compliance (TDS, PF, ESIC, PT), and employee management for Indian businesses. Covers compliance across 28 states and 8 UTs. Includes an employee self-serve portal and attendance management.","pricing":{"standard":"Starts at ₹2,499\u002Fmonth","note":"Pricing scales with employee count. Enterprise plans available. Visit razorpay.com\u002Fpayroll\u002Fpricing for details."},"features":["Automated salary processing and payslip generation","Statutory compliance: TDS, PF, ESIC, PT across 28 states and 8 UTs","Employee self-serve portal for payslips, tax declarations, and leave","Attendance management system integrated with payroll","Full and final settlement calculations","Reimbursement management","Form 16 and IT filing support","Enterprise-grade support for multi-entity organizations"],"use_cases":["Startups","SMEs","Mid-market companies","Businesses in multiple states with complex compliance needs"],"more_info":"https:\u002F\u002Frazorpay.com\u002Fpayroll\u002F","signup":"https:\u002F\u002Faccounts.razorpay.com\u002Fauth\u002F?redirecturl=https%3A%2F%2Feasy.razorpay.com&auth_intent=signup"},"rize":{"name":"Razorpay Rize","tagline":"Company registration and startup resources for Indian founders","description":"Razorpay Rize helps Indian startup founders and SMEs register their company — Private Limited, LLP, or OPC — online. Provides step-by-step guidance, document checklists, compliance resources, and operational guides for new businesses.","pricing":{"note":"Registration fees include government charges and professional fees. Visit razorpay.com\u002Frize for current pricing."},"features":["Online registration for Private Limited, LLP, and One Person Company (OPC)","Document checklist and guided process","Professional assistance for MCA filings","Post-registration compliance guidance","Blog and resources on business compliance, GST, and regulatory updates","Integrated with Razorpay ecosystem for payments and banking post-registration"],"use_cases":["First-time founders","Freelancers formalizing their business","Startup co-founders registering a company","SMEs switching business type"],"more_info":"https:\u002F\u002Frazorpay.com\u002Frize\u002F","signup":"https:\u002F\u002Frazorpay.com\u002Frize\u002Fcompany-registration\u002F"}};
+    var PRODUCT_KEYS = Object.keys(PRODUCTS);
+
+    ctx.registerTool({
+      name: 'get_product_details',
+      description: "Returns detailed information about a specific Razorpay product, including features, pricing, and ideal use cases. Use this when the user asks what a Razorpay product does, how it works, how it's priced, or whether it suits their business needs.",
+      inputSchema: {"type":"object","properties":{"product":{"type":"string","description":"The Razorpay product to look up. Choose the closest match: 'payment-gateway' for core domestic payments, 'magic-checkout' for D2C one-click checkout, 'optimizer' for multi-gateway routing, 'payment-links' for no-website payment collection, 'payment-pages' for hosted no-code pages, 'payment-buttons' for website embed buttons, 'pos' for offline\u002Fin-store terminals, 'qr-code' for QR-based payments, 'subscriptions' for recurring billing, 'upi-autopay' for recurring UPI mandates, 'e-mandate' for netbanking recurring mandates, 'international-payments' for cross-border, 'route' for split\u002Fmarketplace payouts, 'instant-settlements' for on-demand settlements, 'engage' for loyalty and rewards, 'razorpayx' for business banking, 'vendor-payments' for accounts payable, 'payout-links' for outbound payments without bank details, 'payroll' for salary and compliance, 'rize' for company registration.","enum":["payment-gateway","magic-checkout","optimizer","payment-links","payment-pages","payment-buttons","pos","qr-code","subscriptions","upi-autopay","e-mandate","international-payments","route","instant-settlements","engage","razorpayx","vendor-payments","payout-links","payroll","rize"]}},"required":["product"]},
+      annotations: {
+        readOnlyHint: true,
+        untrustedContentHint: false
+      },
+      execute: async function(args) {
+        var product = args && args.product;
+
+        if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+          window.gtag('event', 'webmcp_tool_called', {
+            tool_name: 'get_product_details',
+            product_queried: product,
+            send_to: 'G-F42RZ69DW8'
+          });
+        }
+
+        var data = PRODUCTS[product];
+        if (!data) {
+          return JSON.stringify({
+            error: "Product '" + product + "' not found.",
+            available_products: PRODUCT_KEYS
+          });
+        }
+
+        return JSON.stringify(data, null, 2);
+      }
+    });
+  } catch (err) {
+    // Silently fail — WebMCP is optional and only available in Chrome 146+ DevTrial
+  }
+})();
+</script><script>
+            window.__QUERY_STATE__ = {"mutations":[],"queries":[{"state":{"data":{},"dataUpdateCount":1,"dataUpdatedAt":1792086453017,"error":null,"errorUpdateCount":0,"errorUpdatedAt":0,"fetchFailureCount":0,"fetchMeta":null,"isInvalidated":false,"status":"success","fetchStatus":"idle"},"queryKey":["\u002Fai-builders\u002F"],"queryHash":"[\"\u002Fai-builders\u002F\"]"}]};
+            window.__LAMBDA_SPLITZ_DATA__ = {"sticky_mobile_navbar":{"id":"LwcW8RAVHV9xzQ","name":"original","variables":[],"weight":100,"experimentId":"LwcW8QC8hCpChy"},"multi_step_navbar_desktop":null,"payroll_lp_migration":{"id":"Mf320PCnTMJU7Z","name":"new-infra","variables":[],"weight":100,"experimentId":"Mf320OzCUjqfMD"},"blade_payment_buttons":{"id":"MmpG0Ao7EbKVVc","name":"new-infra","variables":[],"weight":100,"experimentId":"MmpG0A9bJjT4WG"},"blade_payment_links":{"id":"MmUFpNuX2xo5dD","name":"new-infra","variables":[],"weight":100,"experimentId":"MmUFpNgrfcWFn6"},"assisted_discovery":{"id":"MNCW6JbZE3qnZn","name":"original","variables":[],"weight":100,"experimentId":"MNCW6J8G2nuhcy"},"homepage_revamp_experiment":{"id":"N4IQszdqMiMOMR","name":"blade","variables":[],"weight":100,"experimentId":"N4IQszPRTNNVln"},"curlec_easy_onboarding":null,"enable_razorpay_accounts_in_payments":{"id":"NjR2cr6ALDPoP6","name":"accounts_variant","variables":[{"key":"result","value":"on"}],"weight":100,"experimentId":"NjR2cqd7soJZnX"},"framer_payment_gateway":{"id":"NxdIOCuAFFlLEn","name":"framer","variables":[],"weight":100,"experimentId":"NxdIOAwJRkbykH"},"assisted_discovery_optimization":{"id":"O2S03x3LhuXUDZ","name":"default","variables":[],"weight":80,"experimentId":"O2S03wZUOd8GGh"},"framer_home_page":{"id":"OjzoNBuivWdIlI","name":"framer","variables":[],"weight":100,"experimentId":"OjzoNBgSrdnGyP"},"framer_payment_links":{"id":"OMYDzNvzwiedrb","name":"framer","variables":[],"weight":100,"experimentId":"OMYDzNf3SLcyzB"},"framer_x_homepage":{"id":"OMYFSUpzCdxS0B","name":"framer","variables":[],"weight":100,"experimentId":"OMYFSUO2CN0ht6"},"framer_payment_pages":{"id":"OMYGlQjdI2Ptk3","name":"framer","variables":[],"weight":100,"experimentId":"OMYGlQbZFHOOII"},"curlec_unified_signup_login":{"id":"OPARweOFYifOXJ","name":"unified_signup_login","variables":[{"key":"result","value":"on"}],"weight":100,"experimentId":"OPARwe5rvT5Qu4"},"framer-page-ab-leadgen":{"id":"P3jW1zySj6H0Kd","name":"variant-a","variables":[],"weight":100,"experimentId":"P3jW1zpyxekCyq"},"partner_login_redirect_url":null,"ai_agent":{"id":"SEo42MkYwKrISU","name":"control","variables":[],"weight":100,"experimentId":"SEo42MYvlsG4zE"},"intent_scoring":null,"logged_in_state_website":{"id":"TmuHEa5a7n0S9f","name":"disable","variables":[{"key":"result","value":"off"}],"weight":50,"experimentId":"Ss28iSei4zeehg"},"spotinfo-framer":null,"pricing_page_redesign":{"id":"T2h0eXthp5rR9h","name":"result","variables":[{"key":"value","value":"true"}],"weight":100,"experimentId":"T2h0eX3vqYDg1I"},"startup_directory_enabled":{"id":"TcGZyiTXYKPy9f","name":"enabled","variables":[{"key":"result","value":"on"}],"weight":100,"experimentId":"TcGZyhY1JsvaIC"},"gauth_login_signup_website":{"id":"TGwbYcGut5lIxL","name":"controll","variables":[{"key":"result","value":"on"}],"weight":50,"experimentId":"TGvdHceo8ZqT4f"},"framer-page-ab-payment-gateway":{"id":"TJESHaJ4BoNmjV","name":"gauth","variables":[],"weight":100,"experimentId":"THFS26KxdY0o4O"},"framer-page-ab-payment-links":{"id":"TIpc4r1K2jxeVX","name":"gauth","variables":[],"weight":100,"experimentId":"TIpc4qeDamK4l5"},"framer-page-ab-payment-pages":{"id":"TIpeI14ZgP4i5v","name":"gauth","variables":[],"weight":100,"experimentId":"TIpeI0kzG7P83g"},"csr-to-ssr-migration":{"id":"TmbImE1YbLjvlv","name":"default_variant","variables":[{"key":"result","value":"off"}],"weight":0,"experimentId":"TmbImDjQmwgKjv"},"framer-page-ab-homepage":{"id":"TTul91Pelw54qW","name":"base","variables":[{"key":"result ","value":"on"}],"weight":98,"experimentId":"TTYeDONYaSNT3R"}};
+            window.__COUNTRY_CODE__ = "IN"; 
+            window.__IS_404View__ = false; 
+            window.__CACHE_PARAMS__ = {"countryCode":"IN","host":"razorpay.com"};</script><script>(()=>{var e;null===(e=document.querySelector("#__hydration_util__nav-ham-button"))||void 0===e||e.addEventListener("click",()=>{var e=document.querySelector("#__hydration_util__nav-container");null!=e&&e.classList.contains("__hydration_util__nav-open")||null!=e&&e.className&&(e.className="__hydration_util__nav-open ".concat(e.className))})})();</script></body></html>
