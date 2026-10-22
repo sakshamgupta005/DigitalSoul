@@ -71,3 +71,47 @@ def test_step_runner_falls_back_to_cursor_text_input():
     # Clicks at coordinates (100+150=250, 50+100=150) to focus, then sends keys
     native.cursor_click.assert_called_once_with(250, 150)
     native.send_keys.assert_called_once()
+
+
+def test_step_runner_double_click_and_right_click():
+    native = MagicMock()
+    mock_window = MagicMock()
+    mock_window.rectangle.return_value = MagicMock(left=0, top=0, right=800, bottom=600)
+    native.windows.return_value = [mock_window]
+    native.foreground.return_value = (mock_window, r"C:\Apps\chrome.exe")
+    native.stop_pressed.return_value = False
+
+    runner = StepRunner(native, sleep=lambda s: None, timeout=0.1)
+    runner._find = MagicMock(return_value=None)
+
+    # Right click
+    runner.right_click({"kind": "right_click", "path": r"C:\Apps\chrome.exe", "point": [400, 300]})
+    native.cursor_click.assert_called_with(400, 300, button="right")
+
+    # Double click
+    runner.double_click({"kind": "double_click", "path": r"C:\Apps\chrome.exe", "point": [150, 150]})
+    assert native.cursor_click.call_count >= 2
+
+
+def test_step_runner_scroll_press_key_and_hotkey():
+    native = MagicMock()
+    mock_window = MagicMock()
+    mock_window.rectangle.return_value = MagicMock(left=0, top=0, right=800, bottom=600)
+    native.windows.return_value = [mock_window]
+    native.foreground.return_value = (mock_window, r"C:\Apps\chrome.exe")
+    native.stop_pressed.return_value = False
+
+    runner = StepRunner(native, sleep=lambda s: None, timeout=0.1)
+
+    # Scroll
+    runner.scroll({"kind": "scroll", "path": r"C:\Apps\chrome.exe", "delta": -240, "point": [500, 400]})
+    native.scroll.assert_called_once_with(-240, 500, 400)
+
+    # Key press (Tab)
+    runner.press_key({"kind": "press_key", "path": r"C:\Apps\chrome.exe", "key": "tab"})
+    native.send_keys.assert_called_with("{TAB}")
+
+    # Hotkey (Ctrl+C)
+    runner.hotkey({"kind": "hotkey", "path": r"C:\Apps\chrome.exe", "combo": "^c"})
+    native.send_keys.assert_called_with("^c")
+

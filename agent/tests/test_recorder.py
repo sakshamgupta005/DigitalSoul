@@ -110,8 +110,9 @@ def test_a_search_then_a_result_then_a_typed_address_keeps_both_destinations():
     wiki = "https://en.wikipedia.org/wiki/Alan_Turing"
     steps = [step("open_app", at=1.6), step("set_text", at=5.9, value="alan turing wikipedia", field="Address and search bar"),
              step("press_enter", at=7.4), step("open_url", at=7.7, url="https://search.brave.com/search?q=alan+turing+wikipedia"),
-             step("click", at=14.4, label="Alan Turing - Wikipedia", target={"control_type": "Hyperlink"}),
-             step("open_url", at=15.8, url=wiki),
+             step("click", at=14.4, label="Alan Turing - Wikipedia", target={"control_type": "Hyperlink"}, point=[737, 388]),
+             step("double_click", at=14.6, label="Alan Turing - Wikipedia", point=[737, 388]),
+             step("open_url", at=15.8, url=wiki), step("hotkey", at=21.5, combo="^l"),
              step("set_text", at=22.0, value=VIDEO, field="Address and search bar"), step("press_enter", at=22.8),
              step("open_url", at=23.0, url=VIDEO)]
     assert [s.get("url") for s in rec.clean_steps(compress_browsing(steps))] == [wiki, VIDEO]

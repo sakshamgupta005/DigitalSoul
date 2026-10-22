@@ -93,7 +93,7 @@ function movePill() {
 
 function busy(value) {
   state.pending = value;
-  for (const id of ['new-recording', 'chain-drop-btn', 'chain-run-btn', 'chain-preview-btn', 'scan-screen-btn', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run', 'screen-approve-btn']) if ($(id)) $(id).disabled = value;
+  for (const id of ['new-recording', 'chain-drop-btn', 'chain-run-btn', 'chain-preview-btn', 'scan-screen-btn', 'new-shopify', 'new-excel', 'new-gform', 'gform-submit-btn', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run', 'screen-approve-btn']) if ($(id)) $(id).disabled = value;
   $('record-form').querySelector('[type=submit]').disabled = value;
 }
 
@@ -115,7 +115,7 @@ function setRecording(value) {
   $('compact-time').hidden = !value;
   $('compact-label').textContent = value ? 'Watching closely… F8 when done' : IDLE_LABEL;
   $('quit').disabled = value || state.running;
-  $('new-recording').disabled = value || state.running;
+  if ($('new-recording')) $('new-recording').disabled = value || state.running;
 }
 
 const APP_NAMES = { 'whatsapp.exe': 'WhatsApp', 'whatsapp.root.exe': 'WhatsApp', 'brave.exe': 'Brave', 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'excel.exe': 'Excel', 'winword.exe': 'Word', 'powerpnt.exe': 'PowerPoint', 'explorer.exe': 'File Explorer', 'calculatorapp.exe': 'Calculator', 'file explorer': 'File Explorer', '*': 'Everything' };
@@ -445,6 +445,230 @@ function openPatternWorkflow(pat) {
   };
 }
 
+// Profiles. Each twin gets its own soft hue and a little ghost so they are easy to tell apart.
+// Static, trusted markup; profile names, roles and emoji only ever go in as text.
+const PROFILE_GHOST = '<svg viewBox="0 0 32 32" aria-hidden="true"><path class="pg-body" d="M16 3.5C10 3.5 6 7.9 6 13.8V26.6Q8 28.2 10 26.6T14 26.6T18 26.6T22 26.6T26 26.6V13.8C26 7.9 22 3.5 16 3.5Z"/><ellipse class="pg-eye" cx="12.4" cy="14" rx="1.7" ry="2.2"/><ellipse class="pg-eye" cx="19.6" cy="14" rx="1.7" ry="2.2"/><path class="pg-mouth" d="M14.6 18.2q1.4 1.3 2.8 0"/></svg>';
+const profileHue = (id = '') => Math.round(([...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) * 137.508) % 360);
+const tintProfile = (node, profile) => node.style.setProperty('--p-hue', String(profileHue(profile.id)));
+const RULE_KINDS = { keyboard: ['Keyboard', 'warn'], pacing: ['Pacing', 'info'], app_choice: ['Apps', 'chrome'], formatting: ['Writing', 'whatsapp'], workflow: ['Workflow', 'ok'] };
+const appTone = (app) => (/msedge/i.test(app) ? 'info' : /^code/i.test(app) ? 'accent' : appToken(app));
+
+function ghostAvatar(profile, className = 'profile-ghost') {
+  const holder = element('span', className);
+  holder.setAttribute('aria-hidden', 'true');
+  holder.innerHTML = PROFILE_GHOST;
+  holder.append(element('span', 'profile-badge', profile.avatar || ''));
+  tintProfile(holder, profile);
+  return holder;
+}
+
+function topApps(profile) {
+  const entries = Object.entries(profile.app_affinity || {}).filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0) || 1;
+  return entries.map(([app, weight]) => ({ app, name: appName(app), tone: appTone(app), share: Math.round((weight / total) * 100) }));
+}
+
+function renderProfiles() {
+  bump('profile-count', state.profiles.length);
+  const selector = $('profile-selector');
+  selector.replaceChildren();
+  for (const p of state.profiles) {
+    const opt = element('option', '', `${p.avatar || ''} ${p.name}`.trim());
+    opt.value = p.id;
+    opt.selected = state.activeProfile?.id === p.id;
+    selector.append(opt);
+  }
+  selector.hidden = state.profiles.length < 2;
+
+  const ap = state.activeProfile;
+  $('profiles-body').hidden = !ap;
+  $('profiles-empty').hidden = Boolean(ap);
+  if (!ap) {
+    const ghost = $('profiles-empty').querySelector('.profile-ghost');
+    if (!ghost.firstChild) ghost.innerHTML = PROFILE_GHOST;
+    $('profiles-empty-title').textContent = state.profilesError ? 'I couldn’t load your profiles' : 'No profiles yet';
+    $('profiles-empty-text').textContent = state.profilesError ? `${state.profilesError} Press Refresh below to try again.` : 'Create a profile and I will learn its habits from every routine you record.';
+    return;
+  }
+
+  const hero = $('active-profile-card');
+  tintProfile(hero, ap);
+  const heroGhost = $('prof-hero-ghost');
+  heroGhost.querySelector('svg')?.remove();
+  heroGhost.insertAdjacentHTML('afterbegin', PROFILE_GHOST);
+  $('prof-hero-avatar').textContent = ap.avatar || '';
+  $('prof-hero-name').textContent = ap.name;
+  $('prof-hero-role').textContent = ap.role || 'Digital twin';
+  hero.querySelector('.learning-pulse-badge').hidden = !ap.continuous_learning;
+  const score = Math.max(0, Math.min(100, Math.round(ap.efficiency_score || 0)));
+  $('prof-hero-score').textContent = `${score}%`;
+  $('prof-score-ring').style.setProperty('--score', String(score));
+  $('prof-score-ring').setAttribute('aria-label', `${score}% efficient`);
+  const m = ap.metrics || {};
+  $('prof-stat-idle').textContent = shortDuration(m.idle_seconds_pruned || 0);
+  $('prof-stat-typos').textContent = String(m.typos_eliminated || 0);
+  $('prof-stat-clicks').textContent = String(m.redundant_clicks_pruned || 0);
+  $('prof-stat-shortcuts').textContent = String(m.shortcuts_promoted || 0);
+
+  const apps = topApps(ap);
+  const bar = $('prof-app-bar');
+  const legend = $('prof-app-legend');
+  bar.replaceChildren();
+  legend.replaceChildren();
+  for (const app of apps) {
+    const part = element('i');
+    part.style.setProperty('--app', `var(--${app.tone})`);
+    part.style.setProperty('--share', String(app.share));
+    bar.append(part);
+    const key = element('span', 'app-key');
+    key.style.setProperty('--app', `var(--${app.tone})`);
+    key.append(element('i'), element('span', '', app.name), element('b', '', `${app.share}%`));
+    legend.append(key);
+  }
+  if (!apps.length) legend.append(element('span', 'muted', 'No favourite apps yet. Record a routine to teach me.'));
+  $('prof-meta').textContent = [
+    m.tasks_executed ? `${m.tasks_executed} tasks` : '',
+    m.sessions_observed ? `${m.sessions_observed} sessions` : '',
+    ap.updated_at ? `updated ${ago(ap.updated_at)}` : '',
+  ].filter(Boolean).join(' · ');
+  $('prof-sig').textContent = ap.signature ? `Signs messages “${ap.signature.replace(/^[-\s]+/, '')}”` : '';
+
+  const rules = ap.rules || [];
+  $('profile-rules-count').textContent = String(rules.length);
+  const grid = $('profile-rules-grid');
+  grid.replaceChildren();
+  if (!rules.length) grid.append(element('p', 'hint', 'No habits yet. Record a routine or two and I will pick up how you like things done.'));
+  for (const [index, rule] of rules.entries()) {
+    const [kind, tone] = RULE_KINDS[rule.category] || ['Habit', 'accent'];
+    const card = element('article', 'rule-card');
+    card.style.setProperty('--kind', `var(--${tone})`);
+    card.style.setProperty('--i', String(index));
+    const sure = Math.round((rule.confidence || 0) * 100);
+    const head = element('div', 'rule-card-header');
+    head.append(element('span', 'rule-cat', kind), element('span', 'rule-pill', `${sure}% sure`));
+    const meter = element('span', 'rule-meter');
+    meter.style.setProperty('--conf', String(sure));
+    card.append(head, element('strong', 'rule-name', rule.name), element('p', 'rule-desc', rule.description || ''), meter);
+    if (rule.efficiency_gain) card.append(element('small', 'rule-gain', rule.efficiency_gain));
+    grid.append(card);
+  }
+
+  const roster = $('profiles-roster');
+  roster.replaceChildren();
+  for (const [index, p] of state.profiles.entries()) {
+    const active = p.id === ap.id;
+    const card = element('article', `persona-card${active ? ' active' : ''}`);
+    tintProfile(card, p);
+    card.style.setProperty('--i', String(index));
+    const top = element('div', 'persona-top');
+    const names = element('div', 'persona-names');
+    names.append(element('strong', '', p.name), element('small', '', p.role || 'Digital twin'));
+    top.append(ghostAvatar(p), names, element('span', 'persona-score', `${Math.round(p.efficiency_score || 0)}%`));
+    const facts = element('div', 'persona-facts');
+    const habitCount = (p.rules || []).length;
+    facts.append(appDots(Object.keys(p.app_affinity || {})), element('span', '', `${habitCount} habit${habitCount === 1 ? '' : 's'}`));
+    if (p.metrics?.tasks_executed) facts.append(element('span', '', `${p.metrics.tasks_executed} tasks`));
+    if (p.updated_at) facts.append(element('span', '', ago(p.updated_at)));
+    const actions = element('div', 'persona-actions');
+    if (active) actions.append(element('span', 'active-tag', 'Active'));
+    else {
+      const use = element('button', 'secondary mini-btn', 'Make active');
+      use.type = 'button';
+      use.addEventListener('click', () => action(() => switchProfile(p.id)));
+      actions.append(use);
+    }
+    if (p.id !== 'profile_default') {
+      const remove = element('button', 'text-button danger-text mini-btn', 'Delete');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `Delete profile ${p.name}`);
+      remove.addEventListener('click', () => action(async () => {
+        if (!confirmDialog(`Delete the profile “${p.name}”? Its learned habits go with it.`)) return;
+        await rpc('profile_delete', { id: p.id });
+        await refresh();
+        notice('Profile deleted.');
+      }));
+      actions.append(remove);
+    }
+    card.append(top, facts, actions);
+    roster.append(card);
+  }
+  const add = element('button', 'persona-card persona-new');
+  add.type = 'button';
+  add.append(element('span', 'persona-plus', '+'), element('span', '', 'New profile'));
+  add.addEventListener('click', () => openNewProfile(true));
+  roster.append(add);
+}
+
+async function switchProfile(id) {
+  const updated = await rpc('profile_set_active', { id });
+  state.activeProfile = updated;
+  await refresh();
+  notice(`Now planning as ${updated?.name || 'that profile'}.`, 'success');
+}
+
+function openNewProfile(open) {
+  $('new-profile-modal').hidden = !open;
+  $('new-profile-btn').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  $('new-profile-form').reset();
+  $('new-profile-modal').scrollIntoView({ block: 'nearest' });
+  $('new-prof-name').focus();
+}
+
+$('new-profile-btn').addEventListener('click', () => openNewProfile($('new-profile-modal').hidden));
+$('profiles-empty-create').addEventListener('click', () => openNewProfile(true));
+$('cancel-new-prof-btn').addEventListener('click', () => openNewProfile(false));
+$('new-profile-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => {
+    const created = await rpc('profile_create', {
+      name: $('new-prof-name').value.trim(),
+      role: $('new-prof-role').value.trim(),
+      avatar: $('new-prof-avatar').value.trim() || '👤',
+      ...($('new-prof-sig').value.trim() ? { signature: $('new-prof-sig').value.trim() } : {}),
+    });
+    openNewProfile(false);
+    await refresh();
+    notice(`Created ${created?.name || 'the profile'}. Make it active to plan tasks its way.`, 'success');
+  });
+});
+$('profile-selector').addEventListener('change', (event) => action(() => switchProfile(event.target.value)));
+$('prof-ask-btn').addEventListener('click', () => {
+  $('profile-exec-prompt').scrollIntoView({ block: 'center' });
+  $('profile-exec-prompt').focus();
+});
+$('prof-teach-btn').addEventListener('click', () => newRecording());
+document.querySelectorAll('.profile-chips .chip-suggestion').forEach((chip) => chip.addEventListener('click', () => {
+  $('profile-exec-prompt').value = chip.dataset.prompt || '';
+  $('profile-exec-prompt').focus();
+}));
+$('profile-exec-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const prompt = $('profile-exec-prompt').value.trim();
+  if (!prompt) return;
+  action(async () => {
+    const button = $('profile-exec-submit-btn');
+    button.disabled = true;
+    button.textContent = 'Planning…';
+    try {
+      const result = await rpc('profile_execute', { prompt, profile_id: state.activeProfile?.id });
+      state.profileWorkflow = result?.workflow || null;
+      $('exec-res-title').textContent = state.profileWorkflow?.name || prompt;
+      const habits = $('exec-res-habits');
+      habits.replaceChildren(...(result?.habits_applied || []).map((habit) => element('li', '', habit)));
+      if (!habits.children.length) habits.append(element('li', '', 'No special habits needed for this one.'));
+      $('profile-run-workflow-btn').disabled = !state.profileWorkflow;
+      $('profile-exec-result').hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Plan it my way';
+    }
+  });
+});
+$('profile-run-workflow-btn').addEventListener('click', () => {
+  if (state.profileWorkflow) action(() => handleSynthesizedWorkflow(state.profileWorkflow));
+});
+
 async function refresh() {
   const result = await rpc('list');
   state.workflows = result.workflows;
@@ -453,8 +677,15 @@ async function refresh() {
     const patResult = await rpc('learning_patterns');
     state.patterns = patResult.patterns || [];
   } catch {}
+  try {
+    const profResult = await rpc('profile_list');
+    state.profiles = profResult.profiles || [];
+    state.activeProfile = profResult.active_profile || state.profiles.find(p => p.is_active) || state.profiles[0];
+    state.profilesError = '';
+  } catch (error) { state.profilesError = String(error?.message || error); }
   renderWorkflows();
   renderPatterns();
+  renderProfiles();
   renderJobs();
 }
 
@@ -493,12 +724,14 @@ async function showDetail(id) {
     $('review-run').hidden = false;
     $('replay-steps').hidden = !detail.steps.length;
     $('replay-steps').disabled = state.recording || state.running;
+    $('replay-steps').textContent = '▶ Replay with WhatsApp adapter';
   } else {
     $('detail-warning').textContent = detail.replay_error || 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.';
     $('review-run').hidden = true;
     $('review-run').disabled = true;
     $('replay-steps').hidden = !detail.steps.length;
     $('replay-steps').disabled = state.recording || state.running;
+    $('replay-steps').textContent = 'Replay steps';
   }
   $('step-list').replaceChildren();
   let lastApp = null;
@@ -636,7 +869,10 @@ function lookAt(x, y) {
     ghost.classList.toggle('near', near > 0.72);
   }
 }
-document.addEventListener('pointermove', (event) => lookAt(event.clientX, event.clientY));
+// The desktop-cursor poll (watchCursor) only steps in while the webview gets no pointer events,
+// so two sources never alternate and make the eyes jitter.
+let lastPointer = 0;
+document.addEventListener('pointermove', (event) => { lastPointer = performance.now(); lookAt(event.clientX, event.clientY); });
 
 // Every so often the visible ghost does a little trick. Which trick and when come from a fixed
 // pseudo-random sequence: deterministic, but it never feels regular.
@@ -647,7 +883,8 @@ let trickCount = 0;
 function scheduleTrick() {
   setTimeout(() => {
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!calm && !state.recording && !state.running && !document.hidden) {
+    // No tricks mid hand-off: the ghost flying home must land as itself.
+    if (!calm && !state.recording && !state.running && !document.hidden && !$('notch').classList.contains('homing')) {
       const ghost = $('notch').classList.contains('roaming') ? roam.el?.querySelector('.ghost-float') : $('toggle').querySelector('.ghost-float');
       const roaming = $('notch').classList.contains('roaming');
       const pool = roaming ? [...TRICKS, 'circle', 'blow', 'circle'] : TRICKS;
@@ -673,22 +910,30 @@ function scheduleTrick() {
 scheduleTrick();
 
 // The ghost puffs up when you click and grows a little, curious, while you hover controls.
+// Sizes stay small enough that the header ghost never touches the banner's clipped edge, and
+// hover changes settle for a moment first, so crossing gaps between controls doesn't make it pulse.
 let curious = 1;
 let puffTimer = 0;
-const ghostSize = (size) => document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', size));
+let curiousTimer = 0;
+const LIVE_GHOSTS = '#toggle .ghost-float, .roamer .ghost-float';
+const ghostSize = (size) => document.querySelectorAll(LIVE_GHOSTS).forEach((ghost) => ghost.style.setProperty('--size', size));
 document.addEventListener('pointerdown', () => {
-  document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', ghost.closest('.roamer') ? 1.9 : 1.4));
+  document.querySelectorAll(LIVE_GHOSTS).forEach((ghost) => ghost.style.setProperty('--size', ghost.closest('.roamer') ? 1.28 : 1.18));
   clearTimeout(puffTimer);
   puffTimer = setTimeout(() => { puffTimer = 0; ghostSize(curious); }, 380);
 });
 document.addEventListener('pointerover', (event) => {
-  curious = event.target.closest('button, .workflow-card, .chip, input, textarea, select') ? 1.3 : 1;
-  if (!puffTimer) ghostSize(curious);  // don't cut a click-puff short
+  const next = event.target.closest('button, .workflow-card, .chip, input, textarea, select') ? 1.1 : 1;
+  clearTimeout(curiousTimer);
+  curiousTimer = setTimeout(() => {
+    curious = next;
+    if (!puffTimer) ghostSize(curious);  // don't cut a click-puff short
+  }, 140);
 });
 
 // When the panel is open the ghost leaves the header to roam. From afar it drifts after you;
 // when you come close it gets shy and darts off sideways. It never blocks a click.
-const roam = { el: null, p: [0, 0], v: [0, 0], cursor: null, side: 1, fleeing: false, frame: 0, time: 0, last: 0, carry: 0, timer: 0, handoff: 0, act: null };
+const roam = { el: null, p: [0, 0], prev: [0, 0], v: [0, 0], cursor: null, side: 1, fleeing: false, out: false, frame: 0, time: 0, last: 0, carry: 0, timer: 0, handoff: 0, act: null };
 const ROAM_DT = 1 / 60;
 
 // Deterministic "randomness": a few smooth waves at unrelated (irrational-ratio) speeds never
@@ -723,11 +968,13 @@ function startRoam() {
   roam.el.classList.remove('returning', 'blowing');
   const home = $('toggle').querySelector('.ghost').getBoundingClientRect();
   roam.p = [home.left + home.width / 2, home.top + home.height / 2];
+  roam.prev = roam.p;
   roam.v = [0.5, 1.1];
   roam.time = 0;
   roam.carry = 0;
   roam.act = null;
   roam.fleeing = false;
+  roam.out = false;
   roam.last = performance.now();
   paintRoam();  // start exactly on the header ghost, then hand over
   $('notch').classList.add('roaming');
@@ -736,6 +983,7 @@ function startRoam() {
     roam.carry += Math.min(now - roam.last, 100) / 1000;
     roam.last = now;
     while (roam.carry >= ROAM_DT) {
+      roam.prev = roam.p;
       stepRoam();
       roam.carry -= ROAM_DT;
     }
@@ -825,6 +1073,8 @@ function stepRoam() {
   if (px > room[1]) ax -= (px - room[1]) * 0.004;
   if (py < room[2]) ay += (room[2] - py) * 0.004;
   if (py > room[3]) ay -= (py - room[3]) * 0.004;
+  // Close under the header the ceiling pushes back hard, so a chase from below bends sideways early.
+  if (roam.out && py < box.top + 130) ay += (box.top + 130 - py) * 0.012;
   // Steer: the heading turns at a capped rate (quicker when fleeing), so paths bend into arcs.
   const desired = [(vx + ax) * 0.95, (vy + ay) * 0.95];
   const heading = Math.atan2(vy, vx);
@@ -834,7 +1084,8 @@ function stepRoam() {
   // Loop-the-loop: one full turn at a steady rate and speed, a clean circle about 100 px across.
   const newHeading = looping ? heading + roam.act.dir * (Math.PI * 2) * ROAM_DT / 3.4 : heading + Math.max(-limit, Math.min(limit, turn));
   const speed = Math.hypot(vx, vy);
-  const pace = looping ? speed + (1.55 - speed) * 0.08 : Math.min(roam.fleeing ? 2.8 : 2.1, speed + (Math.hypot(...desired) - speed) * 0.1);
+  // Speed eases toward its target, so it never lurches when a flee starts or ends.
+  const pace = speed + ((looping ? 1.55 : Math.min(roam.fleeing ? 2.8 : 2.1, Math.hypot(...desired))) - speed) * (looping ? 0.08 : 0.1);
   vx = Math.cos(newHeading) * pace;
   vy = Math.sin(newHeading) * pace;
   px += vx;
@@ -845,16 +1096,22 @@ function stepRoam() {
   // Outside the room (e.g. just leaving the header) it eases in rather than snapping.
   px += (Math.min(bounds[1], Math.max(bounds[0], px)) - px) * 0.05;
   py += (Math.min(bounds[3], Math.max(bounds[2], py)) - py) * 0.05;
-  // Never past the panel's sides or bottom, even at full flee speed (the top stays soft for the exit from the header).
+  // Never past the panel's sides or bottom, even at full flee speed. The top stays soft only for the
+  // first exit from the header; after that it never flies back over the header and its buttons.
   px = Math.min(box.right - 18, Math.max(box.left + 18, px));
   py = Math.min(box.bottom - 18, py);
+  if (py >= box.top + 74) roam.out = true;
+  if (roam.out) py = Math.max(box.top + 74, py);
   roam.p = [px, py];
   roam.v = [vx, vy];
 }
 
 function paintRoam() {
   const box = $('notch').getBoundingClientRect();
-  const [px, py] = roam.p;
+  // Paint between the last two fixed steps: no frozen or doubled frames on 60, 120 or 144 Hz screens.
+  const blend = Math.min(1, roam.carry / ROAM_DT);
+  const px = roam.prev[0] + (roam.p[0] - roam.prev[0]) * blend;
+  const py = roam.prev[1] + (roam.p[1] - roam.prev[1]) * blend;
   const [vx, vy] = roam.v;
   const speed = Math.hypot(vx, vy);
   roam.el.style.transform = `translate(${px - box.left - 17}px, ${py - box.top - 17}px)`;
@@ -871,7 +1128,7 @@ function watchCursor() {
   const win = api.getCurrentWindow();
   let busyPoll = false;
   setInterval(async () => {
-    if (busyPoll || document.hidden) return;
+    if (busyPoll || document.hidden || performance.now() - lastPointer < 300) return;
     busyPoll = true;
     try {
       const [cursor, origin, scale] = await Promise.all([api.cursorPosition(), win.outerPosition(), win.scaleFactor()]);
@@ -990,7 +1247,7 @@ $('voice-form').addEventListener('submit', (event) => {
 });
 
 $('collapse').addEventListener('click', () => expanded(false).catch(error => notice(String(error?.message || error))));
-for (const id of ['new-recording', 'empty-record']) $(id).addEventListener('click', newRecording);
+for (const id of ['new-recording', 'empty-record']) $(id)?.addEventListener('click', newRecording);
 for (const id of ['cancel-create', 'back']) $(id).addEventListener('click', () => view('library'));
 document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => view(button.dataset.tab)));
 $('search').addEventListener('input', renderWorkflows);
@@ -1305,7 +1562,7 @@ $('new-ai-workflow')?.addEventListener('click', () => openAddWorkflow());
 $('empty-ai-workflow')?.addEventListener('click', () => openAddWorkflow());
 $('cancel-ai-workflow')?.addEventListener('click', () => view('library'));
 
-document.querySelectorAll('.chip-suggestion').forEach((btn) => {
+document.querySelectorAll('#add-workflow-view .chip-suggestion').forEach((btn) => {
   btn.addEventListener('click', () => {
     if ($('ai-workflow-prompt')) {
       $('ai-workflow-prompt').value = btn.dataset.prompt || '';
@@ -1581,7 +1838,13 @@ $('replay-steps').addEventListener('click', () => action(async () => {
   const detail = state.detail;
   if (!detail || !detail.steps?.length) return;
   await expanded(false);
-  await rpc('replay_steps', { id: detail.id, approved_digest: detail.steps_digest });
+  const flow = detail.flow;
+  await rpc('replay_steps', {
+    id: detail.id,
+    approved_digest: detail.steps_digest,
+    message: flow?.message,
+    approved_recipient: flow?.recipient
+  });
 }));
 $('run-mode').addEventListener('change', () => {
   const later = $('run-mode').value === 'later';

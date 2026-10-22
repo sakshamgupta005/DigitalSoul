@@ -260,16 +260,32 @@ def main():
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         value = catalog.get(payload["id"])
-                        # The approval names the exact steps the user reviewed; any change invalidates it.
-                        from .session import clean_steps
-                        value["steps"] = clean_steps(value["steps"])
-                        if payload.get("approved_digest") != step_replay.digest(value["steps"]):
-                            raise ValueError("These steps changed since you reviewed them; open the recording again")
-                        step_replay.validate(value["steps"])
-                        step_sources = value.get("source_routines") or ["recording:" + value["id"]]
-                        launch_steps(value["steps"])
-                        emit({"event": "replay_started", "steps": True})
-                        result = {"started": True}
+                        flow = value.get("flow")
+                        if not flow:
+                            from .whatsapp_send import derive
+                            try:
+                                flow = derive(value.get("steps", []))
+                            except Exception:
+                                flow = None
+                        if flow and flow.get("format") == "digitalsoul.whatsapp-send.v1":
+                            msg = payload.get("message") or flow.get("message") or "Happy Birthday!"
+                            recipient = payload.get("approved_recipient") or flow.get("recipient", "")
+                            at = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+                            job_id = jobs.schedule(flow, msg, at, recipient)
+                            replay, replay_id = spawn_replay(root, job_data, job_id), job_id
+                            emit({"event": "replay_started", "job_id": job_id})
+                            result = {"started": True, "job_id": job_id}
+                        else:
+                            # The approval names the exact steps the user reviewed; any change invalidates it.
+                            from .session import clean_steps
+                            value["steps"] = clean_steps(value["steps"])
+                            if payload.get("approved_digest") != step_replay.digest(value["steps"]):
+                                raise ValueError("These steps changed since you reviewed them; open the recording again")
+                            step_replay.validate(value["steps"])
+                            step_sources = value.get("source_routines") or ["recording:" + value["id"]]
+                            launch_steps(value["steps"])
+                            emit({"event": "replay_started", "steps": True})
+                            result = {"started": True}
                     elif method == "cancel":
                         result = {"cancelled": jobs.cancel(payload["id"])}
                     elif method == "stop_jobs":
@@ -300,7 +316,7 @@ def main():
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         product_data = payload.get("product") or {}
-                        product_data["store_url"] = shopify_url(product_data.get("store_url"))
+                        product_data["store_url"] = shopify_url(product_data.get("store_url") or "https://admin.shopify.com/")
                         from ..browser.shopify_session import ShopifySession
                         click_save = payload.get("click_save", False)
                         if shopify_session is None:

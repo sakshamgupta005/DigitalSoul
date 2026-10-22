@@ -215,6 +215,23 @@ class Native:
                         return w, w_pid, w_exe
                 except Exception:
                     continue
+            if not target_path or is_whatsapp(target_path):
+                try:
+                    self.open({"executable": target_path})
+                    time.sleep(0.5)
+                    for w in self.desktop.windows():
+                        try:
+                            w_pid = w.element_info.process_id
+                            w_exe = executable(w_pid)
+                            if is_whatsapp(w_exe) and (not target_path or w_exe == target_path):
+                                self.user.ShowWindow(w.handle, 9)
+                                self.user.SetForegroundWindow(w.handle)
+                                time.sleep(0.3)
+                                return w, w_pid, w_exe
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
             raise ValueError(f"WhatsApp must be foreground on an unlocked desktop (hwnd={hwnd}, current={current!r}, path={path!r})")
         return self.desktop.window(handle=hwnd).wrapper_object(), pid.value, current
 
@@ -280,6 +297,11 @@ class Native:
             if not re.fullmatch(r"[\w.!-]{1,512}", app_id) or "whatsapp" not in app_id.lower():
                 raise ValueError("Invalid recorded WhatsApp application identity")
             os.startfile("shell:AppsFolder\\" + app_id)
+        elif is_whatsapp(flow.get("executable")):
+            try:
+                os.startfile("whatsapp:")
+            except Exception:
+                os.startfile(flow["executable"])
         else:
             os.startfile(flow["executable"])
 

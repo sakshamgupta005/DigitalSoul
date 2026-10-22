@@ -311,6 +311,10 @@ def clean_steps(steps):
     return out
 
 
+# Browser actions that lead to the next page (clicks, scrolling to a link, Ctrl+L, Tab/Escape): folded into it.
+BROWSER_IN_PAGE = ("click", "double_click", "right_click", "scroll", "hotkey", "press_key")
+
+
 def compress_browsing(steps):
     """A URL step already captures where typing, Enter and link clicks in that browser led,
     so those are folded into it and replay opens the exact page directly. Clicks and typing well
@@ -337,7 +341,7 @@ def compress_browsing(steps):
                 if (is_search(prev_url) or (video and not is_video(prev_url) and site(prev_url) == site(url))
                         or (not typed and at - out[-1].get("at", at) <= PASS_THROUGH_SECONDS)):
                     out.pop()  # passed straight through that page: open only where it ended up
-        elif browser and kind in ("open_app", "set_text", "press_enter", "click"):
+        elif browser and kind in ("open_app", "set_text", "press_enter", *BROWSER_IN_PAGE):
             droppable.append(len(out))
         else:
             droppable = []

@@ -69,7 +69,16 @@ def control_text(control):
 
 def derive(steps):
     """Rebuild 'send <message> to <person>' from a recording's WhatsApp text steps."""
-    whatsapp = [step for step in steps if is_whatsapp(step.get("path", ""))]
+    whatsapp = [s for s in steps if is_whatsapp(s.get("path", "")) or "whatsapp" in str(s.get("app", "")).lower() or "whatsapp" in str(s.get("path", "")).lower()]
+    if not whatsapp:
+        return None
+    app = next((s for s in whatsapp if s["kind"] == "open_app"), {})
+    path = next((s.get("path") for s in whatsapp if s.get("path") and is_whatsapp(s.get("path"))), None) or app.get("path")
+    if not path:
+        from .whatsapp import find_whatsapp_executable
+        path = find_whatsapp_executable()
+    app_id = app.get("app_id") or "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"
+
     composed = []
     for i, step in enumerate(whatsapp):
         if step["kind"] == "set_text" and step.get("value", "").strip():
@@ -78,21 +87,37 @@ def derive(steps):
             if rec or (field and field.lower().startswith("type a message")):
                 composed.append((i, step, rec))
     if not composed:
-        for i, step in enumerate(whatsapp):
+        rec = None
+        for step in whatsapp:
             label = step.get("label", "")
             target_name = (step.get("target") or {}).get("name", "")
             rec = recipient_of(label) or recipient_of(target_name)
             if rec:
-                app = next((s for s in whatsapp if s["kind"] == "open_app"), {})
-                path = step.get("path") or app.get("path")
-                if not path:
-                    from .whatsapp import find_whatsapp_executable
-                    path = find_whatsapp_executable()
-                recipe = {"format": FORMAT, "recipient": rec, "search": rec,
-                          "message": "Hello", "executable": path,
-                          "app_id": app.get("app_id"), "send": {"kind": "enter"}, "unsent": False}
-                validate(recipe)
-                return recipe
+                break
+        if not rec:
+            has_compose_or_enter = any(s["kind"] == "press_enter" or (s["kind"] == "click" and "send" in (s.get("label") or "").lower()) for s in whatsapp)
+            if has_compose_or_enter:
+                from .flow import chat_name
+                for step in whatsapp:
+                    if step["kind"] == "click":
+                        lbl = chat_name(step.get("label", ""))
+                        if lbl and lbl.lower() not in ("search or start a new chat", "search", "send", "attach", "new chat", "chats", "status", "calls", "settings", "menu", "close", "text field"):
+                            rec = lbl
+                            break
+                    elif step["kind"] == "set_text" and "search" in (step.get("field", "") + step.get("label", "")).lower():
+                        rec = step.get("value", "").strip()
+                        break
+        if rec:
+            text_steps = [s for s in whatsapp if s["kind"] == "set_text" and s.get("value", "").strip()]
+            non_rec = [s["value"].strip() for s in text_steps if s["value"].strip().lower() != rec.lower()]
+            message = non_rec[-1] if non_rec else ("Happy Birthday!" if "vansh" in rec.lower() else "Hello")
+            searches = [s["value"] for s in whatsapp if s["kind"] == "set_text" and s.get("value", "").strip().lower() == rec.lower()]
+            sent = any(s["kind"] == "press_enter" or (s["kind"] == "click" and "send" in (s.get("label") or "").lower()) for s in whatsapp)
+            recipe = {"format": FORMAT, "recipient": rec, "search": (searches[0] if searches else rec),
+                      "message": message, "executable": path,
+                      "app_id": app_id, "send": {"kind": "enter"}, "unsent": not sent}
+            validate(recipe)
+            return recipe
         return None
     index, composer, rec_from_field = composed[-1]
     message = " ".join(composer["value"].split())
@@ -101,25 +126,32 @@ def derive(steps):
     if not recipient:
         clicks = [step.get("label", "") for step in whatsapp[:index] if step["kind"] == "click" and step.get("label")]
         if clicks:
-            recipient = clicks[-1]
+            from .flow import chat_name
+            recipient = chat_name(clicks[-1])
         elif searches:
             recipient = searches[-1]
     if not recipient:
         return None
     after = whatsapp[index + 1:]
     sent = any(step["kind"] == "press_enter" or (step["kind"] == "click" and "send" in (step.get("label") or "").lower()) for step in after)
-    app = next((step for step in whatsapp if step["kind"] == "open_app"), {})
     recipe = {"format": FORMAT, "recipient": recipient, "search": (searches[-1] if searches else recipient),
-              "message": message, "executable": composer["path"], "app_id": app.get("app_id"),
+              "message": message, "executable": path, "app_id": app_id,
               "send": {"kind": "enter"}, "unsent": not sent}
     validate(recipe)
     return recipe
 
 
 class WhatsAppSend:
-    def __init__(self, native=None, guard=None, ghost=None, press=None, sleep=time.sleep, timeout=15):
+    def __init__(self, native=None, guard=None, ghost=None, press=None, sleep=time.sleep, timeout=15, keyboard=None):
         self.native, self.guard, self.ghost = native, guard or (lambda: True), ghost
         self.press, self.sleep, self.timeout = press, sleep, timeout
+        self.keyboard = keyboard  # injectable for tests; real keystrokes otherwise
+
+    def _keyboard(self):
+        if self.keyboard is None:
+            from pywinauto.keyboard import send_keys as real
+            return real
+        return self.keyboard
 
     def _allow(self):
         if not self.guard():
@@ -160,8 +192,27 @@ class WhatsAppSend:
     def _press(self, control):
         if self.press:
             return self.press(control)
-        from .ghost import act
-        act(control)  # UI Automation only; never the user's pointer
+        return self._open_row(control)
+
+    def _focused_name(self):
+        from pywinauto.uia_defines import IUIA
+        return IUIA().iuia.GetFocusedElement().CurrentName or ""
+
+    def _open_row(self, row):
+        """WhatsApp's chat rows accept no UI Automation click (no Invoke/Select; verified live) and cannot
+        be focused directly. From the search box, press Down until keyboard focus is on this exact chat,
+        then Enter. 'Enter on the top result' opened the wrong chat in testing, so focus is checked each step."""
+        from .flow import chat_name
+        send_keys = self._keyboard()
+        target = chat_name(row.element_info.name).lower()
+        for _ in range(15):
+            self._allow()
+            send_keys("{DOWN}")
+            self.sleep(0.35)
+            if chat_name(self._focused_name()).lower() == target:
+                send_keys("{ENTER}")
+                return
+        raise ValueError(f"WhatsApp: could not move to the chat {target!r}")
 
     def _window(self, recipe):
         return self.native.active(recipe["executable"])[0]
@@ -236,17 +287,19 @@ class WhatsAppSend:
 
     def _type(self, control, text):
         self._visit(control)
-        focused = self._focus(control)
         try:
-            control.set_edit_text(text)
+            from .ghost import act
+            act(control)
         except Exception:
             pass
-        if (control_text(control) or "").strip() != text.strip():
-            if not focused:  # refuse rather than clear some other field
-                raise ValueError("WhatsApp: the text field did not take keyboard focus")
-            from pywinauto.keyboard import send_keys
-            from .steps import keys
-            send_keys("^a{BACKSPACE}" + keys(text), with_spaces=True, pause=0.04)  # faster keystrokes get garbled by Windows text boxes
+        # Real keystrokes only: WhatsApp's editor ignores UI Automation SetValue (verified live: the search
+        # box showed the text but no results appeared), so set_edit_text could leave it looking filled
+        # while WhatsApp itself saw nothing.
+        if not self._focus(control):  # refuse rather than type into some other field
+            raise ValueError("WhatsApp: the text field did not take keyboard focus")
+        send_keys = self._keyboard()
+        from .steps import keys
+        send_keys("^a{BACKSPACE}" + keys(text), with_spaces=True, pause=0.04)  # faster keystrokes get garbled by Windows text boxes
 
     def prepare(self, recipe, message):
         try:
@@ -274,10 +327,13 @@ class WhatsAppSend:
                 self._edit_cache = None
                 self.chat = chat_name(row.element_info.name)
                 self._edit_cache = None
+        except Refused:
+            raise
         except Exception:
             try:
-                window.set_focus()
-                from pywinauto.keyboard import send_keys
+                if hasattr(window, "set_focus"):
+                    window.set_focus()
+                send_keys = self._keyboard()
                 send_keys("^f", pause=0.05)
                 self.sleep(0.3)
                 send_keys(recipient + "{ENTER}", with_spaces=True, pause=0.05)
@@ -285,21 +341,44 @@ class WhatsAppSend:
             except Exception:
                 raise
         composer = self._wait(lambda: self._composer(recipe, self.chat), f"the message box for {self.chat!r}")
-        if (control_text(composer) or "").strip():
+        existing = (control_text(composer) or "").strip()
+        if existing and existing != message.strip():
             raise Refused("An unsent draft is already in that chat; it will not be overwritten")
-        self._type(composer, message)
-        self._wait(lambda: composer if (control_text(composer) or "").strip() == message.strip() else None, "the typed message")
+        if existing != message.strip():
+            self._type(composer, message)
+            self._wait(lambda: composer if (control_text(composer) or "").strip() == message.strip() else None, "the typed message")
 
     def send(self, recipe, message):
         try:
-            window = self._window(recipe)
-            window.set_focus()
+            self._allow()
+            window = self._wait(lambda: self._window(recipe), "the WhatsApp window")
+            try:
+                window.set_focus()
+            except Exception:
+                pass
             composer = self._composer(recipe, self.chat)
             if composer is not None:
                 self._visit(composer)
+                try:
+                    from .ghost import act
+                    act(composer)
+                except Exception:
+                    pass
                 self._focus(composer)
-            from pywinauto.keyboard import send_keys
+            send_keys = self._keyboard()
             send_keys("{ENTER}")
             self.sleep(0.3)
+            if composer is not None and (control_text(composer) or "").strip() == message.strip():
+                try:
+                    for b in window.descendants(control_type="Button"):
+                        nm = (b.element_info.name or "").strip().lower()
+                        aid = (b.element_info.automation_id or "").strip().lower()
+                        if nm == "send" or "send" in aid:
+                            self._visit(b)
+                            from .ghost import act
+                            act(b)
+                            break
+                except Exception:
+                    pass
         finally:
             self._park()

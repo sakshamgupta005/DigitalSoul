@@ -1,3 +1,4 @@
+import re
 import ctypes
 import math
 
@@ -213,11 +214,14 @@ class Field:
     def rectangle(self):
         return type("R", (), {"left": 0, "top": 0, "right": 10, "bottom": 10})()
 
+    focus_order = [0]  # like Windows, only the most recently focused field really has focus
+
     def set_focus(self):
-        self.focused = True
+        Field.focus_order[0] += 1
+        self.focused = Field.focus_order[0]
 
     def has_keyboard_focus(self):
-        return self.focused
+        return bool(self.focused)
 
     def set_edit_text(self, text):
         self.value = text
@@ -267,8 +271,23 @@ def recipe(recipient="Alice"):
             "executable": EXE, "app_id": None, "send": {"kind": "enter"}}
 
 
+def fake_keyboard(app):
+    """Types into whichever fake field has focus, like real keystrokes would (never the real keyboard)."""
+    def send(text, **_):
+        focused = [c for c in app.controls if getattr(c, "focused", False)]
+        field = max(focused, key=lambda c: c.focused) if focused else None
+        if field is None:
+            return
+        if text.startswith("^a{BACKSPACE}"):
+            field.value, text = "", text[len("^a{BACKSPACE}"):]
+        if text != "{ENTER}":
+            field.value += re.sub(r"\{(.)\}", r"", text)
+    return send
+
+
 def sender(app, press, ghost_):
-    return WhatsAppSend(native=WhatsAppNative(app), ghost=ghost_, press=press, sleep=lambda _: None, timeout=0)
+    return WhatsAppSend(native=WhatsAppNative(app), ghost=ghost_, press=press, sleep=lambda _: None, timeout=0,
+                        keyboard=fake_keyboard(app))
 
 
 def test_opens_the_matching_chat_and_types_after_proving_identity():
@@ -337,16 +356,8 @@ def test_whatsapp_composer_supports_webview2_window_text_and_unlabelled_field():
     s.prepare(recipe(), "hello there")
     assert composer.value == "hello there"
     sent = []
-    import pytest
-    pytest.importorskip("pywinauto")
-    import pywinauto.keyboard
-    monkeypatch_send = lambda key: sent.append(key)
-    old_send = getattr(pywinauto.keyboard, "send_keys", None)
-    pywinauto.keyboard.send_keys = monkeypatch_send
-    try:
-        s.send(recipe(), "hello there")
-    finally:
-        pywinauto.keyboard.send_keys = old_send
+    s.keyboard = lambda key, **_: sent.append(key)
+    s.send(recipe(), "hello there")
     assert sent == ["{ENTER}"]
 
 
@@ -374,3 +385,18 @@ def test_exact_chat_match_selected_despite_duplicate_or_similar_rows():
 
     sender(app, press, g).prepare(recipe(recipient="Alice"), "hi")
     assert pressed == [row1] and composer.value == "hi"
+
+
+def test_whatsapp_opens_a_chat_by_moving_keyboard_focus_until_it_is_on_that_exact_row():
+    rows = ["Liquid 4 unread", "Me (You) Yesterday", "Mehul"]
+    focus = {"index": -1}
+    keys = []
+
+    def keyboard(text, **_):
+        keys.append(text)
+        if text == "{DOWN}":
+            focus["index"] += 1
+    s = WhatsAppSend(sleep=lambda _: None, keyboard=keyboard)
+    s._focused_name = lambda: rows[focus["index"]] if 0 <= focus["index"] < len(rows) else ""
+    s._open_row(Field("DataItem", "Me (You) Yesterday https://example.com"))
+    assert keys == ["{DOWN}", "{DOWN}", "{ENTER}"]

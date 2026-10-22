@@ -55,6 +55,23 @@ def hosted_pid(hwnd, pid, user=None):
     owner = ctypes.c_ulong()
     if child and user.GetWindowThreadProcessId(child, ctypes.byref(owner)) and owner.value:
         return owner.value
+    return webview_host(pid)
+
+
+def webview_host(pid):
+    """WebView2 apps (WhatsApp) put their content in msedgewebview2.exe windows, and Windows can report
+    one of those as the foreground window while you type. The app is the first non-WebView2 parent."""
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+        for _ in range(6):
+            if proc.name().lower() != "msedgewebview2.exe":
+                return proc.pid
+            proc = proc.parent()
+            if proc is None:
+                break
+    except Exception:
+        pass
     return pid
 
 
@@ -217,7 +234,7 @@ class WhatsApp:
         if recipe.get("format") == "digitalsoul.whatsapp-send.v1":
             from .ghost import Ghost, act
             from .whatsapp_send import WhatsAppSend
-            self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost(), press=act)
+            self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost())
             return self._flow_adapter.prepare(recipe, message)
         if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
             try:
@@ -227,7 +244,7 @@ class WhatsApp:
             except Exception:
                 from .ghost import Ghost, act
                 from .whatsapp_send import WhatsAppSend
-                self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost(), press=act)
+                self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost())
                 return self._flow_adapter.prepare(recipe, message)
         from .whatsapp_send import control_text
         self.check(recipe)
