@@ -7,7 +7,7 @@ import time
 from ctypes import wintypes
 from pathlib import PureWindowsPath
 
-from .whatsapp import libraries, executable
+from .whatsapp import libraries, executable, WHATSAPP_EXES, is_whatsapp
 
 FORMAT = "digitalsoul.whatsapp-flow.v1"
 
@@ -47,7 +47,8 @@ def find(window, spec):
 
 def header(window, title):
     candidates = []
-    for item in window.descendants(title=title):
+    pattern = re.compile(rf"^\s*{re.escape(title.strip())}\s*$", re.IGNORECASE)
+    for item in window.descendants(title_re=pattern):
         if not item.is_visible() or item.element_info.control_type not in ("Text", "Button"):
             continue
         # A matching sidebar/search result cannot establish the current chat.
@@ -68,9 +69,9 @@ def validate(flow):
     if not flow.get("recipient") or not flow.get("search") or not flow.get("chat_title"):
         raise ValueError("Recording needs a recipient, search query and exact chat title")
     path = PureWindowsPath(flow["executable"])
-    if not path.is_absolute() or path.name.lower() != "whatsapp.exe":
+    if not path.is_absolute() or not is_whatsapp(path):
         raise ValueError("Only the recorded WhatsApp executable can be launched")
-    if flow["header"]["name"] != flow["chat_title"]:
+    if flow["header"]["name"].strip().lower() != flow["chat_title"].strip().lower():
         raise ValueError("Recorded chat identity does not match")
     actions = flow["actions"]
     kinds = [a.get("kind") for a in actions]
@@ -100,7 +101,7 @@ class Native:
         if not pid.value:
             raise ValueError("No foreground desktop window")
         current = executable(pid.value)
-        if PureWindowsPath(current).name.lower() != "whatsapp.exe" or (path and current != path):
+        if not is_whatsapp(current) or (path and current != path):
             raise ValueError("WhatsApp must be foreground on an unlocked desktop")
         return self.desktop.window(handle=hwnd).wrapper_object(), pid.value, current
 
@@ -236,13 +237,16 @@ class Capture:
 
     def field(self, spec, value, chat_header=None):
         actions = self.flow["actions"]
-        if value == self.flow["search"] and not any(a["kind"] == "search" for a in actions):
+        if value.strip().lower() == self.flow["search"].strip().lower() and not any(a["kind"] == "search" for a in actions):
             actions.append({"kind": "search", "target": spec})
+            self.flow["search"] = value
             print("Recorded search text.")
-        elif value == self.flow["message"] and chat_header and not self.composed:
+        elif (value == self.flow["message"] or (not self.composed and any(a["kind"] == "select" for a in actions) and value and value != self.flow["search"])) and chat_header and not self.composed:
             if not any(a["kind"] == "select" for a in actions):
                 raise ValueError("Click the intended search result before composing")
             self.flow["header"] = chat_header
+            self.flow["chat_title"] = chat_header.get("name") or self.flow["chat_title"]
+            self.flow["message"] = value
             actions.append({"kind": "compose", "target": spec})
             self.composed = True
             print("Recorded exact message and current chat header. Now send once to finish the demonstration.")
@@ -257,7 +261,8 @@ class Capture:
         if control_type in ("Edit", "Document"):
             return
         if any(a["kind"] == "search" for a in actions):
-            if name in (self.flow["chat_title"], self.flow["recipient"]):
+            target_names = {self.flow["chat_title"].strip().lower(), self.flow["recipient"].strip().lower()}
+            if name.strip().lower() in target_names:
                 actions.append({"kind": "select", "target": spec})
                 print("Recorded recipient selection.")
         elif control_type == "Button" and name.lower() in ("search", "new chat", "new message"):

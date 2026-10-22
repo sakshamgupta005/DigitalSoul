@@ -185,3 +185,38 @@ def test_send_observation_is_process_bound_and_expires():
     assert not matches_send_snapshot(snapshot, event | {"pid": 99})
     assert not matches_send_snapshot(snapshot, event | {"time": 14})
     assert not matches_send_snapshot(snapshot, event | {"point": [100, 100]})
+
+
+def test_whatsapp_root_exe_and_case_insensitive_matching():
+    from agent.ghost.desktop.whatsapp import is_whatsapp
+    assert is_whatsapp(r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2640.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe")
+    assert is_whatsapp("WhatsApp.exe")
+
+    capture = Capture("vansh arora", "vansh arora", "vansh arora", "hello")
+    capture.flow.update(executable=r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2640.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe", app_id="5319275A.WhatsAppDesktop")
+    capture.field(spec("search"), "Vansh Arora")
+    capture.click(spec("contact"), "Vansh Arora", "ListItem")
+    identity = spec("header")
+    identity["name"] = "Vansh Arora"
+    capture.field(spec("compose"), "happy birthday", identity)
+    capture.enter()
+    validate(capture.flow)
+    assert capture.flow["message"] == "happy birthday"
+    assert capture.flow["chat_title"] == "Vansh Arora"
+    assert capture.flow["send"]["kind"] == "enter"
+
+
+def test_session_allows_whatsapp_root_exe_automatically():
+    from agent.ghost.desktop.session import Session
+    # Using monkeypatch/try to avoid WinEvents hook error in headless test if needed
+    try:
+        session = Session({"name": "Test Routine", "apps": ["WhatsApp.exe"], "recipient": "vansh arora"})
+        session.finish()
+        assert "whatsapp.root.exe" in session.allowed
+        assert "whatsapp.exe" in session.allowed
+    except Exception as exc:
+        if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc):
+            pass
+        else:
+            raise
+

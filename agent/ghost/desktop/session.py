@@ -8,7 +8,7 @@ from pathlib import PureWindowsPath
 
 from .events import WinEvents
 from .flow import Capture, Native, ancestry, header, locator, validate
-from .whatsapp import executable
+from .whatsapp import executable, WHATSAPP_EXES, is_whatsapp
 
 
 def matches_send_snapshot(snapshot, event):
@@ -29,7 +29,12 @@ class Session:
         if not isinstance(self.apps, list) or not 1 <= len(self.apps) <= 8 or any(
                 not isinstance(app, str) or not re.fullmatch(r"[\w .-]+\.exe", app, re.I) for app in self.apps):
             raise ValueError("Choose 1–8 executable names, such as WhatsApp.exe or notepad.exe")
-        self.allowed = {app.lower() for app in self.apps}
+        self.allowed = set()
+        for app in self.apps:
+            name = app.lower()
+            self.allowed.add(name)
+            if is_whatsapp(name):
+                self.allowed.update(WHATSAPP_EXES)
         self.native = Native()
         self.steps = []
         self.started = time.monotonic()
@@ -94,7 +99,7 @@ class Session:
             if self.last_foreground != path:
                 self.append({"kind": "open_app", "app": PureWindowsPath(path).name, "path": path})
                 self.last_foreground = path
-            if self.capture and "executable" not in self.capture.flow and PureWindowsPath(path).name.lower() == "whatsapp.exe":
+            if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
         while True:
             try:
@@ -111,12 +116,37 @@ class Session:
             try:
                 if event["kind"] == "enter":
                     self.append({"kind": "press_enter", "app": PureWindowsPath(path).name, "path": path})
-                    if self.capture and self.last_edit == (self.capture.flow.get("actions") or [{}])[-1].get("target"):
-                        self.capture.enter()
+                    if self.capture:
+                        if not self.capture.composed and is_whatsapp(path):
+                            try:
+                                focus = self.native.focused()
+                                if focus.element_info.process_id == pid and focus.element_info.control_type == "Edit":
+                                    val = focus.get_value()
+                                    if val and val != self.capture.flow["search"]:
+                                        ident = header(window, self.capture.flow["chat_title"])
+                                        spec_edit = locator(focus, editable=True)
+                                        with contextlib.redirect_stdout(sys.stderr):
+                                            self.capture.field(spec_edit, val, ident)
+                            except Exception:
+                                pass
+                        if self.last_edit == (self.capture.flow.get("actions") or [{}])[-1].get("target"):
+                            self.capture.enter()
                 else:
                     # Send can disappear before post-click hit-testing. Use only a
                     # recent, process-bound UIA observation to recognize the demo.
                     # These pixels are transient evidence and are never replayed.
+                    if self.capture and is_whatsapp(path) and not self.capture.composed:
+                        try:
+                            focus = self.native.focused()
+                            if focus.element_info.process_id == pid and focus.element_info.control_type == "Edit":
+                                val = focus.get_value()
+                                if val and val != self.capture.flow["search"]:
+                                    ident = header(window, self.capture.flow["chat_title"])
+                                    spec_edit = locator(focus, editable=True)
+                                    with contextlib.redirect_stdout(sys.stderr):
+                                        self.capture.field(spec_edit, val, ident)
+                        except Exception:
+                            pass
                     if self.capture and self.capture.composed and matches_send_snapshot(self.send_snapshot, event):
                         snapshot = self.send_snapshot
                         with contextlib.redirect_stdout(sys.stderr):
@@ -135,7 +165,7 @@ class Session:
                     spec = locator(control, editable=kind == "Edit")
                     self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
                                  "label": name if kind != "Edit" else "Text field", "target": spec})
-                    if self.capture and PureWindowsPath(path).name.lower() == "whatsapp.exe":
+                    if self.capture and is_whatsapp(path):
                         with contextlib.redirect_stdout(sys.stderr):
                             self.capture.click(spec, name, kind)
             except Exception:
@@ -157,7 +187,7 @@ class Session:
                 if not self.steps or self.steps[-1].get("value") != value or self.steps[-1].get("target") != spec:
                     self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
                                  "label": "Text field", "target": spec, "value": value})
-                if self.capture and not self.capture.done and PureWindowsPath(path).name.lower() == "whatsapp.exe":
+                if self.capture and not self.capture.done and is_whatsapp(path):
                     identity = header(window, self.capture.flow["chat_title"]) if value == self.capture.flow["message"] else None
                     with contextlib.redirect_stdout(sys.stderr):
                         self.capture.field(spec, value, identity)
