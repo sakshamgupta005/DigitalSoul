@@ -617,7 +617,7 @@ class Session:
         if options.get("enable_visual_memory", True):
             try:
                 from agent.ghost.collector.visual_memory import VisualMemory
-                self.visual_memory = VisualMemory()
+                self.visual_memory = VisualMemory(session_id=self.name)
                 self._visual_queue = queue.Queue(maxsize=256)
                 self._visual_thread = threading.Thread(target=self._process_visual_memory, daemon=True)
                 self._visual_thread.start()
@@ -792,6 +792,8 @@ class Session:
                 )
                 if mem_item and mem_item.screenshot_path:
                     step_dict["screenshot_path"] = mem_item.screenshot_path
+                if mem_item and mem_item.marked_screenshot_path:
+                    step_dict["marked_screenshot_path"] = mem_item.marked_screenshot_path
                 if mem_item and mem_item.ocr_text:
                     step_dict["ocr_snippet"] = mem_item.ocr_text[:120].strip()
                 if mem_item and mem_item.intent_summary:

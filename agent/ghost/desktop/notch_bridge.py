@@ -103,13 +103,13 @@ def main():
     shopify_request_id = None
     shopify_deadline = 0
 
-    def launch_steps(steps_payload):
+    def launch_steps(steps_payload, workflow_name="default"):
         nonlocal step_run, step_outcome
         step_outcome = None
         step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
             cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
-        step_run.stdin.write(json.dumps({"steps": steps_payload}, ensure_ascii=False) + "\n")
+        step_run.stdin.write(json.dumps({"steps": steps_payload, "workflow_name": workflow_name}, ensure_ascii=False) + "\n")
         step_run.stdin.close()
         def reader(out):
             for line in iter(out.readline, ""):
@@ -289,7 +289,7 @@ def main():
                                 raise ValueError("These steps changed since you reviewed them; open the recording again")
                             step_replay.validate(value["steps"])
                             step_sources = value.get("source_routines") or ["recording:" + value["id"]]
-                            launch_steps(value["steps"])
+                            launch_steps(value["steps"], workflow_name=value.get("name") or "default")
                             emit({"event": "replay_started", "steps": True})
                             result = {"started": True}
                     elif method == "cancel":

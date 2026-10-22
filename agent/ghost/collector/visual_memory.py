@@ -70,12 +70,21 @@ class VisualMemory:
         db_path: Optional[str | Path] = None,
         screenshots_dir: Optional[str | Path] = None,
         omniroute_client: Optional[OmniRouteClient] = None,
+        session_id: Optional[str] = None,
     ):
         base_dir = Path(".ghost/memory")
         base_dir.mkdir(parents=True, exist_ok=True)
 
         self.db_path = Path(db_path) if db_path else base_dir / "visual_memory.sqlite3"
-        self.screenshots_dir = Path(screenshots_dir) if screenshots_dir else base_dir / "screenshots"
+        self.session_id = session_id
+        if screenshots_dir:
+            self.screenshots_dir = Path(screenshots_dir)
+        elif session_id:
+            safe_session = re.sub(r"[^\w.-]+", "_", session_id).strip("_")
+            self.screenshots_dir = base_dir / "screenshots" / (safe_session or "default")
+        else:
+            self.screenshots_dir = base_dir / "screenshots"
+        self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self.capturer = ScreenCapture(output_dir=self.screenshots_dir)
         self.ocr_engine = WinRtOcrEngine()
         self.annotator = VisualAnnotator()
