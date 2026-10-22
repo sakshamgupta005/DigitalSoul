@@ -1,0 +1,34 @@
+[project]
+name = "digitalsoul-m2"
+version = "0.1.0"
+description = "DigitalSoul execution and safety backend"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "jsonschema>=4.26,<5",
+  "browser-use==0.13.11",
+  "httpx>=0.28,<1",
+  "python-dotenv>=1.2,<2",
+  "rfc8785>=0.1.4,<1",
+  "cryptography>=43",
+  "websockets>=14,<17",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "httpx>=0.27,<1"]
+windows = ["pywinauto>=0.6.9,<1; sys_platform == 'win32'"]
+
+[project.scripts]
+digitalsoul-m2 = "agent.ghost.api.m2_app:main"
+
+[tool.pytest.ini_options]
+testpaths = ["agent/tests", "tests/learning"]
+pythonpath = ["."]
+addopts = "--basetemp=.ghost/pytest"
+
+[tool.setuptools.packages.find]
+include = ["agent*", "relay*", "contracts"]
+
+[tool.setuptools.package-data]
+contracts = ["*.schema.json", "fixtures/*.json"]

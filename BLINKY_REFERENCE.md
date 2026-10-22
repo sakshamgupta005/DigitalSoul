@@ -8,12 +8,13 @@ These notes come from reading local architecture/security documents and selected
 
 Blinky provides desktop tutoring and action execution with a Tauri/Rust host, React frontend, Python orchestration, Windows/Linux adapters, and an Expo mobile companion. DigitalSoul adds sustained observation, repeated-workflow discovery, evidence-backed decisions, reviewed typed plans, earned trust, and durable execution records.
 
-The current DigitalSoul contract architecture remains a loopback FastAPI agent with a browser extension, web/PWA dashboard, Playwright/UIA execution, and a signed relay protocol. Referencing Blinky does not select Tauri, native mobile, its ports, or its protocols for this project. A future stack change needs a documented architecture decision and corresponding contract updates.
+The current DigitalSoul architecture is a loopback FastAPI agent with a browser extension, web/PWA dashboard, browser-use CDP/Actor and UIA execution, and a signed relay protocol. The user explicitly selected browser-use on 2026-10-22; see [the browser-use decision](docs/ADR_0001_browser_use.md). Referencing Blinky does not select Tauri, native mobile, its ports, or its protocols for this project.
 
 ## Inspected implementation references
 
 | Area | Blinky source | Application to DigitalSoul |
 |---|---|---|
+| browser-use integration | `common/python/tools/browser_use_tool.py` | Inspected for Browser/Agent lifecycle and model selection. DigitalSoul uses the same browser-use package's deterministic Actor layer and routes optional analyst calls through OmniRoute; it does not copy Blinky's unrestricted Agent loop or direct provider credentials. |
 | Windows UI Automation | `windows/python/uia.py` | Reference process-scoped reads, fresh COM element resolution, filtering of overlay windows, and bounded tree traversal. Adapt for consented capture and UIA driver reads. |
 | Stable UI identity and cache | `common/python/utils/ui_map_cache.py` | Reference `window_signature`, `preserve_stable_refs`, changed-region merging and cache expiry. Re-resolve against fresh evidence before mutation; a cache ref is not a durable record ID. |
 | UI result contracts | `common/frontend/src/lib/types.ts` | `OcrItem` carries bounds, confidence, source/control metadata and matching diagnostics; `TutorStep` carries `target_ref`. Use these concepts in internal driver results and debugging views, with explicit schema changes if exposed on the wire. |

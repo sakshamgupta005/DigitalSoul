@@ -13,7 +13,7 @@
 
 The Digital Ghost system coordinates four loosely-coupled subsystems across a strict single-owner directory structure:
 * **M1 (Learning):** Extension capture, desktop collector, normalizer, sequence alignment, LLM hypothesis, validation compilation.
-* **M2 (Execution & Safety):** Playwright CDP driver, UIA driver, plan interpreter, policy/risk engine, mistake guards, kill switch, relay client, pairing/cryptography.
+* **M2 (Execution & Safety):** browser-use CDP/Actor driver, UIA driver, plan interpreter, policy/risk engine, mistake guards, kill switch, relay client, pairing/cryptography.
 * **M3 (Frontend):** Local React dashboard, candidate review, plan editor, approvals UI, mistake warnings, remote phone PWA.
 * **M4 (Integration & Contracts):** Shared JSON schemas, OpenAPI specifications, type generation (TypeScript + Pydantic), SQLite migrations, bus events, demo applications, safety test harness.
 
@@ -35,7 +35,7 @@ The Digital Ghost system coordinates four loosely-coupled subsystems across a st
                                  │ │ (127.0.0.1:20128/v1)   │ Multi-LLM failover &
                                  │ └────────────────────────┘ analyst prompt routing
                                  │
-                                 │ Playwright CDP
+                                 │ browser-use CDP
                                  ▼
                      ┌────────────────────────┐   ┌────────────────────────┐
                      │ Dedicated Ghost Chrome │   │ Cloud Relay (Fly.io)   │ (M2)
@@ -492,7 +492,7 @@ export interface WorkflowCandidate {
 
 ### 2.4 `Workflow` (Validated Plan & Execution Contract)
 
-The compiled specification reviewed by the user, stored in SQLite, and executed by Playwright/UIA.
+The compiled specification reviewed by the user, stored in SQLite, and executed by browser-use/UIA.
 
 #### JSON Schema
 ```json
@@ -2098,7 +2098,7 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
   "uptime_seconds": 1420,
   "drivers": {
     "ghost_chrome_profile": "connected",
-    "playwright_cdp": "attached",
+    "browser_use_cdp": "attached",
     "windows_uia": "ready"
   },
   "subsystems": {
@@ -2838,7 +2838,7 @@ The agent marks a target element `R3` if:
 To freeze Version 1.1.0, each owner validates their integration points against these schemas:
 
 - [ ] **M1 (Learning):** Extension batch poster matches `POST /events/batch` with `RawEvent` schema; Normalizer generates valid `Action` records; Compilation outputs valid `Workflow` JSON.
-- [ ] **M2 (Execution & Safety):** Playwright interpreter takes `Workflow` fixture and correctly processes ranked locators; Pre/post condition parser supports all 5 condition types; Risk classifier blocks `R3` buttons; Ed25519 verifier accepts Phone PWA signatures.
+- [ ] **M2 (Execution & Safety):** browser-use-backed interpreter takes `Workflow` fixture and correctly processes ranked locators; Pre/post condition parser supports all 5 condition types; Risk classifier blocks `R3` buttons; Ed25519 verifier accepts Phone PWA signatures.
 - [ ] **M3 (Frontend):** React dashboard loads `Workflow` fixture and renders steps, parameters, and decision rules; WebSocket client consumes `ws://127.0.0.1:7777/api/v1/stream` events; Phone PWA generates non-extractable Ed25519 keys via WebCrypto.
 - [ ] **M4 (Integration Lead):** Pydantic models generated into `agent/ghost/contracts/`; TypeScript types generated into `web/src/types/contracts.ts`; e2e test verifies that `make reset` seeds both Acme Portal and CRM with fixture accounts.
 

@@ -31,3 +31,6 @@ Thumbs.db
 scratch/
 check_end.py
 scratch_extract.py
+
+.ghost/
+*.egg-info/
