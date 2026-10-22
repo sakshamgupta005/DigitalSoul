@@ -44,6 +44,14 @@ def test_gform_memory_defaults_and_matching(tmp_path):
     assert reloaded.profile["favorite_color"] == "Blue"
     assert reloaded.profile["name"] == "Sahil"
 
+    # Verify user_name synonym matching
+    syn_mem = GFormMemory(tmp_path / "syn_mem.md")
+    syn_mem.save({"user_name": "Sahil GNDU", "college": "GNDU University"})
+    s_key, s_val, s_conf = syn_mem.match_question("Full Name")
+    assert s_val == "Sahil GNDU"
+    o_key, o_val, o_conf = syn_mem.match_question("Organization / College Name")
+    assert o_val == "GNDU University"
+
 
 def test_extract_form_structure():
     title, questions = extract_form_structure(SAMPLE_HTML)

@@ -417,6 +417,8 @@ footer .text-button{font-size:11px}
 .tab-actions{display:flex;gap:8px}
 .ai-workflow-button{background:linear-gradient(135deg,color-mix(in srgb,#9333ea 20%,transparent),color-mix(in srgb,var(--accent) 25%,transparent));color:#a855f7;border:1px solid color-mix(in srgb,#a855f7 35%,transparent);font-weight:600}
 .ai-workflow-button:hover{filter:none;background:linear-gradient(135deg,color-mix(in srgb,#9333ea 30%,transparent),color-mix(in srgb,var(--accent) 35%,transparent));border-color:#a855f7;box-shadow:0 0 12px color-mix(in srgb,#a855f7 25%,transparent)}
+.record-button{background:color-mix(in srgb,var(--rec) 16%,transparent);color:var(--rec)}
+.record-button:hover{filter:none;background:color-mix(in srgb,var(--rec) 24%,transparent)}
 .excel-button{background:color-mix(in srgb,var(--excel) 16%,transparent);color:var(--excel)}
 .excel-button:hover{filter:none;background:color-mix(in srgb,var(--excel) 24%,transparent)}
 .excel-submit{background:var(--excel);color:#fff}

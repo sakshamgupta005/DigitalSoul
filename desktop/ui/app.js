@@ -1289,10 +1289,20 @@ async function inspectGForm(url) {
         lbl.textContent = item.title;
         const inp = element('input');
         inp.name = item.title;
-        inp.placeholder = item.options ? `e.g. ${item.options.slice(0, 2).join(' or ')}` : 'Enter answer (will be remembered)';
-        // Never invent an answer for a new field. The person must provide it
-        // once; a successfully filled value is then remembered locally.
-        inp.value = item.suggested_value || '';
+        // Pre-fill from suggested_value or remembered user_memory
+        let val = item.suggested_value || '';
+        if (!val && state.user_memory) {
+          const tLower = item.title.toLowerCase();
+          for (const [mKey, mData] of Object.entries(state.user_memory)) {
+            const mVal = mData.value || '';
+            const mNorm = mKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (mVal && (tLower.includes(mNorm) || (mNorm.includes('name') && tLower.includes('name')) || (mNorm.includes('email') && tLower.includes('email')) || ((mNorm.includes('org') || mNorm.includes('college')) && (tLower.includes('college') || tLower.includes('org') || tLower.includes('university'))))) {
+              val = mVal;
+              break;
+            }
+          }
+        }
+        inp.value = val;
         inp.dataset.title = item.title;
         card.append(lbl, inp);
         newCont.append(card);

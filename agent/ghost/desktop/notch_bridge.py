@@ -1,4 +1,5 @@
 """Private Tauri stdio RPC. All native recording stays in the local Windows session."""
+import asyncio
 import json
 import queue
 import subprocess
@@ -371,12 +372,32 @@ def main():
                         }
                     elif method == "gform_inspect":
                         from ..browser.gform_actor import GFormActor
-                        result = GFormActor.inspect_url(payload.get("url", ""))
+                        from ..browser.gform_memory import GFormMemory
+                        mem = GFormMemory()
+                        for k, v in learning_engine.get_user_memory().items():
+                            val = v.get("value") if isinstance(v, dict) else v
+                            if val:
+                                mem.profile[k] = str(val).strip()
+                                if k in ("user_name", "full_name") and "name" not in mem.profile:
+                                    mem.profile["name"] = str(val).strip()
+                                if k == "name" and "user_name" not in mem.profile:
+                                    mem.profile["user_name"] = str(val).strip()
+                        result = GFormActor.inspect_url(payload.get("url", ""), memory=mem)
                     elif method == "gform_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         from ..browser.gform_actor import GFormActor
-                        actor = GFormActor(headless=payload.get("headless", False))
+                        from ..browser.gform_memory import GFormMemory
+                        mem = GFormMemory()
+                        for k, v in learning_engine.get_user_memory().items():
+                            val = v.get("value") if isinstance(v, dict) else v
+                            if val:
+                                mem.profile[k] = str(val).strip()
+                                if k in ("user_name", "full_name") and "name" not in mem.profile:
+                                    mem.profile["name"] = str(val).strip()
+                                if k == "name" and "user_name" not in mem.profile:
+                                    mem.profile["user_name"] = str(val).strip()
+                        actor = GFormActor(headless=payload.get("headless", False), memory=mem)
                         try:
                             result = asyncio.run(actor.fill_and_review(
                                 payload.get("url", ""),
@@ -384,15 +405,27 @@ def main():
                                 click_submit=payload.get("click_submit", False),
                                 save_to_memory=payload.get("save_memory", True)
                             ))
+                            if payload.get("save_memory", True) and isinstance(result, dict):
+                                for step_item in result.get("filled_steps", []):
+                                    q_name = step_item.get("question") or ""
+                                    q_val = step_item.get("value") or ""
+                                    if q_name and q_val:
+                                        import re
+                                        clean_k = re.sub(r"[^a-zA-Z0-9]+", "_", q_name).strip("_").lower()[:32]
+                                        if clean_k:
+                                            learning_engine.save_user_fact(clean_k, str(q_val).strip(), source="gform_fill")
                         finally:
                             asyncio.run(actor.close())
                     elif method == "gform_memory_get":
                         from ..browser.gform_memory import GFormMemory
-                        # Sync with learning engine user memory
                         gmem = GFormMemory().profile
                         for k, v in learning_engine.get_user_memory().items():
-                            if k not in gmem and v.get("value"):
-                                gmem[k] = v["value"]
+                            val = v.get("value") if isinstance(v, dict) else v
+                            if val:
+                                if k not in gmem or not gmem[k]:
+                                    gmem[k] = str(val).strip()
+                                if k in ("user_name", "full_name") and not gmem.get("name"):
+                                    gmem["name"] = str(val).strip()
                         result = {"profile": gmem, "user_memory": learning_engine.get_user_memory()}
                     elif method == "gform_memory_save":
                         from ..browser.gform_memory import GFormMemory

@@ -134,26 +134,41 @@ class GFormMemory:
 
         for key, patterns in FIELD_ALIASES.items():
             for pat in patterns:
-                if re.search(pat, q_norm, re.IGNORECASE):
-                    score = 0.9 if key in q_norm else 0.75
+                m = re.search(pat, q_norm, re.IGNORECASE)
+                if m:
+                    # If question asks for college/organization name, don't match person name
+                    if key == "name" and re.search(r"\b(organi[sz]er|organi[sz]ation|college|university|company|institution)\b", q_norm):
+                        continue
+                    score = 0.75 + min(0.2, len(m.group(0)) * 0.02)
                     if score > best_score:
                         best_score = score
                         best_key = key
 
-        if best_key and best_key in self.profile and self.profile[best_key]:
-            val = self.profile[best_key]
-            # If options are present, match the best option
-            if options:
-                matched_opt = self._match_option(val, options)
-                if matched_opt:
-                    return (best_key, matched_opt, best_score)
-            else:
-                return (best_key, val, best_score)
+        if best_key:
+            val = self.profile.get(best_key)
+            if not val and best_key == "name":
+                val = self.profile.get("user_name") or self.profile.get("full_name") or self.profile.get("candidate_name")
+            elif not val and best_key == "email":
+                val = self.profile.get("user_email") or self.profile.get("google_skills_email")
+            elif not val and best_key == "organization":
+                val = self.profile.get("org") or self.profile.get("college") or self.profile.get("university") or self.profile.get("company")
+            elif not val and best_key == "phone":
+                val = self.profile.get("phone_number") or self.profile.get("mobile") or self.profile.get("contact")
+            if val:
+                if options:
+                    matched_opt = self._match_option(val, options)
+                    if matched_opt:
+                        return (best_key, matched_opt, best_score)
+                else:
+                    return (best_key, val, best_score)
 
-        # Check exact key matching if key exists directly in profile
+        # Check exact key matching if key exists directly in profile or question contains key words
         for key, val in self.profile.items():
+            if not val:
+                continue
             k_slug = key.replace("_", " ").lower()
-            if k_slug in q_norm:
+            words = [w for w in k_slug.split() if len(w) >= 3]
+            if k_slug in q_norm or q_norm in k_slug or (words and any(w in q_norm for w in words)):
                 if options:
                     matched_opt = self._match_option(val, options)
                     if matched_opt:
