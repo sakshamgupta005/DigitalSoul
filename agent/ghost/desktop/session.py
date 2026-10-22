@@ -95,6 +95,13 @@ class Session:
             self.capture = Capture(recipient, search, title, message)
         elif options.get("whatsapp"):
             self.capture = Capture()
+        self.visual_memory = None
+        if options.get("enable_visual_memory", True):
+            try:
+                from agent.ghost.collector.visual_memory import VisualMemory
+                self.visual_memory = VisualMemory()
+            except Exception:
+                self.visual_memory = None
         self.replay_error = None
         self.events = WinEvents()
         self.events.__enter__()
@@ -142,6 +149,29 @@ class Session:
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
+        if self.visual_memory:
+            try:
+                app_name = step.get("app") or "Desktop"
+                window_title = self.last_foreground or app_name
+                target_name = step.get("label")
+                if not target_name and isinstance(step.get("target"), dict):
+                    target_name = step["target"].get("name")
+                mem_item = self.visual_memory.capture_and_remember(
+                    app=app_name,
+                    window_title=window_title,
+                    action_kind=step.get("kind", "action"),
+                    target_name=target_name,
+                    session_id=self.name,
+                    analyze_with_omniroute=True,
+                )
+                if mem_item.screenshot_path:
+                    step["screenshot_path"] = mem_item.screenshot_path
+                if mem_item.ocr_text:
+                    step["ocr_snippet"] = mem_item.ocr_text[:120].strip()
+                if mem_item.intent_summary:
+                    step["intent"] = mem_item.intent_summary
+            except Exception:
+                pass
         if step["kind"] == "set_text" and self.steps and self.steps[-1]["kind"] == "set_text" and (
                 self.steps[-1].get("target") == step.get("target") and self.steps[-1].get("path") == step.get("path")):
             self.steps[-1] = step
