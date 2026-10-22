@@ -1,5 +1,6 @@
 """Record/replay the bounded WhatsApp launch/search/select/compose/send flow."""
 import ctypes
+import json
 import os
 import queue
 import re
@@ -221,7 +222,35 @@ class Native:
         target = find(window, spec)
         # The point comes from the freshly resolved control, never recorded pixels.
         self.active(flow["executable"])
+        self.glide_to(target)
         target.click_input()
+
+    def glide_to(self, control):
+        # The replay ghost rides the real pointer; glide there visibly instead of jumping.
+        try:
+            from .pointer import glide_to
+            glide_to(control)
+        except Exception:
+            pass
+
+
+def chat_name(name):
+    """A chat row's display name without unread counters or the last-message preview."""
+    name = re.sub(r"^\(\d+\)\s*", "", name or "")
+    return re.split(r"[,\n]", name, maxsplit=1)[0].strip()
+
+
+def retarget(flow, recipient):
+    """The same recorded routine, sent to a different person: search their name and open that chat."""
+    recipient = (recipient or "").strip()
+    if not recipient or recipient.lower() == flow["recipient"].strip().lower():
+        return flow
+    if len(recipient) > 128 or any(ord(c) < 32 for c in recipient):
+        raise ValueError("Use a single-line recipient name")
+    copy = json.loads(json.dumps(flow))
+    copy.update(recipient=recipient, search=recipient, chat_title=recipient, retarget=True)
+    copy["header"] = dict(flow["header"], name=recipient)
+    return copy
 
 
 class FlowAdapter:
@@ -256,19 +285,30 @@ class FlowAdapter:
     def prepare(self, flow, message):
         validate(flow)
         self.native = self.native or Native()
+        self._header = flow["header"]
         self._allow()
         self.native.open(flow)
         self._wait(lambda: self._window(flow))
         for action in flow["actions"]:
+            if action["kind"] == "select" and flow.get("retarget"):
+                # Different person: open the one search result whose name matches, never a guess.
+                result = self._wait(lambda: self._result(flow))
+                self._allow()
+                self.native.active(flow["executable"])
+                getattr(self.native, "glide_to", lambda control: None)(result)
+                result.click_input()
+                self._header = dict(flow["header"], name=chat_name(result.element_info.name))
+                continue
             if action["kind"] in ("navigate", "select"):
                 self._wait(lambda: find(self._window(flow), action["target"]))
                 self._allow()
                 self.native.click(flow, action["target"])
             else:
                 if action["kind"] == "compose":
-                    self._wait(lambda: find(self._window(flow), flow["header"]))
+                    self._wait(lambda: find(self._window(flow), self._header))
                 target = self._wait(lambda: find(self._window(flow), action["target"]))
                 value = message if action["kind"] == "compose" else flow["search"]
+                getattr(self.native, "glide_to", lambda control: None)(target)
                 if action["kind"] == "compose" and target.get_value() and target.get_value().strip():
                     raise ValueError("Existing message draft will not be overwritten")
                 self._allow()
@@ -316,8 +356,32 @@ class FlowAdapter:
             raise ValueError(f"Recorded field value has changed: got {val!r}, expected {value!r}")
         return target
 
+    def _result(self, flow):
+        wanted = flow["recipient"].strip().lower()
+        window = self._window(flow)
+        rows, seen = [], set()
+        for kind in ("DataItem", "ListItem"):
+            for row in window.descendants(control_type=kind):
+                name = chat_name(row.element_info.name).lower()
+                if not name.startswith(wanted):
+                    continue
+                try:
+                    key = tuple(row.element_info.runtime_id)
+                except Exception:
+                    key = id(row)
+                if key not in seen and row.is_visible():
+                    seen.add(key)
+                    rows.append(row)
+        exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted]
+        for group in (exact, rows):
+            if len(group) == 1:
+                return group[0]
+        if len(rows) > 1:
+            raise ValueError(f"More than one chat matches {flow['recipient']!r}; use their full saved name")
+        raise ValueError(f"No chat found for {flow['recipient']!r}")
+
     def ready(self, flow, message):
-        find(self._window(flow), flow["header"])
+        find(self._window(flow), getattr(self, "_header", None) or flow["header"])
         return self._value_matches(flow, flow["actions"][-1]["target"], message)
 
     def send(self, flow, message):

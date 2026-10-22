@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from ..safety.credentials import protect
+from .flow import FORMAT as FLOW_FORMAT, retarget
 from .whatsapp import validate_recipe
 
 
@@ -37,7 +38,12 @@ class Jobs:
         due = instant(at)
         if due <= now:
             raise ValueError("Choose a future time")
-        if approved_recipient != recipe["recipient"] or not approved_recipient.strip():
+        if not isinstance(approved_recipient, str) or not approved_recipient.strip():
+            raise ValueError("Approve who the message goes to")
+        if recipe.get("format") == FLOW_FORMAT:
+            # A recorded routine can be sent to someone else; the approval names that person.
+            recipe = retarget(recipe, approved_recipient)
+        elif approved_recipient != recipe["recipient"]:
             raise ValueError("Approve the exact recipient recorded in the recipe")
         if not isinstance(message, str) or not message.strip() or len(message) > 4096:
             raise ValueError("Message must contain 1–4096 characters")

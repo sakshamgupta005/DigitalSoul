@@ -3,6 +3,7 @@ import contextlib
 import queue
 import re
 import sys
+import threading
 import time
 from pathlib import PureWindowsPath
 
@@ -12,20 +13,74 @@ from .whatsapp import executable, WHATSAPP_EXES, is_whatsapp
 
 # Chromium browsers spread one window across child processes.
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
+CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabItem", "CheckBox", "RadioButton",
+                   "DataItem", "TreeItem", "Text", "Image", "ComboBox", "SplitButton")
+# Clicking a page or window root says nothing about what was clicked (typing is captured separately).
+ROOT_KINDS = ("Window", "Pane", "Document")
 # "Everything" mode still never watches DigitalSoul itself, sign-in prompts or password managers.
 NEVER_RECORD = {"digitalsoul-notch.exe", "consent.exe", "lockapp.exe", "credentialuibroker.exe", "logonui.exe",
                 "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe"}
+SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+
+
+def clean_control_name(control, name, kind):
+    """Return a clean, human-readable name for an element without noisy timestamps, internal IDs or container prefixes."""
+    if not name:
+        try:
+            name = control.window_text() or ""
+        except Exception:
+            name = ""
+    name = (name or "").strip()
+    if name.startswith("System.") or name in ("ItemNameDisplay", "Name"):
+        try:
+            for child in control.children():
+                c_name = (child.element_info.name or child.window_text() or "").strip()
+                if c_name and not c_name.startswith("System."):
+                    name = c_name
+                    break
+        except Exception:
+            pass
+    if not name:
+        return "Text field" if kind == "Edit" else (kind or "control")
+    first = re.sub(r"^\(\d+\)\s*", "", name).strip()
+    first = re.split(r"[,\n\r]", first, maxsplit=1)[0].strip()
+    return first or name
+
+
+def wake_tree(hwnd):
+    """Walk one window's UIA tree on a worker thread; big web apps take seconds the first time."""
+    try:
+        import comtypes
+        comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+    except Exception:
+        pass
+    try:
+        from pywinauto import Desktop
+        Desktop(backend="uia").window(handle=hwnd).wrapper_object().descendants(control_type="Edit")
+    except Exception:
+        pass
 
 
 def field_text(control, browser=False):
-    """Typed text of a focused edit. Browser rich-text boxes expose it only via TextPattern."""
+    """Typed text of a focused edit. Supports ValuePattern, TextPattern, and window text."""
+    value = None
     try:
         value = control.get_value()
     except Exception:
         value = None
+    if value is None:
+        try:
+            value = control.window_text()
+        except Exception:
+            pass
+    if value is None:
+        value = document_text(control)
+    if value is None:
+        try:
+            value = getattr(getattr(control, "iface_value", None), "CurrentValue", None)
+        except Exception:
+            pass
     if not browser:
-        if value is None and control.element_info.control_type == "Document":
-            return document_text(control)
         return value
     name = (control.element_info.name or "").strip().rstrip("….�").strip()
 
@@ -84,6 +139,7 @@ class Session:
         self.send_snapshot = None
         self.last_foreground = None
         self.observed_paths = {}
+        self.woken = set()
         self.capture = None
         if options.get("recipient"):
             recipient = options["recipient"].strip()
@@ -93,15 +149,16 @@ class Session:
             if not message or len(message) > 4096 or any(ord(c) < 32 for c in message) or search == message:
                 raise ValueError("Use a distinct contact search and single-line message (max 4096 characters)")
             self.capture = Capture(recipient, search, title, message)
-        elif options.get("whatsapp"):
+        elif options.get("whatsapp") or self.everything:
+            # Any recording that touches WhatsApp also learns who was searched and what was typed.
             self.capture = Capture()
         self.replay_error = None
-        self.events = WinEvents()
+        self.events = WinEvents(everything=self.everything)
         self.events.__enter__()
 
     def _active_pids(self, pid, path):
         pids = {pid}
-        if is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES:
+        if self.everything or is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES:
             try:
                 proc = self.native.psutil.Process(pid)
                 for child in proc.children(recursive=True):
@@ -116,6 +173,25 @@ class Session:
         except ValueError:
             # A clicked search result can carry extra text; the header usually matches the search.
             return header(window, self.capture.flow["search"])
+
+    def _wake(self, window):
+        # Chromium, Electron and WebView2 apps (WhatsApp, Chrome, Brave) expose only their page
+        # root until a UIA client walks the tree; one walk per window turns on the real controls.
+        if window.handle in self.woken:
+            return
+        self.woken.add(window.handle)
+        threading.Thread(target=wake_tree, args=(window.handle,), daemon=True).start()
+
+    def _hit(self, window, point):
+        self._wake(window)
+        control = self.native.desktop.from_point(*point)
+        # While Chromium builds its tree the hit-test returns the page root; retry briefly.
+        for _ in range(3):
+            if control.element_info.control_type not in ROOT_KINDS:
+                break
+            time.sleep(0.15)
+            control = self.native.desktop.from_point(*point)
+        return control
 
     def _foreground(self):
         user = self.native.user
@@ -134,6 +210,10 @@ class Session:
         if exe in NEVER_RECORD or not (self.everything or exe in self.allowed):
             return None
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
+        if exe == "explorer.exe":
+            cls = getattr(getattr(window, "element_info", None), "class_name", "") or ""
+            if cls in SHELL_CLASSES:
+                return None
         active_pids = self._active_pids(pid.value, path)
         self.events.pids.update(active_pids)
         return window, pid.value, path, active_pids
@@ -161,12 +241,20 @@ class Session:
         if active:
             window, pid, path, active_pids = active
             if self.last_foreground != path:
+                title = ""
+                try:
+                    title = (window.window_text() or window.element_info.name or "").strip()
+                except Exception:
+                    pass
                 step = {"kind": "open_app", "app": PureWindowsPath(path).name, "path": path}
+                if title:
+                    step["title"] = title
                 if "\\windowsapps\\" in path.lower():
                     # Store apps cannot be started from their executable; replay launches the app identity.
                     step["app_id"] = self.native.app_id(pid)
                 self.append(step)
                 self.last_foreground = path
+            self._wake(window)
             if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
         while True:
@@ -176,7 +264,7 @@ class Session:
                 break
             if event["kind"] == "stop":
                 return "stop"
-            if not active or event["pid"] not in active_pids:
+            if not active or (not self.everything and event["pid"] not in active_pids):
                 continue
             if time.monotonic() - event["time"] > 2:
                 self.replay_error = "Input events arrived too late for reliable replay; evidence saved for review"
@@ -222,20 +310,31 @@ class Session:
                         self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
                                      "label": "Send", "target": snapshot["target"]})
                         continue
-                    control = self.native.desktop.from_point(*event["point"])
-                    if control.element_info.process_id not in active_pids:
+                    control = self._hit(window, event["point"])
+                    if not self.everything and control.element_info.process_id not in active_pids:
                         continue
-                    for _ in range(5):
+                    # Climb to the nearest named control, but never past a page or window root:
+                    # "Click <whole page>" cannot be replayed.
+                    leaf = control
+                    for _ in range(6):
                         name, kind = control.element_info.name or "", control.element_info.control_type
-                        if name and kind in ("Edit", "Button", "ListItem", "Text"):
+                        if kind in ROOT_KINDS or (name and kind in CLICKABLE_KINDS):
                             break
                         parent = control.parent()
                         if parent is None:
                             break
                         control = parent
+                    if kind in ROOT_KINDS:
+                        control = leaf
+                        name, kind = control.element_info.name or "", control.element_info.control_type
+                    if kind in ROOT_KINDS:
+                        continue
+                    label = clean_control_name(control, name, kind)
                     spec = locator(control, editable=kind == "Edit")
+                    if label and label not in ("Text field", kind) and not spec.get("name"):
+                        spec["name"] = label
                     self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
-                                 "label": name if kind != "Edit" else "Text field", "target": spec})
+                                 "label": label, "target": spec})
                     if self.capture and is_whatsapp(path):
                         with contextlib.redirect_stdout(sys.stderr):
                             self.capture.click(spec, name, kind)
@@ -294,7 +393,12 @@ class Session:
     def finish(self):
         self.events.__exit__(None, None, None)
         flow = None
-        if self.capture and self.capture.done and not self.replay_error:
+        if self.capture and self.capture.composed and not self.capture.done:
+            # Typed but never sent: the routine still means "send this", with Enter on replay.
+            self.capture.enter()
+            self.capture.flow["unsent"] = True
+        # validate() is the integrity guard; unrelated evidence gaps elsewhere must not drop a complete send.
+        if self.capture and self.capture.done:
             try:
                 validate(self.capture.flow)
                 flow = self.capture.flow

@@ -178,6 +178,32 @@ def test_stdio_backend_hello_list_and_invalid_start(tmp_path):
     assert replies["3"]["ok"] is False
 
 
+def test_stdio_backend_replay_steps_validates_digest(tmp_path):
+    from agent.ghost.desktop.catalog import Catalog
+    from agent.ghost.desktop import steps as step_replay
+    data = tmp_path / ".ghost" / "notch"
+    data.mkdir(parents=True, exist_ok=True)
+    catalog = Catalog(data / "workflows.sqlite3")
+    steps = [{"kind": "open_app", "path": r"C:\Windows\notepad.exe", "app": "notepad.exe", "at": 0}]
+    item = catalog.save({"name": "Test", "steps": steps, "duration": 1, "apps": ["*"]})
+    catalog.close()
+
+    requests = [
+        {"id": "1", "method": "replay_steps", "payload": {"id": item["id"], "approved_digest": "wrong"}},
+        {"id": "2", "method": "replay_steps", "payload": {"id": item["id"], "approved_digest": step_replay.digest(steps)}},
+        {"method": "shutdown"}
+    ]
+    result = subprocess.run([sys.executable, "-u", "-m", "agent.ghost.desktop.notch_bridge", str(tmp_path)],
+                            input="".join(json.dumps(r) + "\n" for r in requests), text=True,
+                            capture_output=True, timeout=15, cwd=Path(__file__).resolve().parents[2])
+    assert result.returncode == 0, result.stderr
+    replies = {r["id"]: r for r in map(json.loads, result.stdout.splitlines()) if "id" in r}
+    assert replies["1"]["ok"] is False
+    assert "changed" in replies["1"]["error"]
+    assert replies["2"]["ok"] is True
+    assert replies["2"]["result"]["started"] is True
+
+
 def test_send_observation_is_process_bound_and_expires():
     snapshot = {"pid": 42, "time": 10, "bounds": [10, 10, 30, 30]}
     event = {"kind": "click", "pid": 42, "time": 11, "point": [20, 20]}
@@ -206,14 +232,15 @@ def test_whatsapp_root_exe_and_case_insensitive_matching():
     assert capture.flow["send"]["kind"] == "enter"
 
 
-def test_session_allows_whatsapp_root_exe_automatically():
+def test_session_everything_mode():
     from agent.ghost.desktop.session import Session
-    # Using monkeypatch/try to avoid WinEvents hook error in headless test if needed
     try:
-        session = Session({"name": "Test Routine", "apps": ["WhatsApp.exe"], "recipient": "vansh arora"})
+        session = Session({"name": "Test Everything", "apps": ["*"]})
         session.finish()
-        assert "whatsapp.root.exe" in session.allowed
-        assert "whatsapp.exe" in session.allowed
+        assert session.everything is True
+        assert session.events.everything is True
+        # Everything mode also learns WhatsApp sends (who was searched and what was typed).
+        assert session.capture is not None and session.capture.auto
     except Exception as exc:
         if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc):
             pass
@@ -258,3 +285,27 @@ def test_browser_field_text_reads_rich_text_and_ignores_placeholder():
     assert field_text(WebField("Add a comment…", "", "Add a comment…"), browser=True) == ""
     assert field_text(WebField("Search", "cats", "ignored"), browser=True) == "cats"
     assert field_text(WebField("Type a message", "", "Type a message"), browser=False) == ""
+
+
+def test_typed_but_unsent_message_still_becomes_a_send_routine():
+    capture = Capture()
+    capture.flow.update(executable=r"C:\Apps\WhatsApp.exe", app_id=None)
+    capture.field(spec("search"), "vansh")
+    capture.click(spec("contact"), "Vansh Arora", "DataItem")
+    identity = spec("header")
+    identity["name"] = "Vansh Arora"
+    capture.field(spec("compose"), "birthday postponed", identity)
+    assert capture.composed and not capture.done
+    capture.enter()  # what Session.finish does for an unsent draft
+    validate(capture.flow)
+    assert capture.flow["recipient"] == "Vansh Arora" and capture.flow["message"] == "birthday postponed"
+
+
+def test_routine_can_be_retargeted_to_another_person():
+    from agent.ghost.desktop.flow import chat_name, retarget
+    flow = recorded()
+    other = retarget(flow, "Saksham")
+    validate(other)
+    assert other["retarget"] and other["search"] == "Saksham" and other["header"]["name"] == "Saksham"
+    assert retarget(flow, "  saksham gupta ") is flow  # same person keeps the recorded routine
+    assert chat_name("(3) Vansh Arora, see you, 9:10 PM") == "Vansh Arora"

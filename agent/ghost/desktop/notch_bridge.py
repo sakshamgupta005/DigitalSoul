@@ -25,6 +25,19 @@ if hasattr(sys.stdin, "reconfigure"):
         pass
 
 
+def accent_color():
+    """Windows accent as #rrggbb; Windows can pick it from the wallpaper. None when unavailable."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\DWM") as key:
+            value = winreg.QueryValueEx(key, "AccentColor")[0]  # 0xAABBGGRR
+        return "#{:02x}{:02x}{:02x}".format(value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF)
+    except OSError:
+        return None
+
+
 def emit(value):
     print(json.dumps(value), flush=True)
 
@@ -79,7 +92,7 @@ def main():
                         break
                     if method == "hello":
                         result = {"platform": sys.platform, "recording": bool(session), "running": replay_id,
-                                  "data": str(data), "version": "0.1.0"}
+                                  "data": str(data), "version": "0.1.0", "accent": accent_color()}
                     elif method == "list":
                         result = {"workflows": catalog.list(), "jobs": jobs.list()}
                     elif method == "detail":

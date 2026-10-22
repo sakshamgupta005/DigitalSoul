@@ -7,7 +7,8 @@ from ctypes import wintypes
 
 
 class WinEvents:
-    def __init__(self):
+    def __init__(self, everything=False):
+        self.everything = everything
         self.pids = set()
         self.queue = queue.Queue(maxsize=512)
         self.ready = threading.Event()
@@ -52,7 +53,7 @@ class WinEvents:
             hwnd = user.GetForegroundWindow()
             pid = wintypes.DWORD()
             user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if kind != "stop" and pid.value not in self.pids:
+            if kind != "stop" and not self.everything and pid.value not in self.pids:
                 return
             try:
                 self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
