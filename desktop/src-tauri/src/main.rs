@@ -139,13 +139,19 @@ fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) -> Result<()
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) { app.exit(0) }
 
+/// While recording the notch gets out of the way entirely; F8 stops and brings it back.
+#[tauri::command]
+fn set_notch_hidden(window: tauri::WebviewWindow, hidden: bool) -> Result<(), String> {
+    if hidden { window.hide() } else { window.show() }.map_err(|e| e.to_string())
+}
+
 /// The replay ghost: a click-through overlay that the Python replayer flies to each control it acts on.
 /// It is created once and never focused, so moving it cannot steal focus from the app being replayed.
 const GHOST_PARKED: (i32, i32) = (-4000, -4000);
 
 fn main() {
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, quit_app])
+        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, set_notch_hidden, quit_app])
         .setup(|app| {
             let backend = Bridge::start(app.handle().clone());
             app.manage(Backend(backend));

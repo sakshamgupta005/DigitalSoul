@@ -430,6 +430,9 @@ $('toggle').addEventListener('click', () => {
   action(async () => { await expanded(!state.expanded); if (state.expanded) syncTheme(); });
 });
 
+// While recording the banner hides completely; F8 (or the time limit) saves and brings it back.
+const hideNotch = (hidden) => tauri?.core.invoke('set_notch_hidden', { hidden }).catch(() => {});
+
 function cheer() {
   $('notch').classList.remove('cheer');
   void $('notch').offsetWidth;
@@ -739,11 +742,13 @@ $('record-form').addEventListener('submit', (event) => {
     setRecording(true);
     view('library');
     await expanded(false);
+    await hideNotch(true);
   });
 });
 
 async function stopRecording() {
   const value = await rpc('stop');
+  await hideNotch(false);
   setRecording(false);
   await refresh();
   await expanded(true);
@@ -826,6 +831,7 @@ async function boot() {
         $('live-time').textContent = $('compact-time').textContent = timeLabel(payload.elapsed);
         $('live-last').textContent = payload.last_step ? stepLabel(payload.last_step) : 'Open an allowed app to begin.';
       } else if (payload.event === 'recording_saved') {
+        await hideNotch(false);
         setRecording(false);
         await refresh();
         await expanded(true);
@@ -848,6 +854,7 @@ async function boot() {
         else view('activity');
         notice(payload.job?.detail || 'Replay ended. Check its status and WhatsApp before retrying.', payload.job?.ok ? 'success' : '');
       } else if (payload.event === 'error') {
+        await hideNotch(false);
         await expanded(true);
         notice(payload.message);
       } else if (payload.event === 'disconnected') {
