@@ -623,7 +623,7 @@ class Session:
         if options.get("enable_visual_memory", True):
             try:
                 from agent.ghost.collector.visual_memory import VisualMemory
-                self.visual_memory = VisualMemory()
+                self.visual_memory = VisualMemory(session_id=self.name)
                 self._visual_queue = queue.Queue(maxsize=256)
                 self._visual_thread = threading.Thread(target=self._process_visual_memory, daemon=True)
                 self._visual_thread.start()

@@ -193,13 +193,20 @@ class Desktop:
 
 
 class StepRunner:
-    def __init__(self, native, sleep=time.sleep, clock=time.monotonic, timeout=10, event_sink=None):
+    def __init__(self, native, sleep=time.sleep, clock=time.monotonic, timeout=10, event_sink=None, workflow_name="default"):
         self.native, self.sleep, self.clock, self.timeout = native, sleep, clock, timeout
         self.window = None
         self.skipped = 0
         self.event_sink = event_sink
         self.current_index = 0
         self.total_steps = 0
+        self.workflow_name = workflow_name
+        self.grounder = None
+        try:
+            from .visual_grounding import VisualGrounder
+            self.grounder = VisualGrounder(workflow_name=workflow_name)
+        except Exception:
+            pass
 
     def emit_hud(self, event, **data):
         if self.event_sink:
@@ -429,6 +436,26 @@ class StepRunner:
             except Exception:
                 pass
 
+        # Visual Grounding fallback (Record-and-Run inspired)
+        if self.grounder and hasattr(self.native, "cursor_click"):
+            try:
+                w_rect = self._control_rect(window)
+                vis_pt = self.grounder.find_target_point(
+                    target_name=label,
+                    window_rect=w_rect,
+                    step_index=self.current_index + 1,
+                    action_kind="click",
+                )
+                if vis_pt:
+                    cx, cy = vis_pt
+                    rect = {"left": cx - 12, "top": cy - 12, "width": 24, "height": 24}
+                    self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=f"Visual: {label}", rect=rect, status=f"Visually grounded: {label}")
+                    self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="click", label=label, rect=rect, status=f"Visual click: {label}")
+                    self.native.cursor_click(cx, cy)
+                    return
+            except Exception:
+                pass
+
         if target is None:
             raise ValueError(f"Could not find '{label}'")
 
@@ -485,6 +512,29 @@ class StepRunner:
                 self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="set_text", label=label, rect=rect, status=f"Typing '{preview}'")
                 self.native.send_keys("^a{BACKSPACE}" + keys(value), with_spaces=True, pause=0.04)
                 return
+            except Exception:
+                pass
+
+        # Visual Grounding fallback for text field input (Record-and-Run inspired)
+        if self.grounder and hasattr(self.native, "cursor_click"):
+            try:
+                w_rect = self._control_rect(window)
+                vis_pt = self.grounder.find_target_point(
+                    target_name=label,
+                    window_rect=w_rect,
+                    step_index=self.current_index + 1,
+                    action_kind="set_text",
+                )
+                if vis_pt:
+                    cx, cy = vis_pt
+                    rect = {"left": cx - 12, "top": cy - 12, "width": 24, "height": 24}
+                    self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=f"Visual: {label}", rect=rect, status=f"Visually grounded text: {label}")
+                    self.native.cursor_click(cx, cy)
+                    self.sleep(0.1)
+                    preview = value[:22] + ("…" if len(value) > 22 else "")
+                    self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="set_text", label=label, rect=rect, status=f"Typing '{preview}'")
+                    self.native.send_keys("^a{BACKSPACE}" + keys(value), with_spaces=True, pause=0.04)
+                    return
             except Exception:
                 pass
 
@@ -627,8 +677,9 @@ def main():
     desktop = None
     try:
         validate(payload["steps"])
+        wf_name = payload.get("workflow_name") or payload.get("name") or "default"
         desktop = Desktop()
-        runner = StepRunner(desktop, event_sink=lambda evt: print(json.dumps(evt), flush=True))
+        runner = StepRunner(desktop, event_sink=lambda evt: print(json.dumps(evt), flush=True), workflow_name=wf_name)
 
         def progress(index, step):
             nonlocal done

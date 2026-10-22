@@ -1,25 +1,29 @@
-"""Persistent profile memory and fuzzy field matcher for Google Forms automation."""
+"""Local Markdown memory and fuzzy field matcher for Google Forms automation.
+
+The memory file is intentionally human-readable and local-only.  It starts
+empty: DigitalSoul must never invent a person's name, email address, profile
+URL, or other personal details.  Values are added only after the person enters
+them into a form (or explicitly saves them through the existing memory path).
+"""
 from __future__ import annotations
 
-import json
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 
-DEFAULT_PROFILE = {
-    "name": "Eshan Sharma",
-    "email": "eshansharma@example.com",
-    "gender": "Male",
-    "category": "Developer/Working Professional",
-    "phone": "",
-    "organization": "GDG",
-    "referral_code": "GDG2026",
-    "google_skills_email": "eshansharma@example.com",
-    "google_skills_profile_url": "https://www.cloudskillsboost.google/public_profiles/eshansharma",
-    "google_developer_profile_url": "https://g.dev/eshansharma",
-}
+# Kept as a public compatibility constant for callers/tests.  It must remain
+# empty so a fresh install cannot manufacture identity data.
+DEFAULT_PROFILE: Dict[str, Any] = {}
+
+MEMORY_HEADER = """# DigitalSoul local memory
+
+This file is private to this machine. DigitalSoul updates it from values you
+enter and successfully use in forms. Review or edit it directly when needed.
+
+## Remembered details
+"""
 
 # Semantic aliases for common Google Form questions
 FIELD_ALIASES = {
@@ -40,7 +44,7 @@ FIELD_ALIASES = {
         r"\b(phone|mobile|contact|phone\s*number|whatsapp\s*number)\b",
     ],
     "organization": [
-        r"\b(organi[sz]er|organi[sz]ation|college|university|company|institution)\b",
+        r"\b(organi[sz]er|organi[sz]ation|organiser|organizer|college|university|company|institution)\b",
     ],
     "referral_code": [
         r"\b(referral|referral\s*code|invite\s*code|coupon|code)\b",
@@ -63,30 +67,56 @@ class GFormMemory:
     def __init__(self, storage_path: Optional[Path] = None):
         if storage_path is None:
             base_dir = Path(os.environ.get("DIGITALSOUL_DATA_DIR", ".ghost"))
-            storage_path = base_dir / "gform_profile.json"
+            storage_path = Path(os.environ.get("DIGITALSOUL_MEMORY_FILE", base_dir / "user_memory.md"))
         self.storage_path = Path(storage_path)
         self.profile: Dict[str, Any] = self._load()
 
     def _load(self) -> Dict[str, Any]:
         if self.storage_path.is_file():
             try:
-                data = json.loads(self.storage_path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    # Merge defaults with saved values
-                    merged = dict(DEFAULT_PROFILE)
-                    merged.update(data)
-                    return merged
+                return self._parse_markdown(self.storage_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
         return dict(DEFAULT_PROFILE)
 
+    @staticmethod
+    def _parse_markdown(text: str) -> Dict[str, str]:
+        """Read ``- `key`: value`` entries from the local memory Markdown."""
+        result: Dict[str, str] = {}
+        pattern = re.compile(r"^\s*-\s+`?([A-Za-z0-9][A-Za-z0-9 _-]*)`?\s*:\s*(.*?)\s*$")
+        for line in text.splitlines():
+            match = pattern.match(line)
+            if not match:
+                continue
+            key = re.sub(r"[^a-zA-Z0-9]+", "_", match.group(1)).strip("_").lower()
+            value = match.group(2).strip()
+            if key and value:
+                result[key] = value
+        return result
+
+    def _write_markdown(self) -> None:
+        lines = [MEMORY_HEADER.rstrip(), ""]
+        for key in sorted(self.profile):
+            value = str(self.profile[key]).replace("\r", " ").replace("\n", " ").strip()
+            if value:
+                lines.append(f"- `{key}`: {value}")
+        lines.append("")
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        self.storage_path.write_text("\n".join(lines), encoding="utf-8")
+
     def save(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Update profile memory with new field values and persist to disk."""
-        cleaned = {k: str(v).strip() for k, v in updates.items() if v is not None and str(v).strip()}
-        self.profile.update(cleaned)
+        for raw_key, value in updates.items():
+            key = re.sub(r"[^a-zA-Z0-9]+", "_", str(raw_key)).strip("_").lower()
+            if not key or value is None:
+                continue
+            cleaned = str(value).strip()
+            if cleaned:
+                self.profile[key] = cleaned
+            else:
+                self.profile.pop(key, None)
         try:
-            self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-            self.storage_path.write_text(json.dumps(self.profile, indent=2), encoding="utf-8")
+            self._write_markdown()
         except Exception:
             pass
         return dict(self.profile)
@@ -97,18 +127,6 @@ class GFormMemory:
         Returns (profile_key, value_to_fill, confidence).
         """
         q_norm = question_text.strip().lower()
-
-        # Check positive boolean / agreement choices first (e.g. Terms, Acknowledge, Verify)
-        if options and len(options) >= 1:
-            # Positive accept patterns
-            positive_patterns = [
-                r"\b(yes|accept|agree|acknowledge|verify|i\s*accept|i\s*agree|i\s*acknowledge|i\s*verify)\b"
-            ]
-            for opt in options:
-                opt_lower = opt.strip().lower()
-                if any(re.search(pat, opt_lower) for pat in positive_patterns) and not re.search(r"\b(decline|no|not|disagree)\b", opt_lower):
-                    if any(term in q_norm for term in ("terms", "agree", "accept", "acknowledge", "verify", "declare", "conditions")):
-                        return ("agreement", opt, 0.95)
 
         # Match specific question text against profile aliases
         best_key = None

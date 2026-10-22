@@ -26,82 +26,121 @@ from .gform_memory import GFormMemory
 
 GFORM_FILL_SCRIPT = """(data) => (async () => {
     const report = { steps: [], errors: [], ok: true, submitted: false };
-    const pause = (ms = 100) => new Promise(r => setTimeout(r, ms));
-
-    const blocks = Array.from(document.querySelectorAll('.geS5n, [role="listitem"], .Qr7Oae'));
-    for (const item of (data.items || [])) {
-        const questionKey = (item.title || item.key || '').trim().toLowerCase();
+    const pause = (ms = 160) => new Promise(r => setTimeout(r, ms));
+    const items = (data.items || []).map((item, index) => ({ ...item, index, done: false }));
+    const visible = (node) => !!node && node.getClientRects().length > 0 && !node.disabled;
+    const norm = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+    const blocks = () => Array.from(document.querySelectorAll('.geS5n, [role="listitem"], .Qr7Oae')).filter(visible);
+    const blockTitle = (block) => {
+        const titleEl = block.querySelector('[role="heading"], .M7eMe, .Fvvcwh, .freebirdFormviewerViewItemsItemItemTitle');
+        return norm(titleEl ? titleEl.innerText : block.innerText || '');
+    };
+    const fireValue = (input, value) => {
+        const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(input, value); else input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+    };
+    const findBlock = (item, currentBlocks) => {
+        const entry = item.entry_id ? `entry.${item.entry_id}` : '';
+        if (entry) {
+            const control = document.querySelector(`[name="${entry}"]`);
+            if (control) return control.closest('.geS5n, [role="listitem"], .Qr7Oae') || control.parentElement;
+        }
+        const wanted = norm(item.title || item.key);
+        return currentBlocks.find(block => {
+            const title = blockTitle(block);
+            return title === wanted || (wanted && (title.includes(wanted) || wanted.includes(title.slice(0, 45))));
+        });
+    };
+    const fillBlock = async (block, item) => {
         const targetVal = String(item.value || '').trim();
-        if (!targetVal) continue;
+        if (!targetVal) return false;
+        const targetLow = norm(targetVal);
 
-        let matched = false;
-        for (const block of blocks) {
-            const titleEl = block.querySelector('[role="heading"], .M7eMe, .Fvvcwh, .freebirdFormviewerViewItemsItemItemTitle');
-            const blockText = (titleEl ? titleEl.innerText : block.innerText || '').trim().toLowerCase();
+        const input = block.querySelector('input[type="text"], input[type="email"], input[type="url"], input:not([type]), textarea');
+        if (input && !input.disabled) {
+            input.focus();
+            fireValue(input, targetVal);
+            return { type: 'text' };
+        }
 
-            // Check if this block corresponds to the target question
-            if (blockText.includes(questionKey) || questionKey.includes(blockText.slice(0, 35))) {
-                // 1. Text input / textarea
-                const input = block.querySelector('input[type="text"], input[type="email"], input[type="url"], input:not([type]), textarea');
-                if (input && !input.disabled) {
-                    input.focus();
-                    input.value = targetVal;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    input.dispatchEvent(new Event('blur', { bubbles: true }));
-                    report.steps.push({ question: item.title, value: targetVal, type: 'text' });
-                    matched = true;
-                    break;
-                }
-
-                // 2. Radio buttons
-                const radios = Array.from(block.querySelectorAll('[role="radio"]'));
-                for (const radio of radios) {
-                    const rText = (radio.getAttribute('data-value') || radio.getAttribute('aria-label') || radio.innerText || '').trim().toLowerCase();
-                    const targetLow = targetVal.toLowerCase();
-                    if (rText.includes(targetLow) || targetLow.includes(rText) || (targetLow.startsWith('yes') && rText.startsWith('yes'))) {
-                        radio.click();
-                        await pause();
-                        report.steps.push({ question: item.title, value: targetVal, type: 'radio' });
-                        matched = true;
-                        break;
-                    }
-                }
-                if (matched) break;
-
-                // 3. Checkboxes
-                const checkboxes = Array.from(block.querySelectorAll('[role="checkbox"]'));
-                for (const cb of checkboxes) {
-                    const cbText = (cb.getAttribute('aria-label') || cb.innerText || '').trim().toLowerCase();
-                    const targetLow = targetVal.toLowerCase();
-                    if (cbText.includes(targetLow) || targetLow.includes(cbText) || (targetLow.startsWith('i verify') && cbText.includes('verify'))) {
-                        if (cb.getAttribute('aria-checked') !== 'true') {
-                            cb.click();
-                            await pause();
-                        }
-                        report.steps.push({ question: item.title, value: targetVal, type: 'checkbox' });
-                        matched = true;
-                        break;
-                    }
-                }
-                if (matched) break;
+        const radios = Array.from(block.querySelectorAll('[role="radio"]')).filter(visible);
+        for (const radio of radios) {
+            const label = norm(radio.getAttribute('data-value') || radio.getAttribute('aria-label') || radio.innerText);
+            if (label === targetLow || label.includes(targetLow) || targetLow.includes(label)) {
+                radio.click();
+                await pause();
+                return { type: 'radio' };
             }
         }
-        if (!matched) {
-            report.errors.push(`Could not find interactive element for: "${item.title}"`);
+
+        const checkboxes = Array.from(block.querySelectorAll('[role="checkbox"]')).filter(visible);
+        for (const checkbox of checkboxes) {
+            const label = norm(checkbox.getAttribute('aria-label') || checkbox.innerText);
+            if (label === targetLow || label.includes(targetLow) || targetLow.includes(label)) {
+                if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
+                await pause();
+                return { type: 'checkbox' };
+            }
         }
+
+        const dropdown = block.querySelector('[role="listbox"], [role="combobox"]');
+        if (dropdown && visible(dropdown)) {
+            dropdown.click();
+            await pause(100);
+            const option = Array.from(document.querySelectorAll('[role="option"]')).find((candidate) => {
+                const label = norm(candidate.innerText || candidate.getAttribute('aria-label'));
+                return label === targetLow || label.includes(targetLow) || targetLow.includes(label);
+            });
+            if (option) {
+                option.click();
+                await pause();
+                return { type: 'dropdown' };
+            }
+        }
+        return false;
+    };
+
+    // Google Forms is paginated. Fill the visible page, advance, and repeat so
+    // a reviewed answer set can follow the form's own branching flow.
+    for (let page = 0; page < 20; page += 1) {
+        await pause();
+        const currentBlocks = blocks();
+        for (const item of items.filter(candidate => !candidate.done && String(candidate.value || '').trim())) {
+            const block = findBlock(item, currentBlocks);
+            if (!block) continue;
+            const filled = await fillBlock(block, item);
+            if (filled) {
+                item.done = true;
+                report.steps.push({ question: item.title, key: item.key || '', value: String(item.value).trim(), ...filled });
+            }
+        }
+
+        const next = Array.from(document.querySelectorAll('[role="button"], button')).find(button => {
+            const label = norm(button.innerText || button.getAttribute('aria-label'));
+            return visible(button) && /^(next|continue)$/.test(label);
+        });
+        if (!next) break;
+        next.click();
+        await pause(500);
+    }
+
+    for (const item of items) {
+        if (!item.done && String(item.value || '').trim()) report.errors.push(`Could not fill: "${item.title}"`);
     }
 
     if (data.click_submit) {
-        const submitBtn = Array.from(document.querySelectorAll('[role="button"], button'))
-            .find(b => (b.innerText || '').trim().toLowerCase() === 'submit');
+        const submitBtn = Array.from(document.querySelectorAll('[role="button"], button')).find(button => norm(button.innerText || button.getAttribute('aria-label')) === 'submit' && visible(button));
         if (submitBtn) {
             submitBtn.click();
             report.submitted = true;
         }
     }
 
-    report.ok = report.steps.length > 0;
+    report.ok = report.steps.length > 0 && report.errors.length === 0;
     return JSON.stringify(report);
 })()"""
 
@@ -257,15 +296,15 @@ class GFormActor:
             raw = await page.evaluate(GFORM_FILL_SCRIPT, {"items": items, "click_submit": click_submit})
             report = json.loads(raw) if isinstance(raw, str) else raw
 
-            # If user provided new fields, persist them into profile memory
+            # Persist only values that were actually filled. Unreachable branch
+            # questions and blank placeholders must not become memory facts.
+            updates = {}
             if save_to_memory:
-                updates = {}
-                for it in items:
+                for it in report.get("steps", []):
                     val = it.get("value")
-                    title = it.get("title", "")
+                    title = it.get("question", "")
                     if val and str(val).strip():
-                        # Extract a clean snake_case slug from title
-                        clean_key = re.sub(r"[^a-zA-Z0-9]+", "_", title).strip("_").lower()[:32]
+                        clean_key = it.get("key") or re.sub(r"[^a-zA-Z0-9]+", "_", title).strip("_").lower()[:64]
                         if clean_key:
                             updates[clean_key] = str(val).strip()
                 if updates:
@@ -278,7 +317,7 @@ class GFormActor:
                 "filled_steps": report.get("steps", []),
                 "errors": report.get("errors", []),
                 "submitted": report.get("submitted", False),
-                "saved_memory_count": len(items),
+                "saved_memory_count": len(updates) if save_to_memory else 0,
                 "duration_seconds": round(time.monotonic() - started, 2)
             }
         finally:

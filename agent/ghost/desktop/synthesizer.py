@@ -114,8 +114,8 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
         }
 
     # 3. Google Form workflow
-    if any(k in lowered for k in ("google form", "google forms", "gform", "fill form", "fill out form", "survey", "enrolment form", "registration form", "docs.google.com/forms")):
-        url_match = re.search(r'https?://docs\.google\.com/forms/[^\s]+', raw)
+    if any(k in lowered for k in ("google form", "google forms", "gform", "fill form", "fill out form", "fill this form", "fill the form", "fill", "survey", "enrolment form", "registration form", "docs.google.com/forms", "docs file")) and any(f in lowered for f in ("form", "survey", "enrolment", "registration", "google", "docs")):
+        url_match = re.search(r'https?://(?:docs\.google\.com/forms|forms\.gle)/[^\s]+', raw)
         default_form_url = "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
         if learning is not None and hasattr(learning, "get_user_fact"):
             rem_form = learning.get_user_fact("recent_gform_url")
