@@ -407,6 +407,9 @@ function openPatternWorkflow(pat) {
 
   const container = $('pattern-params-container');
   container.replaceChildren();
+  const stepsList = element('ol');
+  for (const step of pat.skeleton || []) stepsList.append(element('li', '', stepLabel(step)));
+  container.append(stepsList);
 
   if (pat.parameters && pat.parameters.length) {
     for (const p of pat.parameters) {
@@ -432,7 +435,7 @@ function openPatternWorkflow(pat) {
       });
       notice(`Executing learned pattern “${pat.name}” with adapted inputs...`);
       await expanded(false);
-      const res = await rpc('learning_execute', { id: pat.id, parameters: formParams });
+      const res = await rpc('learning_execute', { id: pat.id, parameters: formParams, approved_digest: pat.approved_digest });
       await expanded(true);
       if (res && res.started) {
         notice(`✅ Successfully dispatched learned pattern “${pat.name}”! (${res.steps_count} steps)`, 'success');
@@ -1129,6 +1132,7 @@ async function handleSynthesizedWorkflow(result) {
   } else if (result.kind === 'workflow_created') {
     await refresh();
     if (result.id) {
+      await expanded(true);
       await showDetail(result.id);
       notice(result.message || `✨ Created routine "${result.name}" with ${result.steps?.length || 0} steps!`, 'success');
       compactVoice(`Created "${result.name}". Expand notch to review steps.`, `Ready: ${result.name}`);

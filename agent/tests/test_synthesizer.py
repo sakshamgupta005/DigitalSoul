@@ -35,31 +35,15 @@ def test_synthesize_whatsapp_workflow():
     assert result["flow"]["format"] == "digitalsoul.whatsapp-flow.v1"
 
 
-def test_synthesize_web_search_workflow(tmp_path):
+@pytest.mark.parametrize("prompt", ["Open Edge and search for AI autonomous agents", "Open Notepad and type daily standup summary", "Prepare a completely unknown task"])
+def test_unknown_task_needs_demonstration_instead_of_invented_targets(tmp_path, prompt):
     catalog = Catalog(tmp_path / "workflows.sqlite3")
-    prompt = "Open Edge and search for AI autonomous agents"
-    result = synthesize_workflow(prompt, catalog=catalog)
-    assert result["ok"] is True
-    assert result["kind"] == "workflow_created"
-    assert len(result["steps"]) == 2
-    assert result["steps"][0]["kind"] == "open_app"
-    assert result["steps"][1]["kind"] == "open_url"
-    assert "search" in result["steps"][1]["url"]
-
-    # Verify saved in catalog
-    saved = catalog.get(result["id"])
-    assert saved is not None
-    assert saved["name"] == result["name"]
-
-
-def test_synthesize_desktop_notepad(tmp_path):
-    catalog = Catalog(tmp_path / "workflows.sqlite3")
-    prompt = "Open Notepad and type daily standup summary"
-    result = synthesize_workflow(prompt, catalog=catalog)
-    assert result["ok"] is True
-    assert result["kind"] == "workflow_created"
-    assert any(s["kind"] == "open_app" and "notepad" in s["app"].lower() for s in result["steps"])
-    assert any(s["kind"] == "set_text" for s in result["steps"])
+    try:
+        result = synthesize_workflow(prompt, catalog=catalog)
+        assert result["kind"] == "unknown"
+        assert catalog.list() == []
+    finally:
+        catalog.close()
 
 
 def test_synthesize_validation_errors():

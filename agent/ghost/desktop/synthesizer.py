@@ -33,7 +33,7 @@ def extract_quoted_or_tail(text: str, prefix_words: List[str]) -> str:
     return text.strip()
 
 
-def synthesize_workflow(prompt: str, catalog: Optional[Any] = None) -> Dict[str, Any]:
+def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Optional[Any] = None) -> Dict[str, Any]:
     """Synthesizes a reviewed workflow from typed or spoken user input."""
     raw = (prompt or "").strip()
     if not raw:
@@ -142,106 +142,6 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None) -> Dict[str,
             "message_text": f"✨ Synthesized WhatsApp message for {recipient}! Review and approve below.",
         }
 
-    # 4. Web search or Browser routine
-    if any(k in lowered for k in ("edge", "chrome", "brave", "search", "google", "bing", "youtube", "browse", "web", "lookup")):
-        browser_app = "chrome.exe" if "chrome" in lowered else "brave.exe" if "brave" in lowered else "msedge.exe"
-        query_match = re.search(r'(?:search for|search|lookup|find|browse)\s+["\']?([^"\'\n]+)', raw, re.I)
-        query = query_match.group(1).strip() if query_match else ""
-        if not query and "youtube" in lowered:
-            url = "https://www.youtube.com"
-            title = "Open YouTube"
-        elif not query and "github" in lowered:
-            url = "https://github.com"
-            title = "Open GitHub"
-        elif query:
-            url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
-            title = f"Search '{query}' in Browser"
-        else:
-            url = "https://www.bing.com"
-            title = "Open Web Browser"
-
-        steps = [
-            {"kind": "open_app", "app": browser_app, "path": browser_app, "label": browser_app.replace(".exe", "").capitalize()},
-            {"kind": "open_url", "url": url, "app": browser_app, "label": title},
-        ]
-        wf_dict = {
-            "name": title,
-            "steps": steps,
-            "apps": [browser_app],
-        }
-        if catalog is not None:
-            saved = catalog.save(wf_dict)
-            return {
-                "ok": True,
-                "kind": "workflow_created",
-                "id": saved["id"],
-                "name": saved["name"],
-                "steps": saved["steps"],
-                "workflow": saved,
-                "summary": f"Created routine '{saved['name']}' ({len(steps)} steps)",
-                "message": f"✨ Created routine '{saved['name']}'! Ready to execute.",
-            }
-        return {
-            "ok": True,
-            "kind": "workflow_preview",
-            "name": title,
-            "steps": steps,
-            "apps": [browser_app],
-            "summary": f"Routine '{title}' with {len(steps)} steps",
-            "message": f"✨ Synthesized routine '{title}'! Review and save.",
-        }
-
-    # 5. Generic Desktop Routine / Application Launch
-    app_target = "notepad.exe"
-    app_label = "Notepad"
-    if "calc" in lowered:
-        app_target = "calculatorapp.exe"
-        app_label = "Calculator"
-    elif "spotify" in lowered:
-        app_target = "Spotify.exe"
-        app_label = "Spotify"
-    elif "word" in lowered:
-        app_target = "WINWORD.EXE"
-        app_label = "Word"
-    elif "terminal" in lowered or "powershell" in lowered:
-        app_target = "powershell.exe"
-        app_label = "PowerShell"
-
-    title = raw.strip().capitalize()
-    if len(title) > 60:
-        title = title[:57] + "…"
-    steps = [
-        {"kind": "open_app", "app": app_target, "path": app_target, "label": app_label},
-    ]
-    if "type" in lowered or "write" in lowered:
-        text_to_type = extract_quoted_or_tail(raw, ["type", "write", "saying"])
-        if text_to_type and text_to_type != raw:
-            steps.append({"kind": "set_text", "value": text_to_type, "app": app_target, "label": f"Type '{text_to_type[:24]}'"})
-
-    wf_dict = {
-        "name": title,
-        "steps": steps,
-        "apps": [app_target],
-    }
-    if catalog is not None:
-        saved = catalog.save(wf_dict)
-        return {
-            "ok": True,
-            "kind": "workflow_created",
-            "id": saved["id"],
-            "name": saved["name"],
-            "steps": saved["steps"],
-            "workflow": saved,
-            "summary": f"Created routine '{saved['name']}' ({len(steps)} steps)",
-            "message": f"✨ Created routine '{saved['name']}'! Ready to execute.",
-        }
-
-    return {
-        "ok": True,
-        "kind": "workflow_preview",
-        "name": title,
-        "steps": steps,
-        "apps": [app_target],
-        "summary": f"Routine '{title}' with {len(steps)} steps",
-        "message": f"✨ Synthesized routine '{title}'! Review and save.",
-    }
+    # Unfamiliar tasks must be grounded in demonstrations, not fabricated locators.
+    from .hermes_planner import propose
+    return propose(raw, catalog, learning)

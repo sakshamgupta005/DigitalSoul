@@ -94,6 +94,7 @@ def main():
     replay = None
     replay_id = None
     step_run = None
+    step_sources = []
     listener = None
     shopify_session = None
     shopify_future = None
@@ -147,7 +148,7 @@ def main():
                     if method == "shutdown":
                         break
                     if shopify_future is not None and method in (
-                            "start", "replay", "schedule", "replay_steps", "voice_start", "shopify_run"):
+                            "start", "replay", "schedule", "replay_steps", "voice_start", "shopify_run", "learning_execute", "workflow_synthesize"):
                         raise ValueError("A Shopify run is active; wait for it or cancel it first")
                     if method == "hello":
                         result = {"platform": sys.platform, "recording": bool(session), "running": replay_id or bool(step_run),
@@ -163,9 +164,11 @@ def main():
                     elif method == "voice_command":
                         result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run or shopify_future), catalog=catalog, learning=learning_engine)
                     elif method == "workflow_synthesize":
+                        if session or replay or step_run:
+                            raise ValueError("Wait for the active recording or replay before planning")
                         from .synthesizer import synthesize_workflow
                         prompt = payload.get("prompt") or ""
-                        result = synthesize_workflow(prompt, catalog=catalog)
+                        result = synthesize_workflow(prompt, catalog=catalog, learning=learning_engine)
                     elif method == "voice_start":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for replay before enabling the microphone")
@@ -241,6 +244,7 @@ def main():
                         if payload.get("approved_digest") != step_replay.digest(value["steps"]):
                             raise ValueError("These steps changed since you reviewed them; open the recording again")
                         step_replay.validate(value["steps"])
+                        step_sources = value.get("source_routines") or ["recording:" + value["id"]]
                         step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
                             cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
@@ -296,14 +300,20 @@ def main():
                     elif method == "shopify_cancel":
                         result = {"cancelled": shopify_future.cancel() if shopify_future is not None else False}
                     elif method == "learning_patterns":
-                        result = {"patterns": learning_engine.list_patterns()}
+                        result = {"patterns": [dict(p, approved_digest=step_replay.digest({"steps": p["skeleton"], "parameters": p["parameters"]})) for p in learning_engine.list_patterns()]}
                     elif method == "learning_detail":
                         result = learning_engine.get_pattern(payload["id"])
+                        if result:
+                            result["approved_digest"] = step_replay.digest({"steps": result["skeleton"], "parameters": result["parameters"]})
                     elif method == "learning_execute":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
+                        pattern = learning_engine.get_pattern(payload["id"])
+                        if not pattern or payload.get("approved_digest") != step_replay.digest({"steps": pattern["skeleton"], "parameters": pattern["parameters"]}):
+                            raise ValueError("The learned steps changed; review this pattern again")
                         steps = learning_engine.adapt_pattern_steps(payload["id"], payload.get("parameters"))
                         step_replay.validate(steps)
+                        step_sources = ["pattern:" + payload["id"]]
                         step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
                             cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
@@ -423,6 +433,8 @@ def main():
                     outcome = json.loads(step_run.stdout.read().strip().splitlines()[-1])
                 except (ValueError, IndexError):
                     outcome = {"ok": False, "detail": "Replay was stopped before it finished."}
+                learning_engine.record_outcome(step_sources, outcome.get("ok") is True)
+                step_sources = []
                 step_run = None
                 park_ghost()
                 emit({"event": "replay_finished", "steps": True, "job": outcome})

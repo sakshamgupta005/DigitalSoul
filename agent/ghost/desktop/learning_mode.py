@@ -509,6 +509,19 @@ class LearningEngine:
         with self.db:
             self.db.execute("DELETE FROM learned_patterns WHERE id = ?", (pattern_id,))
 
+    def record_outcome(self, source_ids, ok):
+        # Worker completion is not independent verification of a business outcome.
+        with self.db:
+            self.db.execute("CREATE TABLE IF NOT EXISTS routine_outcomes (source_id TEXT PRIMARY KEY, completed INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0)")
+            for source_id in set(source_ids):
+                self.db.execute("INSERT INTO routine_outcomes VALUES (?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET completed=completed+excluded.completed, failed=failed+excluded.failed",
+                                (source_id, int(ok is True), int(ok is not True)))
+
+    def outcome_summary(self, source_id):
+        self.db.execute("CREATE TABLE IF NOT EXISTS routine_outcomes (source_id TEXT PRIMARY KEY, completed INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0)")
+        row = self.db.execute("SELECT completed, failed FROM routine_outcomes WHERE source_id=?", (source_id,)).fetchone()
+        return {"worker_completed": row[0], "worker_failed": row[1]} if row else {}
+
     def close(self):
         self.db.close()
 

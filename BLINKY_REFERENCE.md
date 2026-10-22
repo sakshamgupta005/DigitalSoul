@@ -132,3 +132,14 @@ Blinky's architecture document also describes process-local file-transfer recove
 - M4: preserve these reference notes, add explicit adapter contracts where needed, and test migrated behavior against DigitalSoul's fixtures and runtime gates.
 
 No Blinky modules have been imported or copied into DigitalSoul by this documentation change. Reuse should be intentional and include its dependencies, platform assumptions, relevant tests and contract mapping.
+
+## Installed apps and Hermes commands (2026-10-23)
+
+Re-read `common/python/computer_use/tools.py` app protocols, known executable
+paths, `find_start_app` and AppsFolder launching. Adapted installed-name lookup
+into DigitalSoul's `desktop/apps.py`: fixed Get-StartApps discovery, unique name
+matching, and inventory-only shell namespace targets. No transcript-derived
+executable or shell command is allowed. Existing fresh UIA resolution and reviewed
+step replay remain authoritative. Hermes plans compositions of demonstrated
+routines; it cannot supply new locators or invoke desktop/browser tools. See
+[command planning](docs/COMMAND_PLANNING.md). Blinky was not modified.

@@ -57,6 +57,15 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     if require_wake and not wake and not awake:
         return {"kind": "ignored"}
 
+    # Explicit Start names a saved routine before a similarly named app.
+    if command.startswith("start "):
+        requested = command[len("start "):]
+        exact = [w for w in workflows if normalized(w.get("name", "")) == requested]
+        if len(exact) > 1:
+            return {"kind": "ambiguous", "message": "Several workflows have that name. Choose one in Workflows."}
+        if exact:
+            return {"kind": "workflow", "id": exact[0]["id"], "name": exact[0]["name"]}
+
     # Direct App Launching (Spotify / WhatsApp) when not specifically directed to a workflow action
     is_workflow_directive = any(command.startswith(p) for p in ("do the workflow ", "run the workflow ", "execute the workflow ", "start the workflow ", "do workflow ", "run workflow ", "execute workflow ", "start workflow ", "do ", "run ", "execute "))
     if not is_workflow_directive:
@@ -111,8 +120,9 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     for suffix in (" workflow", " routine", " please", " now"):
         if core.endswith(suffix):
             core = core[:-len(suffix)].strip()
-    if core:
-        candidates.add(core)
+    if not core:
+        return {"kind": "unknown", "message": "Tell me which app or workflow to start."}
+    candidates.add(core)
 
     # 1. Exact name match (highest precedence)
     matches = [w for w in workflows if normalized(w.get("name", "")) in candidates]
@@ -226,6 +236,12 @@ def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, op
             return {**learned, "kind": "learned_workflow"}
         if learned["kind"] == "ambiguous":
             return learned
+    if command["kind"] == "unknown" and catalog is not None and not busy:
+        from .hermes_planner import propose
+        try:
+            return propose(text, catalog, learning)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            return {"kind": "error", "message": "Hermes could not prepare this task. No actions were taken; record a demonstration or retry."}
     if command["kind"] == "installed_app":
         if busy:
             return {"kind": "error", "message": "Wait for the active recording or replay before opening an app."}
@@ -236,9 +252,11 @@ def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, op
             return {"kind": "error", "message": "Stop recording or wait for replay before opening an app by voice."}
         return launch_app(command["app"], opener)
     if command["kind"] == "add_workflow":
+        if busy:
+            return {"kind": "error", "message": "Wait for the active recording or replay before planning a task."}
         from .synthesizer import synthesize_workflow
         try:
-            synth = synthesize_workflow(command["prompt"], catalog=catalog)
+            synth = synthesize_workflow(command["prompt"], catalog=catalog, learning=learning)
             return {**command, **synth}
         except Exception as exc:
             return {"kind": "error", "message": f"Could not synthesize workflow: {exc}"}

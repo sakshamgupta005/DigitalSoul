@@ -52,12 +52,12 @@ test('mic RPC failure stays compact', async () => {
   assert.match(ui.nodes.get('compact-label').textContent, /Voice unavailable/);
 });
 
-test('matched workflow waits for manual expansion and review', async () => {
+test('matched workflow opens review without executing', async () => {
   const ui = harness();
   await ui.click();
   await ui.event({ kind: 'workflow', id: 'saved-1', name: 'Morning music' });
   assert.deepEqual(ui.details, ['saved-1']);
-  assert.deepEqual(ui.sizes, [false]);
+  assert.deepEqual(ui.sizes, [false, true]);
   assert.deepEqual(ui.methods, ['voice_start']); // No replay approval from speech.
   assert.equal(ui.nodes.get('compact-label').textContent, 'Ready: Morning music');
 });
