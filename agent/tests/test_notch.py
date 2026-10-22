@@ -338,3 +338,33 @@ def test_understand_steps_whatsapp_flow():
     assert any(p["name"] == "message" and p["value"] == "Meeting at 5" for p in u["parameters"])
     assert len(u["explanations"]) == 5
 
+
+
+def test_whatsapp_send_is_rebuilt_from_the_labelled_message_box():
+    from agent.ghost.desktop.whatsapp_send import derive
+    wa = r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2640.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe"
+    steps = [
+        {"kind": "open_app", "path": wa, "app_id": "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"},
+        {"kind": "set_text", "path": wa, "value": "vansh"},
+        {"kind": "click", "path": wa, "label": "Vansh Arora"},
+        {"kind": "set_text", "path": wa, "value": "birthday postponed", "field": "Type a message to Vansh Arora"},
+    ]
+    recipe = derive(steps)
+    assert recipe["recipient"] == "Vansh Arora" and recipe["search"] == "vansh"
+    assert recipe["message"] == "birthday postponed" and recipe["unsent"] is True
+    assert derive(steps + [{"kind": "press_enter", "path": wa}])["unsent"] is False
+    assert derive(steps[:3]) is None
+
+
+def test_browsing_is_folded_into_exact_pages_and_videos_resume():
+    from agent.ghost.desktop.session import compress_browsing, web_address, with_time
+    b = r"C:\Apps\brave.exe"
+    steps = [{"kind": "open_app", "path": b}, {"kind": "set_text", "path": b, "value": "youtube"},
+             {"kind": "press_enter", "path": b}, {"kind": "open_url", "path": b, "url": "https://youtube.com/"},
+             {"kind": "click", "path": b, "label": "Some video"}, {"kind": "open_url", "path": b, "url": "https://youtube.com/watch?v=x"},
+             {"kind": "set_text", "path": b, "value": "nice video"}]
+    folded = compress_browsing(steps)
+    assert [s["kind"] for s in folded] == ["open_url", "set_text"] and folded[0]["url"].endswith("v=x")
+    assert web_address("youtube.com/watch?v=x") == "https://youtube.com/watch?v=x"
+    assert web_address("how to cook rice") is None and web_address("chrome://settings") is None
+    assert with_time("https://youtube.com/watch?v=x&t=3s", 95) == "https://youtube.com/watch?v=x&t=95s"

@@ -858,6 +858,7 @@ async function boot() {
         await expanded(true);
         notice(payload.message);
       } else if (payload.event === 'disconnected') {
+        await hideNotch(false);
         state.connected = false;
         $('connection').className = 'connection error';
         await expanded(true);

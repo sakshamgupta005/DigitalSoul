@@ -215,3 +215,30 @@ def test_explorer_windows_filters_shell_tray_and_desktop():
     finally:
         steps_mod.executable = orig_exec
 
+
+
+def test_open_url_steps_only_accept_web_addresses_in_browsers():
+    good = [{"kind": "open_url", "path": APP, "url": "https://www.youtube.com/watch?v=abc&t=95s"}]
+    validate(good)
+    for url in ("file:///C:/secret.txt", "javascript:alert(1)", "https://bad url"):
+        with pytest.raises(ValueError):
+            validate([{"kind": "open_url", "path": APP, "url": url}])
+    with pytest.raises(ValueError):
+        validate([{"kind": "open_url", "path": r"C:\Windows\notepad.exe", "url": "https://x.com"}])
+
+
+def test_replay_opens_the_exact_page_without_touching_the_mouse():
+    opened = []
+    desktop = FakeDesktop(Window([]))
+    desktop.open_url = lambda path, url: opened.append((path, url))
+    runner(desktop).run([{"kind": "open_url", "path": APP, "url": "https://youtube.com/watch?v=abc&t=95s"}])
+    assert opened == [(APP, "https://youtube.com/watch?v=abc&t=95s")]
+
+
+def test_clicks_go_through_the_ghost_not_the_pointer_when_available():
+    acted = []
+    tab = Control("TabItem", "New Tab")
+    desktop = FakeDesktop(Window([tab]))
+    desktop.act = acted.append
+    runner(desktop).click({"kind": "click", "path": APP, "label": "New Tab", "target": spec("TabItem", "New Tab")})
+    assert acted == [tab] and tab.clicked == 0
