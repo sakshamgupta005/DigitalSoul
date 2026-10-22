@@ -35,3 +35,4 @@ scratch_extract.py
 *.db-wal
 *.db-shm
 .ghost/
+*.egg-info/
