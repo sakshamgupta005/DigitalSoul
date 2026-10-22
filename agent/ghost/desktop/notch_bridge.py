@@ -94,11 +94,31 @@ def main():
     replay = None
     replay_id = None
     step_run = None
+    step_outbox = queue.Queue()
+    step_outcome = None
     listener = None
     shopify_session = None
     shopify_future = None
     shopify_request_id = None
     shopify_deadline = 0
+
+    def launch_steps(steps_payload):
+        nonlocal step_run, step_outcome
+        step_outcome = None
+        step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
+            cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
+        step_run.stdin.write(json.dumps({"steps": steps_payload}, ensure_ascii=False) + "\n")
+        step_run.stdin.close()
+        def reader(out):
+            for line in iter(out.readline, ""):
+                line = line.strip()
+                if line:
+                    try:
+                        step_outbox.put(json.loads(line))
+                    except Exception:
+                        pass
+        threading.Thread(target=reader, args=(step_run.stdout,), daemon=True).start()
 
     def receive():
         for line in sys.stdin:
@@ -124,6 +144,7 @@ def main():
                 learn_res = learning_engine.record_episode(value.get("steps", []), name=value.get("name"), flow=value.get("flow"))
                 if learn_res.get("action") in ("discovered", "reinforced"):
                     emit({"event": "pattern_learned", "result": learn_res})
+                emit({"event": "profile_updated", "profile": learning_engine.get_active_profile()})
             except Exception:
                 pass
         except Exception as exc:
@@ -152,7 +173,8 @@ def main():
                     if method == "hello":
                         result = {"platform": sys.platform, "recording": bool(session), "running": replay_id or bool(step_run),
                                   "data": str(data), "version": "0.1.0", "accent": accent_color(),
-                                  "patterns_count": len(learning_engine.list_patterns())}
+                                  "patterns_count": len(learning_engine.list_patterns()),
+                                  "profiles_count": len(learning_engine.list_profiles())}
                     elif method == "list":
                         result = {"workflows": catalog.list(), "jobs": jobs.list()}
                     elif method == "detail":
@@ -161,7 +183,7 @@ def main():
                         result["steps"] = clean_steps(result["steps"])  # what you see is exactly what replays
                         result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "voice_command":
-                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run), catalog=catalog)
+                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run or shopify_future), catalog=catalog, learning=learning_engine)
                     elif method == "workflow_synthesize":
                         from .synthesizer import synthesize_workflow
                         prompt = payload.get("prompt") or ""
@@ -241,11 +263,7 @@ def main():
                         if payload.get("approved_digest") != step_replay.digest(value["steps"]):
                             raise ValueError("These steps changed since you reviewed them; open the recording again")
                         step_replay.validate(value["steps"])
-                        step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
-                            cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
-                        step_run.stdin.write(json.dumps({"steps": value["steps"]}, ensure_ascii=False) + "\n")
-                        step_run.stdin.close()
+                        launch_steps(value["steps"])
                         emit({"event": "replay_started", "steps": True})
                         result = {"started": True}
                     elif method == "cancel":
@@ -277,12 +295,15 @@ def main():
                     elif method == "shopify_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
-                        from ..browser.shopify_session import ShopifySession
                         product_data = payload.get("product") or {}
                         product_data["store_url"] = shopify_url(product_data.get("store_url"))
+                        from ..browser.shopify_session import ShopifySession
                         click_save = payload.get("click_save", False)
                         if shopify_session is None:
-                            shopify_session = ShopifySession()
+                            try:
+                                shopify_session = ShopifySession(event_sink=emit)
+                            except TypeError:
+                                shopify_session = ShopifySession()
                         shopify_future = shopify_session.submit(product_data, click_save=click_save,
                                                                headless=payload.get("headless", False))
                         shopify_request_id = request_id
@@ -301,11 +322,7 @@ def main():
                             raise ValueError("Stop recording or wait for the active replay")
                         steps = learning_engine.adapt_pattern_steps(payload["id"], payload.get("parameters"))
                         step_replay.validate(steps)
-                        step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
-                            cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                            creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
-                        step_run.stdin.write(json.dumps({"steps": steps}, ensure_ascii=False) + "\n")
-                        step_run.stdin.close()
+                        launch_steps(steps)
                         emit({"event": "replay_started", "steps": True, "pattern": True})
                         result = {"started": True, "steps_count": len(steps)}
                     elif method == "learning_delete":
@@ -334,8 +351,266 @@ def main():
                     elif method == "gform_memory_save":
                         from ..browser.gform_memory import GFormMemory
                         result = {"profile": GFormMemory().save(payload.get("profile", {}))}
+                    elif method == "export_skill":
+                        result = {"skill_markdown": learning_engine.export_skill(payload["id"])}
+                    elif method == "import_skill":
+                        result = learning_engine.import_skill(payload["skill_markdown"])
+                    elif method == "list_hermes_skills":
+                        from ..learning.hermes_sync import list_hermes_skills
+                        result = {"skills": list_hermes_skills()}
+                    elif method == "import_hermes_skill":
+                        from ..learning.hermes_sync import import_hermes_skill_to_patterns
+                        result = import_hermes_skill_to_patterns(payload["skill_name"], learning_engine)
+                    elif method == "demonstration_synthesize":
+                        from ..learning.skill_recorder import SkillSynthesizer
+                        synth = SkillSynthesizer()
+                        res = synth.synthesize(
+                            steps=payload.get("steps", []),
+                            voice_notes=payload.get("voice_notes"),
+                            screen_context=payload.get("screen_context"),
+                            app_name=payload.get("app_name"),
+                        )
+                        result = {
+                            "candidate": res["candidate"].model_dump(mode="json"),
+                            "skill_markdown": res["skill_markdown"],
+                            "redacted_count": res["redacted_count"],
+                        }
+
+                    elif method == "evaluate_skill":
+                        result = learning_engine.evaluate_skill(payload["id"])
+
+                    elif method == "optimize_skill":
+                        result = learning_engine.optimize_skill(payload["id"])
+                    elif method == "profile_list":
+                        result = {
+                            "profiles": learning_engine.list_profiles(),
+                            "active_profile": learning_engine.get_active_profile()
+                        }
+                    elif method == "profile_get":
+                        result = learning_engine.get_profile(payload["id"])
+                    elif method == "profile_set_active":
+                        active = learning_engine.set_active_profile(payload["id"])
+                        emit({"event": "profile_changed", "profile": active})
+                        result = active
+                    elif method == "profile_create":
+                        created = learning_engine.create_profile(
+                            name=payload.get("name", "New Profile"),
+                            role=payload.get("role", "Digital Twin"),
+                            avatar=payload.get("avatar", "👤"),
+                            initial_rules=payload.get("initial_rules"),
+                            signature=payload.get("signature")
+                        )
+                        emit({"event": "profile_created", "profile": created})
+                        result = created
+                    elif method == "profile_delete":
+                        result = {"deleted": learning_engine.delete_profile(payload["id"])}
+                    elif method == "profile_execute":
+                        result = learning_engine.execute_with_habits(
+                            payload.get("prompt", ""),
+                            profile_id=payload.get("profile_id")
+                        )
+                    elif method == "hud_demo":
+                        if session or replay or step_run:
+                            raise ValueError("Stop the active recording or replay first")
+                        def run_demo():
+                            time.sleep(0.1)
+                            emit({"event": "hud_started"})
+                            time.sleep(0.4)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 1, "total_steps": 3,
+                                "label": "Product Title",
+                                "rect": {"left": 280, "top": 150, "width": 360, "height": 44},
+                                "status": "Targeting: Product Title"
+                            })
+                            time.sleep(0.7)
+                            emit({
+                                "event": "hud_acting",
+                                "step_index": 1, "total_steps": 3,
+                                "action": "set_text",
+                                "label": "Product Title",
+                                "rect": {"left": 280, "top": 150, "width": 360, "height": 44},
+                                "status": "Typing 'Sony WH-1000XM5 Wireless Headphones'"
+                            })
+                            time.sleep(0.8)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 2, "total_steps": 3,
+                                "label": "Price Field",
+                                "rect": {"left": 420, "top": 340, "width": 190, "height": 45},
+                                "status": "Targeting: Price Field"
+                            })
+                            time.sleep(0.7)
+                            emit({
+                                "event": "hud_acting",
+                                "step_index": 2, "total_steps": 3,
+                                "action": "verify",
+                                "label": "Price Field",
+                                "rect": {"left": 420, "top": 340, "width": 190, "height": 45},
+                                "status": "Verifying price: $348.00"
+                            })
+                            time.sleep(0.8)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 3, "total_steps": 3,
+                                "label": "Save Product Button",
+                                "rect": {"left": 720, "top": 520, "width": 150, "height": 42},
+                                "status": "Targeting: Save Product"
+                            })
+                            time.sleep(0.7)
+                            emit({
+                                "event": "hud_acting",
+                                "step_index": 3, "total_steps": 3,
+                                "action": "click",
+                                "label": "Save Product Button",
+                                "rect": {"left": 720, "top": 520, "width": 150, "height": 42},
+                                "status": "Clicking Save Product"
+                            })
+                            time.sleep(0.8)
+                            emit({
+                                "event": "replay_finished",
+                                "steps": True,
+                                "job": {"ok": True, "detail": "Live Ghost Pilot HUD demo executed successfully across 3 targets."}
+                            })
+                        threading.Thread(target=run_demo, daemon=True).start()
+                        result = {"demo_started": True}
+                    elif method == "self_heal_demo":
+                        if session or replay or step_run:
+                            raise ValueError("Stop the active recording or replay first")
+                        obstacle_mode = payload.get("obstacle", "cookie")
+                        def run_heal_demo():
+                            time.sleep(0.1)
+                            emit({"event": "hud_started"})
+                            time.sleep(0.5)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 1, "total_steps": 3,
+                                "label": "Shopify Staging Form",
+                                "is_browser_level": True,
+                                "status": "Opening practice product form..."
+                            })
+                            time.sleep(0.8)
+
+                            if obstacle_mode == "security":
+                                # Strict safeguard demo: refusal to auto-dismiss security boundaries
+                                emit({
+                                    "event": "hud_obstacle",
+                                    "kind": "security_boundary",
+                                    "label": "Security Boundary: Authorize Payment ($450)",
+                                    "recoverable": False,
+                                    "reason": "Security boundary detected: payment confirmation and admin password required.",
+                                    "rect": {"left": 360, "top": 240, "width": 460, "height": 280},
+                                    "details": "Automated bypass is strictly forbidden for security & payment controls."
+                                })
+                                time.sleep(1.2)
+                                emit({
+                                    "event": "hud_paused_for_help",
+                                    "reason": "Security boundary requires human authorization. Automated dismissal blocked."
+                                })
+                                return
+
+                            # Recoverable obstacle demo: cookie consent banner
+                            emit({
+                                "event": "hud_obstacle",
+                                "kind": "cookie_banner",
+                                "label": "Cookie & Privacy Consent Banner",
+                                "recoverable": True,
+                                "rect": {"left": 380, "top": 260, "width": 440, "height": 220},
+                                "details": "Blocking element: #cookie-consent-overlay | Safe Action: Accept All Cookies"
+                            })
+                            time.sleep(1.2)
+                            emit({
+                                "event": "hud_recovering",
+                                "strategy": "dismiss_cookie_banner",
+                                "status": "Recovering: Dismissing Cookie Banner via 'Accept All Cookies' (attempt 1/2)",
+                                "rect": {"left": 480, "top": 410, "width": 160, "height": 38},
+                                "label": "Accept All Cookies"
+                            })
+                            time.sleep(1.0)
+                            emit({
+                                "event": "hud_retrying_verification",
+                                "status": "Retrying verification: Confirming banner cleared and form interactable...",
+                                "attempt": 1,
+                                "max_attempts": 2
+                            })
+                            time.sleep(0.9)
+                            emit({
+                                "event": "hud_acting",
+                                "status": "Obstacle resolved • Resuming workflow",
+                                "action": "resume",
+                                "label": "Resumed"
+                            })
+                            time.sleep(0.6)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 2, "total_steps": 3,
+                                "label": "Product Title",
+                                "rect": {"left": 280, "top": 240, "width": 380, "height": 40},
+                                "status": "Targeting: Product Title"
+                            })
+                            time.sleep(0.7)
+                            emit({
+                                "event": "hud_acting",
+                                "step_index": 2, "total_steps": 3,
+                                "action": "set_text",
+                                "label": "Product Title",
+                                "rect": {"left": 280, "top": 240, "width": 380, "height": 40},
+                                "status": "Typing: Premium Organic Cotton Tee"
+                            })
+                            time.sleep(0.8)
+                            emit({
+                                "event": "hud_targeting",
+                                "step_index": 3, "total_steps": 3,
+                                "label": "Save Product Button",
+                                "rect": {"left": 660, "top": 180, "width": 120, "height": 36},
+                                "status": "Targeting: Save"
+                            })
+                            time.sleep(0.7)
+                            emit({
+                                "event": "hud_acting",
+                                "step_index": 3, "total_steps": 3,
+                                "action": "click",
+                                "label": "Save Product Button",
+                                "rect": {"left": 660, "top": 180, "width": 120, "height": 36},
+                                "status": "Clicking Save"
+                            })
+                            time.sleep(0.8)
+                            emit({
+                                "event": "replay_finished",
+                                "steps": True,
+                                "job": {"ok": True, "detail": "Self-healing execution demo succeeded: obstacle resolved and form saved."}
+                            })
+                        threading.Thread(target=run_heal_demo, daemon=True).start()
+                        result = {"demo_started": True, "mode": obstacle_mode}
+                    elif method == "screen_scan":
+                        from .screen_workflow import scan_screen_and_propose
+                        active_window_only = payload.get("active_window_only", True)
+                        cleanup_image = payload.get("cleanup_image", True)
+                        proposal = scan_screen_and_propose(
+                            active_window_only=active_window_only,
+                            cleanup_image=cleanup_image,
+                            custom_image_path=payload.get("image_path"),
+                            mock_ocr_text=payload.get("mock_ocr_text"),
+                        )
+                        result = proposal.to_dict()
+                    elif method in ("chain_plan", "chain_run"):
+                        from .chain_orchestrator import CrossAppChainOrchestrator
+                        orchestrator = CrossAppChainOrchestrator()
+                        dry_run = method == "chain_plan" or payload.get("dry_run", False)
+                        approved = payload.get("approved", False)
+                        rep = orchestrator.execute_chain(
+                            workbook_path=payload.get("workbook_path"),
+                            store_url=payload.get("store_url"),
+                            recipient=payload.get("recipient", "Store Manager"),
+                            approved=approved,
+                            dry_run=dry_run,
+                            idempotency_key=payload.get("idempotency_key"),
+                        )
+                        result = rep.to_dict()
                     else:
                         raise ValueError("Unknown desktop command")
+
+
                     emit({"id": request_id, "ok": True, "result": result})
                 except Exception as exc:
                     emit({"id": request_id, "ok": False, "error": str(exc)[:600]})
@@ -359,19 +634,24 @@ def main():
                         break
                     if event.get("kind") == "transcript":
                         emit({"event": "voice", "kind": "heard", "text": event.get("text", "")})
-                        command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
-                                           awake=time.monotonic() < listener.awake_until,
-                                           busy=bool(session or replay or step_run))
+                        try:
+                            command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
+                                               awake=time.monotonic() < listener.awake_until,
+                                               busy=bool(session or replay or step_run or shopify_future), catalog=catalog, learning=learning_engine)
+                        except Exception as exc:
+                            command = {"kind": "command_error", "message": f"Could not handle voice command: {str(exc)[:200]}"}
                         if command["kind"] == "wake":
                             listener.awake_until = time.monotonic() + 12
                         elif command["kind"] == "workflow":
                             listener.awake_until = 0
                         emit({"event": "voice", **command})
-                        if command["kind"] in ("sleep", "workflow", "app_opened"):
+                        if command["kind"] == "sleep":
                             listener.close()
                             listener = None
                             emit({"event": "voice", "kind": "stopped"})
                             break
+                        elif command["kind"] in ("workflow", "app_opened", "add_workflow"):
+                            listener.awake_until = time.monotonic() + 20
                     else:
                         if event.get("kind") == "ready":
                             # The mic click authorizes the first command without a wake phrase.
@@ -402,17 +682,34 @@ def main():
                         save_session()
                     except Exception:
                         pass  # already reported; the recording is lost but the loop keeps serving
+            while not step_outbox.empty():
+                try:
+                    msg = step_outbox.get_nowait()
+                    if "event" in msg:
+                        emit(msg)
+                    elif "ok" in msg:
+                        step_outcome = msg
+                except queue.Empty:
+                    break
             if replay and replay.poll() is not None:
                 emit({"event": "replay_finished", "job_id": replay_id,
                       "job": next((j for j in jobs.list() if j["id"] == replay_id), None)})
                 replay, replay_id = None, None
                 park_ghost()
             if step_run and step_run.poll() is not None:
-                try:
-                    outcome = json.loads(step_run.stdout.read().strip().splitlines()[-1])
-                except (ValueError, IndexError):
-                    outcome = {"ok": False, "detail": "Replay was stopped before it finished."}
+                time.sleep(0.04)
+                while not step_outbox.empty():
+                    try:
+                        msg = step_outbox.get_nowait()
+                        if "event" in msg:
+                            emit(msg)
+                        elif "ok" in msg:
+                            step_outcome = msg
+                    except queue.Empty:
+                        break
+                outcome = step_outcome or {"ok": False, "detail": "Replay was stopped before it finished."}
                 step_run = None
+                step_outcome = None
                 park_ghost()
                 emit({"event": "replay_finished", "steps": True, "job": outcome})
             # Pending scheduled jobs run while the notch is open, without a second worker command.

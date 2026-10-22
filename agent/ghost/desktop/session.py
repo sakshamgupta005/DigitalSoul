@@ -16,6 +16,14 @@ from .whatsapp import executable, hosted_pid, WHATSAPP_EXES, is_whatsapp
 
 # Chromium browsers spread one window across child processes.
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
+
+
+def exe_name(path):
+    if not path:
+        return ""
+    s = str(path)
+    idx = max(s.rfind("\\"), s.rfind("/"))
+    return s[idx + 1:].lower() if idx != -1 else s.lower()
 CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabItem", "CheckBox", "RadioButton",
                    "DataItem", "TreeItem", "Text", "Image", "ComboBox", "SplitButton")
 # Clicking a page or window root says nothing about what was clicked (typing is captured separately).
@@ -181,7 +189,7 @@ def drop_non_substantive_steps(steps):
     current_visit = []
     current_app = None
     for step in steps:
-        app = PureWindowsPath(step.get("path") or step.get("app") or "").name.lower()
+        app = exe_name(step.get("path") or step.get("app") or "")
         if step.get("kind") == "open_app" or (current_app is not None and app != current_app):
             if current_visit:
                 visits.append(current_visit)
@@ -208,21 +216,25 @@ def drop_non_substantive_steps(steps):
 
         # B. Drop blank / new tab pages that had no interaction
         no_blanks = []
+        n_cleaned = len(cleaned)
         for i, s in enumerate(cleaned):
             if s.get("kind") == "open_url" and is_blank_url(s.get("url")):
-                following = cleaned[i + 1:]
-                if any(f.get("kind") == "open_url" for f in following) or not any(is_substantive_step(f) for f in following):
+                has_next_url = any(cleaned[j].get("kind") == "open_url" for j in range(i + 1, n_cleaned))
+                has_subsequent_action = any(is_substantive_step(cleaned[j]) for j in range(i + 1, n_cleaned))
+                if has_next_url or not has_subsequent_action:
                     continue
             no_blanks.append(s)
 
         # C. Drop dead-end chat / item clicks (superseded by another item selection before any action)
         no_dead_ends = []
+        n_blanks = len(no_blanks)
         for i, s in enumerate(no_blanks):
             c_type = (s.get("target") or {}).get("control_type")
             is_item = s.get("kind") == "click" and c_type in ("ListItem", "DataItem", "TreeItem")
             if is_item:
                 superseded = False
-                for follow in no_blanks[i + 1:]:
+                for j in range(i + 1, n_blanks):
+                    follow = no_blanks[j]
                     if is_substantive_step(follow):
                         break
                     follow_ctype = (follow.get("target") or {}).get("control_type")
@@ -266,12 +278,18 @@ def clean_steps(steps):
     out = []
     for index, step in enumerate(steps):
         target = step.get("target") or {}
-        browser = PureWindowsPath(step.get("path", "")).name.lower() in BROWSER_EXES
+        browser = exe_name(step.get("path", "")) in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
-        if step["kind"] == "click" and (browser or (target.get("control_type") and target.get("control_type") not in CLICKABLE_KINDS)
-                                        or str(target.get("automation_id", "")).startswith("Appid:")):
-            continue
-        if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter":
+        has_point = bool(step.get("point") or step.get("relative_point"))
+        c_type = target.get("control_type")
+        if step["kind"] in ("click", "double_click", "right_click"):
+            if str(target.get("automation_id", "")).startswith("Appid:"):
+                continue
+            if c_type in ("Pane", "Group", "Window") and not has_point:
+                continue
+            if c_type and c_type not in CLICKABLE_KINDS and not has_point:
+                continue
+        if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter" and not has_point:
             continue
         out.append(step)
 
@@ -300,19 +318,19 @@ def compress_browsing(steps):
     out, droppable = [], []
     for step in steps:
         kind, path = step["kind"], step.get("path", "")
-        browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
-        b_name = PureWindowsPath(path).name.lower()
+        browser = exe_name(path) in BROWSER_EXES
+        b_name = exe_name(path)
         if kind == "open_url":
             at = step.get("at", 0)
             url = step.get("url", "")
             video = is_video(url)
             typed = any(out[i]["kind"] == "set_text" and "address" in (out[i].get("field") or "").lower()
-                        and PureWindowsPath(out[i].get("path", "")).name.lower() == b_name for i in droppable)
-            drop = {i for i in droppable if PureWindowsPath(out[i].get("path", "")).name.lower() == b_name and (
+                        and exe_name(out[i].get("path", "")) == b_name for i in droppable)
+            drop = {i for i in droppable if exe_name(out[i].get("path", "")) == b_name and (
                 video or out[i]["kind"] == "open_app" or at - out[i].get("at", at) <= FOLD_SECONDS)}
             out = [s for i, s in enumerate(out) if i not in drop]
             droppable = []
-            if out and out[-1]["kind"] == "open_url" and PureWindowsPath(out[-1].get("path", "")).name.lower() == b_name:
+            if out and out[-1]["kind"] == "open_url" and exe_name(out[-1].get("path", "")) == b_name:
                 prev_url = out[-1].get("url", "")
                 # A page you left by typing in the address bar was somewhere you went, however briefly;
                 # results pages, and a site's own pages on the way to its video, were only a way there.
@@ -851,6 +869,20 @@ class Session:
                 continue
             try:
                 if event["kind"] == "enter":
+                    try:
+                        focus = self.native.focused()
+                        if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
+                            val = (field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES) or "").strip()
+                            if val:
+                                spec_edit = locator(focus, editable=True)
+                                field = (focus.element_info.name or "").strip()
+                                step = {"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
+                                        "label": "Text field", "target": spec_edit, "value": val}
+                                if field and field != val and len(field) <= 160:
+                                    step["field"] = field
+                                self.append(step)
+                    except Exception:
+                        pass
                     self.append({"kind": "press_enter", "app": PureWindowsPath(path).name, "path": path})
                     if self.capture:
                         if not self.capture.composed and is_whatsapp(path):
@@ -867,6 +899,28 @@ class Session:
                                 pass
                         if self.capture.composed:
                             self.capture.enter()
+                elif event["kind"] == "tab":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "tab"})
+                elif event["kind"] == "escape":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "escape"})
+                elif event["kind"] == "hotkey":
+                    self.append({"kind": "hotkey", "app": PureWindowsPath(path).name, "path": path, "combo": event.get("combo")})
+                elif event["kind"] == "scroll":
+                    pt = event.get("point")
+                    rel_pt = None
+                    if pt and window:
+                        try:
+                            wrect = window.rectangle()
+                            rel_pt = [pt[0] - wrect.left, pt[1] - wrect.top]
+                        except Exception:
+                            pass
+                    step = {"kind": "scroll", "app": PureWindowsPath(path).name, "path": path,
+                            "delta": event.get("delta", -120)}
+                    if pt:
+                        step["point"] = list(pt)
+                    if rel_pt:
+                        step["relative_point"] = rel_pt
+                    self.append(step)
                 else:
                     if self._ignored(point=event["point"]):
                         continue  # the notch's own buttons, or a never-record window
@@ -914,14 +968,28 @@ class Session:
                     # Fall back to the nearest named element, then the clicked element itself.
                     control = found or named or leaf
                     name, kind = control.element_info.name or "", control.element_info.control_type
-                    if kind not in CLICKABLE_KINDS:
+                    is_browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
+                    pt = event["point"]
+                    rel_pt = None
+                    try:
+                        wrect = window.rectangle()
+                        rel_pt = [pt[0] - wrect.left, pt[1] - wrect.top]
+                    except Exception:
+                        pass
+                    if kind not in CLICKABLE_KINDS and not (is_browser or self.everything):
                         continue  # panes, groups, toolbars, page roots: nothing replayable was clicked
                     label = clean_control_name(control, name, kind)
-                    spec = locator(control, editable=kind == "Edit")
+                    if not label or label in ("Pane", "Document", "Group"):
+                        label = name or (f"Browser click ({rel_pt[0]}, {rel_pt[1]})" if rel_pt else f"Click at ({pt[0]}, {pt[1]})")
+                    spec = locator(control, editable=kind == "Edit") if control else {"control_type": kind or "Pane"}
                     if label and label not in ("Text field", kind) and not spec.get("name"):
                         spec["name"] = label
-                    self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
-                                 "label": label, "target": spec})
+                    step_kind = event["kind"] if event["kind"] in ("double_click", "right_click") else "click"
+                    step = {"kind": step_kind, "app": PureWindowsPath(path).name, "path": path,
+                            "label": label, "target": spec, "point": list(pt)}
+                    if rel_pt:
+                        step["relative_point"] = rel_pt
+                    self.append(step)
                     if self.capture and is_whatsapp(path):
                         with contextlib.redirect_stdout(sys.stderr):
                             self.capture.click(spec, name, kind)
@@ -936,6 +1004,16 @@ class Session:
             # whose text must never be recorded as typing.
             browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
             kinds = ("Edit",) if is_whatsapp(path) or browser else (("Edit", "Document", "DataItem") if is_excel else ("Edit", "Document"))
+            if is_whatsapp(path) and focus.element_info.control_type not in kinds:
+                try:
+                    from pywinauto.uia_defines import IUIA
+                    from pywinauto.uia_element_info import UIAElementInfo
+                    from pywinauto.controls.uiawrapper import UIAWrapper
+                    deep = window.element_info.element.FindFirst(4, IUIA().iuia.CreatePropertyCondition(30008, True))
+                    if deep:
+                        focus = UIAWrapper(UIAElementInfo(deep))
+                except Exception:
+                    pass
             if focus.element_info.process_id not in active_pids or focus.element_info.control_type not in kinds:
                 return None
             if focus.element_info.element.CurrentIsPassword or SECRET_FIELD.search(focus.element_info.name or ""):
@@ -1023,14 +1101,16 @@ class Session:
 
     def finish(self):
         self.events.__exit__(None, None, None)
-        self._closed.set()
-        if self._visual_queue:
+        if hasattr(self, "_closed"):
+            self._closed.set()
+        if getattr(self, "_visual_queue", None):
             try:
                 self._visual_queue.put_nowait(None)
             except Exception:
                 pass
-        if self._visual_thread and self._visual_thread.is_alive():
+        if getattr(self, "_visual_thread", None) and self._visual_thread.is_alive():
             self._visual_thread.join(timeout=1.0)
+
         flow = None
         if self.capture and self.capture.composed and not self.capture.done:
             # Typed but never sent: the routine still means "send this", with Enter on replay.

@@ -275,7 +275,54 @@ SHOPIFY_POLARIS_HTML = """<!DOCTYPE html>
 """
 
 
+COOKIE_OVERLAY_HTML = """
+  <div id="cookie-consent-overlay" class="obstacle-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div style="background: #fff; border-radius: 8px; padding: 24px; max-width: 440px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3); font-family: -apple-system, sans-serif;">
+      <div style="font-size: 28px; margin-bottom: 8px;">🍪</div>
+      <h3 style="margin: 0 0 8px; color: #202223; font-size: 17px;">Cookie &amp; Privacy Preferences</h3>
+      <p style="font-size: 13px; color: #6d7175; line-height: 1.4; margin-bottom: 18px;">We use essential and analytics cookies to enhance store staging automation. Accept cookies to continue.</p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button id="accept-cookies-btn" type="button" onclick="document.getElementById('cookie-consent-overlay').remove();" style="background: #008060; color: #fff; border: none; border-radius: 4px; padding: 9px 18px; font-weight: 600; cursor: pointer;">Accept All Cookies</button>
+        <button id="decline-cookies-btn" type="button" onclick="document.getElementById('cookie-consent-overlay').remove();" style="background: #f6f6f7; color: #202223; border: 1px solid #c9cccf; border-radius: 4px; padding: 9px 16px; cursor: pointer;">Decline Optional</button>
+      </div>
+    </div>
+  </div>
+"""
+
+NEWSLETTER_OVERLAY_HTML = """
+  <div id="newsletter-modal-overlay" class="obstacle-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 99999; display: flex; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 8px; padding: 24px; max-width: 420px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3); position: relative; font-family: -apple-system, sans-serif;">
+      <button id="dismiss-newsletter-btn" aria-label="Close" onclick="document.getElementById('newsletter-modal-overlay').remove();" style="position: absolute; top: 12px; right: 14px; border: none; background: transparent; font-size: 18px; cursor: pointer; color: #6d7175;">×</button>
+      <h3 style="margin: 0 0 8px; color: #202223; font-size: 16px;">Supplier Drop Insights</h3>
+      <p style="font-size: 13px; color: #6d7175; margin-bottom: 16px;">Get real-time wholesale updates directly in your inbox.</p>
+      <button type="button" onclick="document.getElementById('newsletter-modal-overlay').remove();" style="background: #f1f2f3; border: 1px solid #c9cccf; border-radius: 4px; padding: 7px 16px; font-size: 13px; cursor: pointer;">Maybe Later</button>
+    </div>
+  </div>
+"""
+
+SECURITY_OVERLAY_HTML = """
+  <div id="security-auth-overlay" class="obstacle-overlay" style="position: fixed; inset: 0; background: rgba(30,10,10,0.75); z-index: 99999; display: flex; align-items: center; justify-content: center;">
+    <div style="background: #fff; border-radius: 8px; padding: 24px; max-width: 440px; text-align: center; border: 2px solid #d72c0d; box-shadow: 0 14px 36px rgba(0,0,0,0.4); font-family: -apple-system, sans-serif;">
+      <div style="font-size: 26px; margin-bottom: 6px;">🔒</div>
+      <h3 style="margin: 0 0 8px; color: #d72c0d; font-size: 17px;">Authorize Payment &amp; Admin Password</h3>
+      <p style="font-size: 13px; color: #202223; margin-bottom: 14px;">High-risk operation: Confirm $450 subscription and enter admin password to unlock.</p>
+      <input type="password" placeholder="Admin password" style="width: 80%; padding: 8px; border: 1px solid #c9cccf; border-radius: 4px; margin-bottom: 14px;">
+      <div>
+        <button id="authorize-payment-btn" type="button" style="background: #d72c0d; color: #fff; border: none; border-radius: 4px; padding: 9px 18px; font-weight: 600;">Authorize Payment</button>
+      </div>
+    </div>
+  </div>
+"""
+
+
 @router.get("/test-form", response_class=HTMLResponse)
-def shopify_test_form():
-    """Renders the local Shopify Polaris Add Product test form."""
-    return SHOPIFY_POLARIS_HTML
+def shopify_test_form(simulate_popup: Optional[str] = None):
+    """Renders the local Shopify Polaris Add Product test form with optional simulated obstacle."""
+    html = SHOPIFY_POLARIS_HTML
+    if simulate_popup == "cookie":
+        html = html.replace("</body>", f"{COOKIE_OVERLAY_HTML}</body>")
+    elif simulate_popup == "newsletter":
+        html = html.replace("</body>", f"{NEWSLETTER_OVERLAY_HTML}</body>")
+    elif simulate_popup == "security":
+        html = html.replace("</body>", f"{SECURITY_OVERLAY_HTML}</body>")
+    return html

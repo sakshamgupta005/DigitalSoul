@@ -67,6 +67,16 @@ impl Bridge {
                     match value.get("event").and_then(Value::as_str) {
                         Some("recording_started") => RECORDING.store(true, Ordering::SeqCst),
                         Some("recording_saved" | "error") => show_notch(&app),
+                        Some("replay_started" | "hud_targeting" | "hud_acting" | "hud_browser_step" | "shopify_started") => {
+                            if let Some(hud) = app.get_webview_window("ghost-hud") {
+                                let _ = hud.show();
+                            }
+                        },
+                        Some("hud_hide") => {
+                            if let Some(hud) = app.get_webview_window("ghost-hud") {
+                                let _ = hud.hide();
+                            }
+                        },
                         _ => {}
                     }
                     let _ = app.emit("desktop-event", value);
@@ -82,9 +92,11 @@ impl Bridge {
     }
 
     fn request(&self, method: String, payload: Value) -> Reply {
-        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize"].contains(&method.as_str()) {
+        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize", "export_skill", "import_skill", "demonstration_synthesize", "evaluate_skill", "optimize_skill", "hud_demo", "self_heal_demo", "screen_scan", "chain_plan", "chain_run", "profile_list", "profile_get", "profile_set_active", "profile_create", "profile_delete", "profile_execute"].contains(&method.as_str()) {
             return Err("Unsupported desktop command".into());
         }
+
+
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
         let line = serde_json::to_string(&json!({"id":id,"method":method,"payload":payload})).map_err(|e| e.to_string())?;
         if line.len() > 65536 { return Err("Desktop request too large".into()) }
@@ -100,8 +112,8 @@ impl Bridge {
             self.pending.lock().unwrap().remove(&id);
             return Err(error);
         }
-        // Shopify runs a real browser (and a model call) inside the backend; give it time to finish.
-        let wait = if method.starts_with("shopify_") { 240 } else { 20 };
+        // Shopify runs a real browser; screen_scan and chain_run may orchestrate multiple apps.
+        let wait = if method.starts_with("shopify_") || method == "screen_scan" || method == "chain_run" { 180 } else { 20 };
         let result = receiver.recv_timeout(Duration::from_secs(wait));
         self.pending.lock().unwrap().remove(&id);
         result.map_err(|_| "Desktop command timed out; check the app before retrying".to_string())?
@@ -166,6 +178,31 @@ fn set_notch_hidden(window: tauri::WebviewWindow, hidden: bool) -> Result<(), St
     if hidden { window.hide() } else { window.show() }.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn set_hud_visible(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    if let Some(hud) = app.get_webview_window("ghost-hud") {
+        if visible {
+            if let Ok(Some(m)) = hud.primary_monitor() {
+                let _ = hud.set_position(tauri::PhysicalPosition::new(m.position().x, m.position().y));
+                let _ = hud.set_size(tauri::PhysicalSize::new(m.size().width, m.size().height));
+            }
+            hud.show().map_err(|e| e.to_string())?;
+        } else {
+            hud.hide().map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_hud_interactive(app: tauri::AppHandle, interactive: bool) -> Result<(), String> {
+    if let Some(hud) = app.get_webview_window("ghost-hud") {
+        hud.set_ignore_cursor_events(!interactive).map_err(|e| e.to_string())?;
+        let _ = app.emit("hud-interactive-changed", json!({ "interactive": interactive }));
+    }
+    Ok(())
+}
+
 /// The replay ghost: a click-through overlay that the Python replayer flies to each control it acts on.
 /// It is created once and never focused, so moving it cannot steal focus from the app being replayed.
 /// 72x72 logical leaves room for the ghost's glow inside the transparent window (no square halo).
@@ -173,7 +210,7 @@ const GHOST_PARKED: (i32, i32) = (-4000, -4000);
 
 fn main() {
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, set_notch_hidden, quit_app])
+        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, set_notch_hidden, set_hud_visible, set_hud_interactive, quit_app])
         .setup(|app| {
             let backend = Bridge::start(app.handle().clone());
             app.manage(Backend(backend));
@@ -187,6 +224,24 @@ fn main() {
             // Windows ignores a far-off builder position and enforces a minimum width; park it explicitly.
             let _ = ghost.set_size(tauri::LogicalSize::new(72.0, 72.0));
             let _ = ghost.set_position(tauri::PhysicalPosition::new(GHOST_PARKED.0, GHOST_PARKED.1));
+
+            // Fullscreen transparent HUD overlay for Live Ghost Pilot
+            let monitor = app.primary_monitor().ok().flatten();
+            let (screen_w, screen_h, left, top) = if let Some(m) = &monitor {
+                (m.size().width as f64, m.size().height as f64, m.position().x as f64, m.position().y as f64)
+            } else {
+                (1920.0, 1080.0, 0.0, 0.0)
+            };
+            let hud = tauri::WebviewWindowBuilder::new(app, "ghost-hud", tauri::WebviewUrl::App("hud.html".into()))
+                .title("DigitalSoul HUD Overlay")
+                .inner_size(screen_w, screen_h)
+                .position(left, top)
+                .decorations(false).transparent(true).shadow(false).resizable(false)
+                .always_on_top(true).skip_taskbar(true).focused(false).visible(false)
+                .build()?;
+            let _ = hud.set_ignore_cursor_events(true);
+            let _ = hud.set_position(tauri::PhysicalPosition::new(left as i32, top as i32));
+            let _ = hud.set_size(tauri::PhysicalSize::new(screen_w as u32, screen_h as u32));
             Ok(())
         })
         .build(tauri::generate_context!()).expect("Unable to create DigitalSoul window");

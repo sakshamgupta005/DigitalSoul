@@ -7,7 +7,7 @@ from .shopify_actor import ShopifyBrowserActor
 
 
 class ShopifySession:
-    def __init__(self, actor_factory=ShopifyBrowserActor, native_factory=None):
+    def __init__(self, actor_factory=ShopifyBrowserActor, native_factory=None, event_sink=None):
         if actor_factory is ShopifyBrowserActor:
             # browser-use eagerly imports its optional recording watchdog at
             # startup, even when recording is off. On Windows, first importing
@@ -17,6 +17,7 @@ class ShopifySession:
         self._factory = actor_factory
         self._native_factory = native_factory
         self._native_enabled = native_factory is not None or actor_factory is ShopifyBrowserActor
+        self.event_sink = event_sink
         self._native_actor = None
         self._actor = None
         self._loop = asyncio.new_event_loop()
@@ -48,8 +49,13 @@ class ShopifySession:
             is_local = "127.0.0.1" in target_url or "localhost" in target_url
             if headless or is_local:
                 actor = self._factory(headless=True)
+                kwargs = {"click_save": click_save}
+                if self.event_sink:
+                    import inspect
+                    if "event_sink" in inspect.signature(actor.execute_product_creation).parameters:
+                        kwargs["event_sink"] = self.event_sink
                 try:
-                    return await actor.execute_product_creation(product, click_save=click_save)
+                    return await actor.execute_product_creation(product, **kwargs)
                 finally:
                     await actor.close()
             if self._native_actor is not None:
@@ -75,7 +81,12 @@ class ShopifySession:
                 self._actor = actor
             # Keep both the Actor and its event loop alive between products.
             # keep_alive=True alone only preserves the Edge process, not CDP.
-            return await self._actor.execute_product_creation(product, click_save=click_save)
+            kwargs = {"click_save": click_save}
+            if self.event_sink:
+                import inspect
+                if "event_sink" in inspect.signature(self._actor.execute_product_creation).parameters:
+                    kwargs["event_sink"] = self.event_sink
+            return await self._actor.execute_product_creation(product, **kwargs)
 
     async def _run_native(self, product, click_save):
         if hasattr(self._native_actor, "prepare"):

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Set
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
-from contracts import RawEvent, Workflow
+from contracts import RawEvent, Workflow, Trust
 from agent.ghost.db.database import Database
 from agent.ghost.learning.models import NormalizedAction, Episode, WorkflowCandidate
 from agent.ghost.learning.normalizer import normalize_batch
@@ -25,10 +25,22 @@ from agent.ghost.learning.hypothesis import enhance_candidate_with_llm
 from agent.ghost.learning.compiler import compile_workflow
 from agent.ghost.learning.recommendations import generate_recommendation_card
 from agent.ghost.learning.guard_feed import MistakeGuardFeed, GuardWarning
+from agent.ghost.learning.skill_recorder import (
+    SensitiveDataFilter,
+    SkillSynthesizer,
+    export_skill_markdown,
+    parse_skill_markdown,
+    ActionCompactor,
+    SkillQualityReport,
+    SkillQualityEvaluator,
+    SkillOptimizer,
+)
+from agent.ghost.learning.habit_model import ProfileManager
 
 
 router = APIRouter(prefix="/api/v1", tags=["learning"])
 db = Database()
+profile_mgr = ProfileManager(db.db_path)
 guard = MistakeGuardFeed()
 
 
@@ -122,6 +134,65 @@ class TicketResponse(BaseModel):
 class GuardCheckRequest(BaseModel):
     event: RawEvent
     active_workflow_id: Optional[str] = None
+
+
+class DemonstrationSynthesizeRequest(BaseModel):
+    steps: List[Dict[str, Any]]
+    voice_notes: Optional[str] = None
+    screen_context: Optional[str] = None
+    app_name: Optional[str] = None
+    use_llm: bool = True
+    save_candidate: bool = True
+
+
+class DemonstrationSynthesizeResponse(BaseModel):
+    candidate: WorkflowCandidate
+    skill_markdown: str
+    redacted_count: int
+    voice_notes_used: bool
+
+
+class SkillExportResponse(BaseModel):
+    candidate_id: str
+    skill_markdown: str
+
+
+class SkillImportRequest(BaseModel):
+    skill_markdown: str
+
+
+class RedactRequest(BaseModel):
+    text: Optional[str] = None
+    step: Optional[Dict[str, Any]] = None
+
+
+class RedactResponse(BaseModel):
+    text: Optional[str] = None
+    step: Optional[Dict[str, Any]] = None
+    redacted_count: int
+
+
+class SkillEvaluateRequest(BaseModel):
+    candidate_id: Optional[str] = None
+    skill_markdown: Optional[str] = None
+
+
+class SkillOptimizeRequest(BaseModel):
+    steps: List[Dict[str, Any]]
+    voice_notes: Optional[str] = None
+    screen_context: Optional[str] = None
+    app_name: Optional[str] = None
+    save_candidate: bool = True
+
+
+class SkillOptimizeResponse(BaseModel):
+    candidate: WorkflowCandidate
+    skill_markdown: str
+    quality_report: SkillQualityReport
+    compacted_steps_count: int
+    original_steps_count: int
+
+
 
 
 # ============================================================================
@@ -298,7 +369,7 @@ def validate_workflow(workflow_id: str, payload: ValidationRequest) -> Workflow:
     validated_wf = existing.model_copy(
         update={
             "version": new_version,
-            "trust": "validated",
+            "trust": Trust.validated,
             "name": payload.name or existing.name,
             "description": payload.description or existing.description,
             "remote_allowed": payload.remote_allowed,
@@ -371,3 +442,212 @@ async def websocket_stream(websocket: WebSocket, ticket: Optional[str] = None):
         stream_manager.disconnect(websocket)
     except Exception:
         stream_manager.disconnect(websocket)
+
+
+# ============================================================================
+# Demonstration Engineering & Skill Recorder Endpoints (inspired by microsoft/skill-recorder)
+# ============================================================================
+
+@router.post("/demonstrations/synthesize", response_model=DemonstrationSynthesizeResponse)
+async def synthesize_demonstration(payload: DemonstrationSynthesizeRequest) -> DemonstrationSynthesizeResponse:
+    """Demonstration Engineering: transforms demonstrated steps and voice commentary into an agent skill."""
+    synthesizer = SkillSynthesizer()
+    result = synthesizer.synthesize(
+        steps=payload.steps,
+        voice_notes=payload.voice_notes,
+        screen_context=payload.screen_context,
+        app_name=payload.app_name,
+        use_llm=payload.use_llm,
+    )
+    cand = result["candidate"]
+    if payload.save_candidate:
+        db.save_candidate(cand)
+        await stream_manager.broadcast("candidate.created", {
+            "candidate_id": cand.candidate_id,
+            "name": cand.name,
+            "support": cand.support,
+            "alignment": cand.alignment,
+        })
+    return DemonstrationSynthesizeResponse(
+        candidate=cand,
+        skill_markdown=result["skill_markdown"],
+        redacted_count=result["redacted_count"],
+        voice_notes_used=result["voice_notes_used"],
+    )
+
+
+@router.get("/candidates/{candidate_id}/skill", response_model=SkillExportResponse)
+def export_candidate_skill(candidate_id: str) -> SkillExportResponse:
+    """Export a candidate as a standard Microsoft SKILL.md document."""
+    candidates = {c.candidate_id: c for c in db.get_all_candidates()}
+    if candidate_id not in candidates:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+    cand = candidates[candidate_id]
+    skill_md = export_skill_markdown(cand)
+    return SkillExportResponse(candidate_id=candidate_id, skill_markdown=skill_md)
+
+
+@router.post("/skills/import", response_model=WorkflowCandidate, status_code=status.HTTP_201_CREATED)
+async def import_skill_document(payload: SkillImportRequest) -> WorkflowCandidate:
+    """Import a standard Microsoft SKILL.md document directly into DigitalSoul."""
+    try:
+        candidate = parse_skill_markdown(payload.skill_markdown)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid SKILL.md: {exc}")
+    db.save_candidate(candidate)
+    await stream_manager.broadcast("candidate.created", {
+        "candidate_id": candidate.candidate_id,
+        "name": candidate.name,
+        "support": candidate.support,
+        "alignment": candidate.alignment,
+    })
+    return candidate
+
+
+@router.get("/skills/hermes")
+def get_hermes_skills():
+    """List available skills from NousResearch/hermes-agent."""
+    from ..learning.hermes_sync import list_hermes_skills
+    return {"skills": list_hermes_skills()}
+
+
+@router.post("/skills/hermes/copy")
+def copy_hermes_skill_endpoint(skill_name: str):
+    """Copy a skill from Hermes Agent into DigitalSoul."""
+    from ..learning.hermes_sync import copy_hermes_skill
+    ok, msg, path = copy_hermes_skill(skill_name)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+    return {"success": True, "message": msg, "path": str(path) if path else None}
+
+
+@router.post("/learning/redact", response_model=RedactResponse)
+def redact_telemetry(payload: RedactRequest) -> RedactResponse:
+    """On-device sensitive data scrubber for telemetry or steps."""
+    total = 0
+    out_text = None
+    out_step = None
+    if payload.text is not None:
+        out_text, count = SensitiveDataFilter.redact_text(payload.text)
+        total += count
+    if payload.step is not None:
+        out_step, count = SensitiveDataFilter.redact_step(payload.step)
+        total += count
+    return RedactResponse(text=out_text, step=out_step, redacted_count=total)
+
+
+@router.post("/skills/evaluate", response_model=SkillQualityReport)
+def evaluate_skill_quality(payload: SkillEvaluateRequest) -> SkillQualityReport:
+    """Evaluate skill quality, locator resilience, and privacy posture."""
+    if payload.candidate_id:
+        candidates = {c.candidate_id: c for c in db.get_all_candidates()}
+        if payload.candidate_id not in candidates:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
+        cand = candidates[payload.candidate_id]
+    elif payload.skill_markdown:
+        try:
+            cand = parse_skill_markdown(payload.skill_markdown)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid SKILL.md: {exc}")
+    else:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Provide candidate_id or skill_markdown")
+
+    return SkillQualityEvaluator.evaluate(cand)
+
+
+@router.post("/skills/optimize", response_model=SkillOptimizeResponse)
+async def optimize_skill(payload: SkillOptimizeRequest) -> SkillOptimizeResponse:
+    """Run automated compaction, multi-strategy locator hardening, and quality scoring."""
+    res = SkillOptimizer.optimize(
+        steps=payload.steps,
+        voice_notes=payload.voice_notes,
+        screen_context=payload.screen_context,
+        app_name=payload.app_name,
+    )
+    cand = res["candidate"]
+    if payload.save_candidate:
+        db.save_candidate(cand)
+        await stream_manager.broadcast("candidate.created", {
+            "candidate_id": cand.candidate_id,
+            "name": cand.name,
+            "support": cand.support,
+            "alignment": cand.alignment,
+        })
+    return SkillOptimizeResponse(
+        candidate=cand,
+        skill_markdown=res["skill_markdown"],
+        quality_report=SkillQualityReport(**res["quality_report"]),
+        compacted_steps_count=res["compacted_steps_count"],
+        original_steps_count=res["original_steps_count"],
+    )
+
+
+# ============================================================================
+# Digital Model of You / Habit Profile Endpoints
+# ============================================================================
+
+class ProfileCreateRequest(BaseModel):
+    name: str
+    role: str = "Digital Twin"
+    avatar: str = "👤"
+    initial_rules: Optional[List[Dict[str, Any]]] = None
+    signature: Optional[str] = None
+
+
+class ProfileExecuteRequest(BaseModel):
+    prompt: str
+    profile_id: Optional[str] = None
+
+
+@router.get("/profiles")
+def list_user_profiles() -> Dict[str, Any]:
+    """List all digital twin profiles and identify active model."""
+    return {
+        "profiles": profile_mgr.list_profiles(),
+        "active_profile": profile_mgr.get_active_profile()
+    }
+
+
+@router.get("/profiles/active")
+def get_active_user_profile() -> Dict[str, Any]:
+    """Retrieve the currently active digital model of you."""
+    return profile_mgr.get_active_profile()
+
+
+@router.post("/profiles", status_code=status.HTTP_201_CREATED)
+async def create_user_profile(payload: ProfileCreateRequest) -> Dict[str, Any]:
+    """Create a new specialized digital twin profile."""
+    prof = profile_mgr.create_profile(
+        name=payload.name,
+        role=payload.role,
+        avatar=payload.avatar,
+        initial_rules=payload.initial_rules,
+        signature=payload.signature
+    )
+    await stream_manager.broadcast("profile.created", prof)
+    return prof
+
+
+@router.post("/profiles/{profile_id}/active")
+async def activate_user_profile(profile_id: str) -> Dict[str, Any]:
+    """Switch the active digital twin profile driving execution."""
+    active = profile_mgr.set_active_profile(profile_id)
+    await stream_manager.broadcast("profile.activated", active)
+    return active
+
+
+@router.delete("/profiles/{profile_id}")
+async def delete_user_profile(profile_id: str) -> Dict[str, bool]:
+    """Delete a custom digital twin profile."""
+    success = profile_mgr.delete_profile(profile_id)
+    await stream_manager.broadcast("profile.deleted", {"profile_id": profile_id})
+    return {"deleted": success}
+
+
+@router.post("/profiles/execute")
+def execute_task_with_habits(payload: ProfileExecuteRequest) -> Dict[str, Any]:
+    """Execute a task matching the exact habits and conventions of the digital twin."""
+    return profile_mgr.execute_with_habits(payload.prompt, profile_id=payload.profile_id)
+
+
+

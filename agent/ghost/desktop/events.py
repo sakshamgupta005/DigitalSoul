@@ -54,31 +54,54 @@ class WinEvents:
             _fields_ = [("vk", wintypes.DWORD), ("scan", wintypes.DWORD),
                         ("flags", wintypes.DWORD), ("time", wintypes.DWORD), ("extra", ctypes.c_size_t)]
 
-        def enqueue(kind, point=None):
+        user.GetKeyState.argtypes = [ctypes.c_int]
+        user.GetKeyState.restype = ctypes.c_short
+
+        def enqueue(kind, point=None, **extra):
             try:
                 hwnd = user.GetForegroundWindow()
                 pid = wintypes.DWORD()
                 user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
                 if kind != "stop" and not self.everything and pid.value not in self.pids:
                     return
+                item = {"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic(), **extra}
                 try:
-                    self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
+                    self.queue.put_nowait(item)
                 except queue.Full:
                     try:
                         self.queue.get_nowait()
-                        self.queue.put_nowait({"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic()})
+                        self.queue.put_nowait(item)
                     except Exception:
                         pass
             except Exception:
                 pass
 
+        last_left_click = 0.0
+        last_left_pos = (0, 0)
+
         @callback_type
         def mouse(code, message, data):
+            nonlocal last_left_click, last_left_pos
             try:
-                if code >= 0 and message == 0x0201:  # WM_LBUTTONDOWN
+                if code >= 0:
                     event = ctypes.cast(data, ctypes.POINTER(Mouse)).contents
                     if RECORD_INJECTED or not event.flags & 1:  # ignore injected mouse events
-                        enqueue("click", (event.point.x, event.point.y))
+                        pos = (event.point.x, event.point.y)
+                        now = time.monotonic()
+                        if message == 0x0201:  # WM_LBUTTONDOWN
+                            if now - last_left_click <= 0.38 and abs(pos[0] - last_left_pos[0]) < 6 and abs(pos[1] - last_left_pos[1]) < 6:
+                                enqueue("double_click", pos)
+                            else:
+                                enqueue("click", pos)
+                            last_left_click = now
+                            last_left_pos = pos
+                        elif message == 0x0204:  # WM_RBUTTONDOWN
+                            enqueue("right_click", pos)
+                        elif message == 0x020A:  # WM_MOUSEWHEEL
+                            raw_delta = (event.data >> 16) & 0xFFFF
+                            if raw_delta > 0x7FFF:
+                                raw_delta -= 0x10000
+                            enqueue("scroll", pos, delta=raw_delta)
             except Exception:
                 pass
             return user.CallNextHookEx(None, code, message, data)
@@ -93,6 +116,14 @@ class WinEvents:
                             enqueue("stop")  # F8, anywhere, stops recording
                         elif event.vk == 0x0D:
                             enqueue("enter")
+                        elif event.vk == 0x09:
+                            enqueue("tab")
+                        elif event.vk == 0x1B:
+                            enqueue("escape")
+                        elif user.GetKeyState(0x11) & 0x8000:
+                            vk = event.vk
+                            if 0x41 <= vk <= 0x5A:
+                                enqueue("hotkey", combo=f"^{chr(vk).lower()}")
             except Exception:
                 pass
             return user.CallNextHookEx(None, code, message, data)

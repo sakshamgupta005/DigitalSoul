@@ -6,6 +6,14 @@ from agent.ghost.desktop.voice import dispatch, launch_app, resolve
 WORKFLOWS = [{"id": "spotify", "name": "Open Spotify"}, {"id": "hello", "name": "Say hello"}]
 
 
+def test_recorded_object_targets_do_not_crash_spoken_command_lookup():
+    flows = [{"id": "recorded", "name": "Office check", "steps": [
+        {"target": {"name": "Inventory products", "control_type": "Edit"}},
+        {"target": {"nested": {"value": "ignored"}}}]}]
+    assert resolve("Hey Jarvis inventory products", flows)["id"] == "recorded"
+    assert resolve("Hey Jarvis completely unrelated words", flows)["kind"] == "unknown"
+
+
 def test_voice_requires_wake_and_exact_saved_name():
     assert resolve("open spotify", WORKFLOWS, require_wake=True)["kind"] == "ignored"
     assert resolve("Hey Jarvis, do Open Spotify!", WORKFLOWS, require_wake=True) == {

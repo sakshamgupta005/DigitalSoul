@@ -24,6 +24,7 @@ def main():
         emit({"kind": "error", "code": "model_missing", "message": "Download the local voice model first: .\\.venv\\Scripts\\python.exe -m agent.ghost.desktop.voice_worker --download (or run .\\scripts\\setup-voice.ps1)."})
         return
     try:
+        emit({"kind": "loading", "message": "Loading local speech model…"})
         model = WhisperModel(str(model_path), device="cpu", compute_type="int8", local_files_only=True)
         rate, block = 16000, 1600
         # Fixed chunks keep RAM bounded. Silence closes an utterance after 0.7 seconds.
@@ -31,6 +32,7 @@ def main():
             emit({"kind": "ready", "engine": "faster-whisper", "model": model_path.name})
             deadline = time.monotonic() + 300
             frames, prefix, silence, voiced = [], [], 0, 0
+            last_signal = last_status = time.monotonic()
             while time.monotonic() < deadline:
                 audio, overflow = mic.read(block)
                 if overflow:
@@ -38,6 +40,12 @@ def main():
                     continue
                 audio = audio[:, 0].copy()
                 active = float(np.sqrt(np.mean(audio * audio))) > 0.008
+                now = time.monotonic()
+                if active:
+                    last_signal = now
+                if now - last_status >= 1:
+                    emit({"kind": "signal", "active": active, "quiet_seconds": round(now - last_signal)})
+                    last_status = now
                 if not frames and not active:
                     prefix = (prefix + [audio])[-3:]
                     continue
@@ -61,8 +69,11 @@ def main():
                                 if s.no_speech_prob < 0.6 and s.avg_logprob > -1.0).strip()
                 if text:
                     emit({"kind": "transcript", "text": text[:512]})
+                else:
+                    emit({"kind": "no_speech", "message": "Couldn't understand that. Speak a command again."})
+                emit({"kind": "listening", "message": "Listening · say Hey Jarvis and your command"})
     except Exception as exc:
-        emit({"kind": "error", "message": f"Local voice unavailable ({type(exc).__name__}). Check microphone access, model files, and Windows input device."})
+        emit({"kind": "error", "message": f"Local voice unavailable ({type(exc).__name__}): {str(exc)[:180]}. Check your Windows input device and microphone access."})
 
 
 if __name__ == "__main__":

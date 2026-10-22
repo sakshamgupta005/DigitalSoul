@@ -139,20 +139,53 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None) -> Dict[str,
             quoted = re.findall(r'["\']([^"\']+)["\']', raw)
             message = quoted[0] if quoted else f"Hello {recipient}, sending you a quick message!"
 
+        from .whatsapp import find_whatsapp_executable
+        wa_exe = find_whatsapp_executable()
         flow = {
             "format": "digitalsoul.whatsapp-flow.v1",
             "kind": "whatsapp",
             "recipient": recipient,
+            "search": recipient,
+            "chat_title": recipient,
             "message": message,
-            "send": {"kind": "Enter"},
+            "executable": wa_exe,
+            "header": {"control_type": "Text", "name": recipient},
+            "actions": [
+                {"kind": "search", "target": {"control_type": "Edit", "automation_id": "_r_e_"}},
+                {"kind": "select", "target": {"control_type": "ListItem", "name": recipient}},
+                {"kind": "compose", "target": {"control_type": "Edit"}},
+            ],
+            "send": {"kind": "enter"},
         }
+        steps = [
+            {"kind": "open_app", "app": "WhatsApp.exe", "path": wa_exe, "label": "WhatsApp"},
+            {"kind": "set_text", "app": "WhatsApp.exe", "path": wa_exe, "label": "Search", "value": recipient},
+            {"kind": "click", "app": "WhatsApp.exe", "path": wa_exe, "label": recipient},
+            {"kind": "set_text", "app": "WhatsApp.exe", "path": wa_exe, "label": f"Type a message to {recipient}", "value": message, "field": f"Type a message to {recipient}"},
+            {"kind": "press_enter", "app": "WhatsApp.exe", "path": wa_exe, "label": "Send"},
+        ]
+        wf_dict = {
+            "name": f"WhatsApp · Message {recipient}",
+            "steps": steps,
+            "apps": ["WhatsApp.exe"],
+            "flow": flow,
+        }
+        saved_id = None
+        saved_wf = None
+        if catalog is not None:
+            saved = catalog.save(wf_dict)
+            saved_id = saved["id"]
+            saved_wf = saved
+
         return {
             "ok": True,
             "kind": "whatsapp",
+            "id": saved_id,
             "name": f"WhatsApp · Message {recipient}",
             "recipient": recipient,
             "message": message,
             "flow": flow,
+            "workflow": saved_wf or wf_dict,
             "summary": f"Send WhatsApp message to {recipient}: \"{message}\"",
             "message_text": f"✨ Synthesized WhatsApp message for {recipient}! Review and approve below.",
         }
