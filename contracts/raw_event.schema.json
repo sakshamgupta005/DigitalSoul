@@ -27,7 +27,10 @@
     },
     "source": {
       "type": "string",
-      "enum": ["extension", "desktop"],
+      "enum": [
+        "extension",
+        "desktop"
+      ],
       "description": "Originating collector sensor."
     },
     "kind": {
@@ -45,68 +48,235 @@
     },
     "app": {
       "type": "object",
-      "required": ["id", "type", "process"],
+      "required": [
+        "id",
+        "type",
+        "process"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["web", "native"] },
-        "domain": { "type": ["string", "null"] },
-        "process": { "type": "string" },
-        "window_title": { "type": ["string", "null"] }
-      }
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "web",
+            "native"
+          ]
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "process": {
+          "type": "string"
+        },
+        "window_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "target": {
       "type": "object",
       "properties": {
-        "role": { "type": ["string", "null"] },
-        "name": { "type": ["string", "null"] },
-        "testid": { "type": ["string", "null"] },
-        "label": { "type": ["string", "null"] },
-        "css": { "type": ["string", "null"] },
-        "xpath": { "type": ["string", "null"] },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "uia": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "automation_id": { "type": ["string", "null"] },
-            "control_type": { "type": ["string", "null"] },
-            "name": { "type": ["string", "null"] }
-          }
+            "automation_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "control_type": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
         },
         "bbox": {
-          "type": ["array", "null"],
-          "items": { "type": "number" },
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
           "minItems": 4,
           "maxItems": 4
         }
-      }
+      },
+      "additionalProperties": false
     },
     "value": {
       "type": "object",
-      "required": ["redacted", "shape"],
+      "required": [
+        "redacted",
+        "shape",
+        "text"
+      ],
       "properties": {
-        "redacted": { "type": "boolean" },
+        "redacted": {
+          "type": "boolean"
+        },
         "shape": {
           "type": "string",
-          "enum": ["none", "text:short", "text:long", "number", "email", "secret_omitted"]
+          "enum": [
+            "none",
+            "text:short",
+            "text:long",
+            "number",
+            "email",
+            "secret_omitted"
+          ]
         },
         "text": {
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "redacted": {
+                "const": true
+              }
+            },
+            "required": [
+              "redacted"
+            ]
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "secret_omitted"
+              }
+            },
+            "required": [
+              "shape"
+            ]
+          },
+          "then": {
+            "properties": {
+              "redacted": {
+                "const": true
+              },
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "shape"
+            ]
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "page": {
       "type": "object",
-      "required": ["url_pattern"],
+      "required": [
+        "url_pattern"
+      ],
       "properties": {
-        "url_pattern": { "type": "string" },
+        "url_pattern": {
+          "type": "string"
+        },
         "url_params": {
           "type": "object",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "session_id": {
       "type": "string",
       "format": "uuid"
     }
-  }
+  },
+  "additionalProperties": false
 }

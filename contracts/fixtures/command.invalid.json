@@ -12,5 +12,6 @@
     "params": {},
     "issued_at": "2026-10-20T08:00:00.000Z",
     "nonce": "old_nonce_already_logged"
-  }
+  },
+  "protocol_version": 1
 }

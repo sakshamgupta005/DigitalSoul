@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://digitalghost.local/schemas/command.json",
+  "title": "RemoteCommandEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "msg_id",
+    "from_device",
+    "to_device",
+    "kind",
+    "sig",
+    "payload"
+  ],
+  "properties": {
+    "protocol_version": {
+      "const": 1
+    },
+    "msg_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "from_device": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "to_device": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "kind": {
+      "const": "command"
+    },
+    "sig": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{128}$"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_id",
+        "device_id",
+        "type",
+        "issued_at",
+        "nonce"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "device_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "workflow_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "approval_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "enum": [
+            "run_workflow",
+            "approve_step",
+            "reject_step",
+            "pause_run",
+            "resume_run",
+            "stop_run",
+            "get_status",
+            "list_workflows"
+          ]
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "workflow_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "effect_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "params": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "run_workflow"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "workflow_id",
+                "workflow_version"
+              ]
+            },
+            "required": [
+              "workflow_id",
+              "workflow_version"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "approve_step"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "workflow_id",
+                "workflow_version",
+                "run_id",
+                "step_id",
+                "approval_id",
+                "effect_hash"
+              ]
+            },
+            "required": [
+              "workflow_id",
+              "workflow_version",
+              "run_id",
+              "step_id",
+              "approval_id",
+              "effect_hash"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "reject_step"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "workflow_id",
+                "workflow_version",
+                "run_id",
+                "step_id",
+                "approval_id",
+                "effect_hash"
+              ]
+            },
+            "required": [
+              "workflow_id",
+              "workflow_version",
+              "run_id",
+              "step_id",
+              "approval_id",
+              "effect_hash"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "pause_run"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "run_id"
+              ]
+            },
+            "required": [
+              "run_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "resume_run"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "run_id"
+              ]
+            },
+            "required": [
+              "run_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop_run"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version",
+                "run_id"
+              ]
+            },
+            "required": [
+              "run_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "get_status"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list_workflows"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "command_id",
+                "device_id",
+                "type",
+                "issued_at",
+                "nonce",
+                "params",
+                "protocol_version"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

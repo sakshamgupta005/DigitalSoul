@@ -17,25 +17,55 @@
     "remote_allowed"
   ],
   "properties": {
-    "workflow_id": { "type": "string" },
-    "version": { "type": "integer", "minimum": 1 },
-    "name": { "type": "string" },
-    "description": { "type": "string" },
+    "workflow_id": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
     "trust": {
       "type": "string",
-      "enum": ["observed", "candidate", "validated", "supervised", "trusted"]
+      "enum": [
+        "observed",
+        "candidate",
+        "validated",
+        "supervised",
+        "trusted"
+      ]
     },
     "provenance": {
       "type": "object",
-      "required": ["evidence_episode_ids", "support", "alignment"],
+      "required": [
+        "evidence_episode_ids",
+        "support",
+        "alignment"
+      ],
       "properties": {
         "evidence_episode_ids": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "support": { "type": "integer", "minimum": 1 },
-        "alignment": { "type": "number", "minimum": 0, "maximum": 1 }
-      }
+        "support": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "alignment": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
     },
     "parameters": {
       "type": "array",
@@ -47,7 +77,8 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/WorkflowStep"
-      }
+      },
+      "minItems": 1
     },
     "decision_rules": {
       "type": "array",
@@ -59,40 +90,301 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/OutcomeCheck"
-      }
+      },
+      "minItems": 1
     },
-    "remote_allowed": { "type": "boolean" }
+    "remote_allowed": {
+      "type": "boolean"
+    }
   },
   "$defs": {
     "WorkflowParameter": {
       "type": "object",
-      "required": ["name", "type", "source", "origin", "confirmed"],
+      "required": [
+        "name",
+        "type",
+        "source",
+        "origin",
+        "confirmed"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "type": { "type": "string", "enum": ["string", "string[]", "number", "boolean"] },
-        "source": { "type": "string" },
-        "origin": { "type": "string", "enum": ["observed", "inferred", "user_defined"] },
-        "confirmed": { "type": "boolean" },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "string[]",
+            "number",
+            "boolean"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "inferred",
+            "user_defined"
+          ]
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
         "default_value": {}
-      }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string[]"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      ]
     },
     "StepLocator": {
       "type": "object",
-      "required": ["by"],
+      "required": [
+        "by"
+      ],
       "properties": {
         "by": {
           "type": "string",
-          "enum": ["testid", "role", "label", "text", "css", "xpath", "uia"]
+          "enum": [
+            "testid",
+            "role",
+            "label",
+            "text",
+            "css",
+            "xpath",
+            "uia"
+          ],
+          "minLength": 1
         },
-        "value": { "type": "string" },
-        "role": { "type": "string" },
-        "name": { "type": "string" },
-        "uia_id": { "type": "string" }
-      }
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uia_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "testid"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "label"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "css"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "xpath"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "role"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "role",
+              "name"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "uia"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "uia_id"
+            ]
+          }
+        }
+      ]
     },
     "PrePostCondition": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "type": "string",
@@ -104,26 +396,132 @@
             "record_id_matches"
           ]
         },
-        "value": { "type": "string" },
-        "locator_ref": { "type": "integer" }
-      }
+        "value": {
+          "type": "string"
+        },
+        "locator_ref": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "url_matches"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "record_id_matches"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "network_2xx"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "element_visible"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "locator_ref"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "field_equals"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "locator_ref",
+              "value"
+            ]
+          }
+        }
+      ]
     },
     "WorkflowStep": {
       "type": "object",
       "required": [
         "step_id",
         "kind",
-        "verb",
         "app",
         "locators",
         "risk",
         "required",
         "origin",
-        "recovery"
+        "recovery",
+        "pre",
+        "post"
       ],
       "properties": {
-        "step_id": { "type": "string" },
-        "kind": { "type": "string", "enum": ["action", "loop", "decision", "assert"] },
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "action",
+            "loop",
+            "decision",
+            "assert"
+          ]
+        },
         "verb": {
           "type": "string",
           "enum": [
@@ -136,66 +534,602 @@
             "assert_state"
           ]
         },
-        "app": { "type": "string" },
+        "app": {
+          "type": "string"
+        },
         "locators": {
           "type": "array",
-          "items": { "$ref": "#/$defs/StepLocator" }
+          "items": {
+            "$ref": "#/$defs/StepLocator"
+          }
         },
-        "input": { "type": ["string", "number", "null"] },
+        "input": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
         "loop_iterator": {
           "type": "object",
           "properties": {
-            "source_param": { "type": "string" },
-            "item_name": { "type": "string" }
-          }
+            "source_param": {
+              "type": "string"
+            },
+            "item_name": {
+              "type": "string"
+            },
+            "max_iterations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "source_param",
+            "item_name",
+            "max_iterations"
+          ]
         },
         "pre": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PrePostCondition" }
+          "items": {
+            "$ref": "#/$defs/PrePostCondition"
+          }
         },
         "post": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PrePostCondition" }
+          "items": {
+            "$ref": "#/$defs/PrePostCondition"
+          }
         },
-        "risk": { "type": "string", "enum": ["R0", "R1", "R2", "R3"] },
-        "required": { "type": "boolean" },
-        "origin": { "type": "string", "enum": ["observed", "inferred"] },
-        "allow_input_fallback": { "type": "boolean", "default": false },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "R0",
+            "R1",
+            "R2",
+            "R3"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "inferred"
+          ]
+        },
+        "allow_input_fallback": {
+          "type": "boolean",
+          "default": false
+        },
         "recovery": {
           "type": "object",
-          "required": ["retries", "on_fail"],
+          "required": [
+            "retries",
+            "on_fail"
+          ],
           "properties": {
-            "retries": { "type": "integer", "minimum": 0 },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
             "on_fail": {
               "type": "string",
-              "enum": ["pause", "skip", "abort", "retry_then_pause"]
+              "enum": [
+                "pause",
+                "skip",
+                "abort",
+                "retry_then_pause"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/WorkflowStep"
+          }
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "output_type": {
+          "enum": [
+            "string",
+            "string[]",
+            "number",
+            "boolean"
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "loop"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "body",
+              "loop_iterator"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "verb"
+                  ]
+                },
+                {
+                  "required": [
+                    "rule_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_id"
+            ],
+            "not": {
+              "required": [
+                "verb"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "verb"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "assert"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "verb"
+            ],
+            "properties": {
+              "verb": {
+                "const": "assert_state"
+              },
+              "post": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "read_field"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "output_name",
+              "output_type"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "navigate"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "input"
+            ],
+            "properties": {
+              "input": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "click"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "type": "null"
+              },
+              "recovery": {
+                "properties": {
+                  "retries": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recovery": {
+                "properties": {
+                  "on_fail": {
+                    "enum": [
+                      "pause",
+                      "abort",
+                      "retry_then_pause"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "action",
+                  "assert"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "loop_iterator"
+                  ]
+                },
+                {
+                  "required": [
+                    "rule_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "enum": [
+                  "click",
+                  "set_field",
+                  "select_option",
+                  "read_field",
+                  "wait_visible"
+                ]
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "properties": {
+              "locators": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk": {
+                "enum": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            },
+            "required": [
+              "risk"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pre": {
+                "minItems": 1
+              },
+              "post": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "loop_iterator"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "enum": [
+                  "set_field",
+                  "select_option"
+                ]
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "input"
+            ],
+            "properties": {
+              "input": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk": {
+                "enum": [
+                  "R2",
+                  "R3"
+                ]
+              }
+            },
+            "required": [
+              "risk"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recovery": {
+                "properties": {
+                  "retries": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "verb": {
+                  "const": "read_field"
+                }
+              },
+              "required": [
+                "verb"
+              ]
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "output_name"
+                  ]
+                },
+                {
+                  "required": [
+                    "output_type"
+                  ]
+                }
+              ]
             }
           }
         }
-      }
+      ]
     },
     "DecisionRule": {
       "type": "object",
-      "required": ["id", "expr", "then", "else", "origin", "supported_runs", "contradicting_runs"],
+      "required": [
+        "id",
+        "expr",
+        "then",
+        "else",
+        "origin",
+        "supported_runs",
+        "contradicting_runs",
+        "confirmed"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "expr": { "type": "string" },
-        "then": { "type": "string" },
-        "else": { "type": "string" },
-        "origin": { "type": "string", "enum": ["inferred", "user_defined"] },
-        "supported_runs": { "type": "integer" },
-        "contradicting_runs": { "type": "integer" }
-      }
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "expr": {
+          "type": "string"
+        },
+        "then": {
+          "type": "string"
+        },
+        "else": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "inferred",
+            "user_defined"
+          ]
+        },
+        "supported_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contradicting_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confirmed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "OutcomeCheck": {
       "type": "object",
-      "required": ["type", "app", "check", "args"],
+      "required": [
+        "type",
+        "app",
+        "check",
+        "args"
+      ],
       "properties": {
-        "type": { "type": "string", "enum": ["app_api", "db_query", "page_assertion"] },
-        "app": { "type": "string" },
-        "check": { "type": "string" },
-        "args": { "type": "object" }
-      }
+        "type": {
+          "type": "string",
+          "enum": [
+            "app_api",
+            "db_query",
+            "page_assertion"
+          ]
+        },
+        "app": {
+          "type": "string"
+        },
+        "check": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

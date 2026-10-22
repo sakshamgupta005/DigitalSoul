@@ -3,11 +3,18 @@
   "$id": "https://digitalghost.local/schemas/error.json",
   "title": "GhostError",
   "type": "object",
-  "required": ["error"],
+  "required": [
+    "error"
+  ],
   "properties": {
     "error": {
       "type": "object",
-      "required": ["code", "message", "retryable", "trace_id"],
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "trace_id"
+      ],
       "properties": {
         "code": {
           "type": "string",
@@ -25,16 +32,43 @@
             "APP_UNREACHABLE",
             "DEVICE_OFFLINE",
             "SIGNATURE_INVALID",
-            "INTERNAL"
+            "INTERNAL",
+            "CONFLICT",
+            "STALE_APPROVAL",
+            "REPLAY_DETECTED",
+            "COMMAND_EXPIRED",
+            "RATE_LIMITED",
+            "UNSUPPORTED_VERSION"
           ]
         },
-        "message": { "type": "string" },
-        "retryable": { "type": "boolean" },
-        "run_id": { "type": ["string", "null"] },
-        "step_id": { "type": ["string", "null"] },
-        "details": { "type": "object" },
-        "trace_id": { "type": "string", "format": "uuid" }
-      }
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "step_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "type": "object"
+        },
+        "trace_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

@@ -1,11 +1,16 @@
 {
   "workflow_id": "wf_at_risk_seg",
-  "version": 3,
+  "version": 4,
   "name": "Weekly at-risk customer segmentation",
-  "description": "Reads overdue accounts from Acme Portal, inspects CRM history, applies segmentation tags based on login freshness and open tickets, and posts summary note.",
+  "description": "Reads overdue accounts, classifies each by plan and login age, saves tags, and posts a run-specific summary.",
   "trust": "validated",
   "provenance": {
-    "evidence_episode_ids": ["ep_01", "ep_04", "ep_07", "ep_09"],
+    "evidence_episode_ids": [
+      "ep_01",
+      "ep_04",
+      "ep_07",
+      "ep_09"
+    ],
     "support": 4,
     "alignment": 0.88
   },
@@ -15,8 +20,7 @@
       "type": "string[]",
       "source": "step:s2_copy_accounts.output",
       "origin": "inferred",
-      "confirmed": true,
-      "default_value": []
+      "confirmed": true
     }
   ],
   "steps": [
@@ -26,17 +30,26 @@
       "verb": "navigate",
       "app": "acme-portal",
       "locators": [
-        { "by": "text", "value": "Reports" }
+        {
+          "by": "text",
+          "value": "Reports"
+        }
       ],
       "input": "http://portal.acme.local/reports/overdue",
       "pre": [],
       "post": [
-        { "type": "url_matches", "value": "/reports/overdue" }
+        {
+          "type": "url_matches",
+          "value": "/reports/overdue"
+        }
       ],
       "risk": "R0",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
+      "recovery": {
+        "retries": 1,
+        "on_fail": "pause"
+      }
     },
     {
       "step_id": "s2_copy_accounts",
@@ -44,79 +57,289 @@
       "verb": "read_field",
       "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "overdue-account-list" }
+        {
+          "by": "testid",
+          "value": "overdue-account-list"
+        }
       ],
       "input": null,
       "pre": [
-        { "type": "element_visible", "locator_ref": 0 }
+        {
+          "type": "element_visible",
+          "locator_ref": 0
+        }
       ],
       "post": [],
       "risk": "R0",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 2, "on_fail": "pause" }
+      "recovery": {
+        "retries": 2,
+        "on_fail": "pause"
+      },
+      "output_name": "account_ids",
+      "output_type": "string[]"
     },
     {
       "step_id": "s3_loop_crm",
       "kind": "loop",
-      "verb": "navigate",
       "app": "acme-crm",
       "locators": [],
       "input": null,
       "loop_iterator": {
         "source_param": "account_ids",
-        "item_name": "item"
+        "item_name": "item",
+        "max_iterations": 100
       },
       "pre": [],
       "post": [],
       "risk": "R0",
       "required": true,
       "origin": "inferred",
-      "recovery": { "retries": 0, "on_fail": "abort" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "abort"
+      },
+      "body": [
+        {
+          "step_id": "s3_open_record",
+          "kind": "action",
+          "verb": "navigate",
+          "app": "acme-crm",
+          "locators": [],
+          "input": "http://crm.acme.local/customers/{{item}}",
+          "pre": [],
+          "post": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          }
+        },
+        {
+          "step_id": "s3_read_plan",
+          "kind": "action",
+          "verb": "read_field",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "customer-plan"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          },
+          "output_name": "plan",
+          "output_type": "string"
+        },
+        {
+          "step_id": "s3_read_days",
+          "kind": "action",
+          "verb": "read_field",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "last-login-days"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          },
+          "output_name": "last_login_days",
+          "output_type": "number"
+        },
+        {
+          "step_id": "s3_decide",
+          "kind": "decision",
+          "app": "acme-crm",
+          "locators": [],
+          "pre": [],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "inferred",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "abort"
+          },
+          "rule_id": "segment"
+        },
+        {
+          "step_id": "s4_set_tag",
+          "kind": "action",
+          "verb": "select_option",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "tag-select"
+            },
+            {
+              "by": "role",
+              "role": "combobox",
+              "name": "Customer Tag"
+            },
+            {
+              "by": "css",
+              "value": "select#tag"
+            }
+          ],
+          "input": "{{decision.segment}}",
+          "pre": [
+            {
+              "type": "url_matches",
+              "value": "/customers/{{item}}"
+            },
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [
+            {
+              "type": "field_equals",
+              "locator_ref": 0,
+              "value": "{{decision.segment}}"
+            }
+          ],
+          "risk": "R1",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 1,
+            "on_fail": "pause"
+          }
+        },
+        {
+          "step_id": "s5_save_cust",
+          "kind": "action",
+          "verb": "click",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "save-btn"
+            },
+            {
+              "by": "role",
+              "role": "button",
+              "name": "Save"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "element_visible",
+              "locator_ref": 0
+            },
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [
+            {
+              "type": "network_2xx",
+              "value": "/api/customers/{{item}}"
+            }
+          ],
+          "risk": "R2",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          }
+        }
+      ]
     },
     {
-      "step_id": "s4_set_tag",
+      "step_id": "s6_open_notes",
+      "kind": "action",
+      "verb": "navigate",
+      "app": "acme-portal",
+      "locators": [],
+      "input": "http://portal.acme.local/team/notes",
+      "pre": [],
+      "post": [
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
+      ],
+      "risk": "R0",
+      "required": true,
+      "origin": "observed",
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
+    },
+    {
+      "step_id": "s6_fill_summary",
       "kind": "action",
       "verb": "set_field",
-      "app": "acme-crm",
+      "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "tag-select" },
-        { "by": "role", "role": "combobox", "name": "Customer Tag" },
-        { "by": "css", "value": "select#tag" }
+        {
+          "by": "testid",
+          "value": "team-note-body"
+        }
       ],
-      "input": "{{decision.segment}}",
+      "input": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}",
       "pre": [
-        { "type": "url_matches", "value": "/customers/{{item}}" },
-        { "type": "record_id_matches", "value": "{{item}}" }
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
       ],
       "post": [
-        { "type": "field_equals", "locator_ref": 0, "value": "{{decision.segment}}" }
+        {
+          "type": "field_equals",
+          "locator_ref": 0,
+          "value": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}"
+        }
       ],
       "risk": "R1",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
-    },
-    {
-      "step_id": "s5_save_cust",
-      "kind": "action",
-      "verb": "click",
-      "app": "acme-crm",
-      "locators": [
-        { "by": "testid", "value": "save-btn" },
-        { "by": "role", "role": "button", "name": "Save" }
-      ],
-      "input": null,
-      "pre": [
-        { "type": "element_visible", "locator_ref": 0 }
-      ],
-      "post": [
-        { "type": "network_2xx", "value": "/api/customers/:id" }
-      ],
-      "risk": "R1",
-      "required": true,
-      "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
     },
     {
       "step_id": "s6_post_summary",
@@ -124,31 +347,48 @@
       "verb": "click",
       "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "post-team-note-btn" },
-        { "by": "role", "role": "button", "name": "Post Weekly Summary" }
+        {
+          "by": "testid",
+          "value": "post-team-note-btn"
+        },
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Post Weekly Summary"
+        }
       ],
-      "input": "Processed {{account_ids.length}} accounts.",
+      "input": null,
       "pre": [
-        { "type": "url_matches", "value": "/team/notes" }
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
       ],
       "post": [
-        { "type": "element_visible", "locator_ref": 0 }
+        {
+          "type": "network_2xx",
+          "value": "/api/team/notes"
+        }
       ],
       "risk": "R2",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 0, "on_fail": "pause" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
     }
   ],
   "decision_rules": [
     {
       "id": "segment",
       "expr": "plan == 'Pro' and last_login_days > 30",
-      "then": "At-risk – High",
-      "else": "At-risk – Watch",
+      "then": "At-risk \u2013 High",
+      "else": "At-risk \u2013 Watch",
       "origin": "inferred",
       "supported_runs": 4,
-      "contradicting_runs": 0
+      "contradicting_runs": 0,
+      "confirmed": true
     }
   ],
   "outcome_checks": [
@@ -157,7 +397,8 @@
       "app": "acme-crm",
       "check": "tag_equals_for_all",
       "args": {
-        "ids": "{{account_ids}}"
+        "ids": "{{account_ids}}",
+        "expected_by_id": "{{expected_tags}}"
       }
     },
     {
@@ -165,7 +406,9 @@
       "app": "acme-portal",
       "check": "team_note_exists",
       "args": {
-        "containing": "Weekly at-risk segmentation complete"
+        "containing": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}",
+        "run_id": "{{run_id}}",
+        "expected_count": 1
       }
     }
   ],

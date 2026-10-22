@@ -1,6 +1,6 @@
 {
   "name": "Weekly at-risk customer segmentation",
-  "description": "Reads overdue accounts from Acme Portal, inspects CRM history, applies segmentation tags based on login freshness and open tickets, and posts summary note.",
+  "description": "Reads overdue accounts, inspects CRM plan and login age, proposes segmentation tags, and posts a summary.",
   "inferred_parameters": [
     {
       "name": "account_ids",
@@ -13,8 +13,8 @@
     {
       "id": "segment",
       "expr": "plan == 'Pro' and last_login_days > 30",
-      "then": "At-risk – High",
-      "else": "At-risk – Watch",
+      "then": "At-risk \u2013 High",
+      "else": "At-risk \u2013 Watch",
       "explanation": "Customers on Pro plans inactive for over 30 days are categorized as High risk."
     }
   ],

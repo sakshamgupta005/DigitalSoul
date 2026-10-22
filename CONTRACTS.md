@@ -1,7 +1,11 @@
 # Digital Ghost — Shared System Contracts Specification
-**Version:** `1.0.0-draft` (Phase 0 / Day 1 Freeze)  
+**Version:** `1.1.0-draft` (reviewed; runtime gates still required)
 **Target:** Local-first Windows 11 Desktop Agent + Chrome MV3 Extension + Relay + Web / PWA Dashboard  
 **Owners:** M4 (Integration Lead & Schema Custodian), with sign-off from M1 (Learning), M2 (Execution & Safety), M3 (Frontend)
+
+> Normative corrections and runtime requirements: [contracts/REVIEW.md](contracts/REVIEW.md). These take precedence over legacy illustrative TypeScript and protocol examples below. JSON schema files are authoritative for wire shapes. This is a breaking draft revision, not a frozen or deployed implementation.
+
+> Previous-product reference: the user identified Blinky at `C:\Projects\Blinky` as a closely related product. Consult [BLINKY_REFERENCE.md](BLINKY_REFERENCE.md) for inspected source paths and adaptation notes when implementing capture, targeting, execution and remote control. DigitalSoul's schemas and runtime requirements govern integration.
 
 ---
 
@@ -94,7 +98,10 @@ Captured by the Chrome MV3 extension or Windows desktop collector and ingested v
     },
     "source": {
       "type": "string",
-      "enum": ["extension", "desktop"],
+      "enum": [
+        "extension",
+        "desktop"
+      ],
       "description": "Originating collector sensor."
     },
     "kind": {
@@ -112,75 +119,237 @@ Captured by the Chrome MV3 extension or Windows desktop collector and ingested v
     },
     "app": {
       "type": "object",
-      "required": ["id", "type", "process"],
+      "required": [
+        "id",
+        "type",
+        "process"
+      ],
       "properties": {
-        "id": { "type": "string", "example": "acme-crm" },
-        "type": { "type": "string", "enum": ["web", "native"] },
-        "domain": { "type": ["string", "null"], "example": "crm.acme.local" },
-        "process": { "type": "string", "example": "chrome.exe" },
-        "window_title": { "type": ["string", "null"], "example": "Acme CRM - Customer 1042" }
-      }
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "web",
+            "native"
+          ]
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "process": {
+          "type": "string"
+        },
+        "window_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "target": {
       "type": "object",
       "properties": {
-        "role": { "type": ["string", "null"], "example": "button" },
-        "name": { "type": ["string", "null"], "example": "Save" },
-        "testid": { "type": ["string", "null"], "example": "save-btn" },
-        "label": { "type": ["string", "null"], "example": "Customer Tag" },
-        "css": { "type": ["string", "null"], "example": "form#cust > button.primary" },
-        "xpath": { "type": ["string", "null"], "example": "/html/body/div[1]/form/button" },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "xpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "uia": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
-            "automation_id": { "type": ["string", "null"] },
-            "control_type": { "type": ["string", "null"] },
-            "name": { "type": ["string", "null"] }
-          }
+            "automation_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "control_type": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
         },
         "bbox": {
-          "type": ["array", "null"],
-          "items": { "type": "number" },
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
           "minItems": 4,
-          "maxItems": 4,
-          "description": "[x, y, width, height] relative to viewport/window."
+          "maxItems": 4
         }
-      }
+      },
+      "additionalProperties": false
     },
     "value": {
       "type": "object",
-      "required": ["redacted", "shape"],
+      "required": [
+        "redacted",
+        "shape",
+        "text"
+      ],
       "properties": {
-        "redacted": { "type": "boolean" },
+        "redacted": {
+          "type": "boolean"
+        },
         "shape": {
           "type": "string",
-          "enum": ["none", "text:short", "text:long", "number", "email", "secret_omitted"],
-          "example": "text:short"
+          "enum": [
+            "none",
+            "text:short",
+            "text:long",
+            "number",
+            "email",
+            "secret_omitted"
+          ]
         },
         "text": {
-          "type": ["string", "null"],
-          "description": "Populated ONLY if field is explicitly on the user's allowlist (e.g., tag field)."
+          "type": [
+            "string",
+            "null"
+          ]
         }
-      }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "redacted": {
+                "const": true
+              }
+            },
+            "required": [
+              "redacted"
+            ]
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "secret_omitted"
+              }
+            },
+            "required": [
+              "shape"
+            ]
+          },
+          "then": {
+            "properties": {
+              "redacted": {
+                "const": true
+              },
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "shape": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "shape"
+            ]
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "page": {
       "type": "object",
-      "required": ["url_pattern"],
+      "required": [
+        "url_pattern"
+      ],
       "properties": {
-        "url_pattern": { "type": "string", "example": "/customers/:id" },
+        "url_pattern": {
+          "type": "string"
+        },
         "url_params": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
-          "example": { "id": "1042" }
+          "additionalProperties": {
+            "type": "string"
+          }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "session_id": {
       "type": "string",
-      "format": "uuid",
-      "description": "Correlates continuous user activity within a window."
+      "format": "uuid"
     }
-  }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -346,25 +515,55 @@ The compiled specification reviewed by the user, stored in SQLite, and executed 
     "remote_allowed"
   ],
   "properties": {
-    "workflow_id": { "type": "string" },
-    "version": { "type": "integer", "minimum": 1 },
-    "name": { "type": "string" },
-    "description": { "type": "string" },
+    "workflow_id": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
     "trust": {
       "type": "string",
-      "enum": ["observed", "candidate", "validated", "supervised", "trusted"]
+      "enum": [
+        "observed",
+        "candidate",
+        "validated",
+        "supervised",
+        "trusted"
+      ]
     },
     "provenance": {
       "type": "object",
-      "required": ["evidence_episode_ids", "support", "alignment"],
+      "required": [
+        "evidence_episode_ids",
+        "support",
+        "alignment"
+      ],
       "properties": {
         "evidence_episode_ids": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
-        "support": { "type": "integer", "minimum": 1 },
-        "alignment": { "type": "number", "minimum": 0, "maximum": 1 }
-      }
+        "support": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "alignment": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
     },
     "parameters": {
       "type": "array",
@@ -376,7 +575,8 @@ The compiled specification reviewed by the user, stored in SQLite, and executed 
       "type": "array",
       "items": {
         "$ref": "#/$defs/WorkflowStep"
-      }
+      },
+      "minItems": 1
     },
     "decision_rules": {
       "type": "array",
@@ -388,40 +588,301 @@ The compiled specification reviewed by the user, stored in SQLite, and executed 
       "type": "array",
       "items": {
         "$ref": "#/$defs/OutcomeCheck"
-      }
+      },
+      "minItems": 1
     },
-    "remote_allowed": { "type": "boolean" }
+    "remote_allowed": {
+      "type": "boolean"
+    }
   },
   "$defs": {
     "WorkflowParameter": {
       "type": "object",
-      "required": ["name", "type", "source", "origin", "confirmed"],
+      "required": [
+        "name",
+        "type",
+        "source",
+        "origin",
+        "confirmed"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "type": { "type": "string", "enum": ["string", "string[]", "number", "boolean"] },
-        "source": { "type": "string", "example": "step:s2.output" },
-        "origin": { "type": "string", "enum": ["observed", "inferred", "user_defined"] },
-        "confirmed": { "type": "boolean" },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "string[]",
+            "number",
+            "boolean"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "inferred",
+            "user_defined"
+          ]
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
         "default_value": {}
-      }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string[]"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "number"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "default_value": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      ]
     },
     "StepLocator": {
       "type": "object",
-      "required": ["by"],
+      "required": [
+        "by"
+      ],
       "properties": {
         "by": {
           "type": "string",
-          "enum": ["testid", "role", "label", "text", "css", "xpath", "uia"]
+          "enum": [
+            "testid",
+            "role",
+            "label",
+            "text",
+            "css",
+            "xpath",
+            "uia"
+          ],
+          "minLength": 1
         },
-        "value": { "type": "string" },
-        "role": { "type": "string" },
-        "name": { "type": "string" },
-        "uia_id": { "type": "string" }
-      }
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uia_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "testid"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "label"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "css"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "xpath"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "role"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "role",
+              "name"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "by": {
+                "const": "uia"
+              }
+            },
+            "required": [
+              "by"
+            ]
+          },
+          "then": {
+            "required": [
+              "uia_id"
+            ]
+          }
+        }
+      ]
     },
     "PrePostCondition": {
       "type": "object",
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "type": "string",
@@ -433,26 +894,132 @@ The compiled specification reviewed by the user, stored in SQLite, and executed 
             "record_id_matches"
           ]
         },
-        "value": { "type": "string" },
-        "locator_ref": { "type": "integer" }
-      }
+        "value": {
+          "type": "string"
+        },
+        "locator_ref": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "url_matches"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "record_id_matches"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "network_2xx"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "element_visible"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "locator_ref"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "field_equals"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "locator_ref",
+              "value"
+            ]
+          }
+        }
+      ]
     },
     "WorkflowStep": {
       "type": "object",
       "required": [
         "step_id",
         "kind",
-        "verb",
         "app",
         "locators",
         "risk",
         "required",
         "origin",
-        "recovery"
+        "recovery",
+        "pre",
+        "post"
       ],
       "properties": {
-        "step_id": { "type": "string" },
-        "kind": { "type": "string", "enum": ["action", "loop", "decision", "assert"] },
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "action",
+            "loop",
+            "decision",
+            "assert"
+          ]
+        },
         "verb": {
           "type": "string",
           "enum": [
@@ -465,68 +1032,604 @@ The compiled specification reviewed by the user, stored in SQLite, and executed 
             "assert_state"
           ]
         },
-        "app": { "type": "string" },
+        "app": {
+          "type": "string"
+        },
         "locators": {
           "type": "array",
-          "items": { "$ref": "#/$defs/StepLocator" }
+          "items": {
+            "$ref": "#/$defs/StepLocator"
+          }
         },
-        "input": { "type": ["string", "number", "null"] },
+        "input": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ]
+        },
         "loop_iterator": {
           "type": "object",
           "properties": {
-            "source_param": { "type": "string" },
-            "item_name": { "type": "string" }
-          }
+            "source_param": {
+              "type": "string"
+            },
+            "item_name": {
+              "type": "string"
+            },
+            "max_iterations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "source_param",
+            "item_name",
+            "max_iterations"
+          ]
         },
         "pre": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PrePostCondition" }
+          "items": {
+            "$ref": "#/$defs/PrePostCondition"
+          }
         },
         "post": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PrePostCondition" }
+          "items": {
+            "$ref": "#/$defs/PrePostCondition"
+          }
         },
-        "risk": { "type": "string", "enum": ["R0", "R1", "R2", "R3"] },
-        "required": { "type": "boolean" },
-        "origin": { "type": "string", "enum": ["observed", "inferred"] },
-        "allow_input_fallback": { "type": "boolean", "default": false },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "R0",
+            "R1",
+            "R2",
+            "R3"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "inferred"
+          ]
+        },
+        "allow_input_fallback": {
+          "type": "boolean",
+          "default": false
+        },
         "recovery": {
           "type": "object",
-          "required": ["retries", "on_fail"],
+          "required": [
+            "retries",
+            "on_fail"
+          ],
           "properties": {
-            "retries": { "type": "integer", "minimum": 0 },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
             "on_fail": {
               "type": "string",
-              "enum": ["pause", "skip", "abort", "retry_then_pause"]
+              "enum": [
+                "pause",
+                "skip",
+                "abort",
+                "retry_then_pause"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "body": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/WorkflowStep"
+          }
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "output_type": {
+          "enum": [
+            "string",
+            "string[]",
+            "number",
+            "boolean"
+          ]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "loop"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "body",
+              "loop_iterator"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "verb"
+                  ]
+                },
+                {
+                  "required": [
+                    "rule_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "rule_id"
+            ],
+            "not": {
+              "required": [
+                "verb"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "action"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "verb"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "assert"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "verb"
+            ],
+            "properties": {
+              "verb": {
+                "const": "assert_state"
+              },
+              "post": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "read_field"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "output_name",
+              "output_type"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "navigate"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "input"
+            ],
+            "properties": {
+              "input": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "const": "click"
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "type": "null"
+              },
+              "recovery": {
+                "properties": {
+                  "retries": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recovery": {
+                "properties": {
+                  "on_fail": {
+                    "enum": [
+                      "pause",
+                      "abort",
+                      "retry_then_pause"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "action",
+                  "assert"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "loop_iterator"
+                  ]
+                },
+                {
+                  "required": [
+                    "rule_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "enum": [
+                  "click",
+                  "set_field",
+                  "select_option",
+                  "read_field",
+                  "wait_visible"
+                ]
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "properties": {
+              "locators": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk": {
+                "enum": [
+                  "R1",
+                  "R2"
+                ]
+              }
+            },
+            "required": [
+              "risk"
+            ]
+          },
+          "then": {
+            "properties": {
+              "pre": {
+                "minItems": 1
+              },
+              "post": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "decision"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "loop_iterator"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verb": {
+                "enum": [
+                  "set_field",
+                  "select_option"
+                ]
+              }
+            },
+            "required": [
+              "verb"
+            ]
+          },
+          "then": {
+            "required": [
+              "input"
+            ],
+            "properties": {
+              "input": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "risk": {
+                "enum": [
+                  "R2",
+                  "R3"
+                ]
+              }
+            },
+            "required": [
+              "risk"
+            ]
+          },
+          "then": {
+            "properties": {
+              "recovery": {
+                "properties": {
+                  "retries": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "verb": {
+                  "const": "read_field"
+                }
+              },
+              "required": [
+                "verb"
+              ]
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "output_name"
+                  ]
+                },
+                {
+                  "required": [
+                    "output_type"
+                  ]
+                }
+              ]
             }
           }
         }
-      }
+      ]
     },
     "DecisionRule": {
       "type": "object",
-      "required": ["id", "expr", "then", "else", "origin", "supported_runs", "contradicting_runs"],
+      "required": [
+        "id",
+        "expr",
+        "then",
+        "else",
+        "origin",
+        "supported_runs",
+        "contradicting_runs",
+        "confirmed"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "expr": { "type": "string", "example": "plan == 'Pro' and last_login_days > 30" },
-        "then": { "type": "string", "example": "At-risk – High" },
-        "else": { "type": "string", "example": "At-risk – Watch" },
-        "origin": { "type": "string", "enum": ["inferred", "user_defined"] },
-        "supported_runs": { "type": "integer" },
-        "contradicting_runs": { "type": "integer" }
-      }
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "expr": {
+          "type": "string"
+        },
+        "then": {
+          "type": "string"
+        },
+        "else": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "inferred",
+            "user_defined"
+          ]
+        },
+        "supported_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contradicting_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confirmed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "OutcomeCheck": {
       "type": "object",
-      "required": ["type", "app", "check", "args"],
+      "required": [
+        "type",
+        "app",
+        "check",
+        "args"
+      ],
       "properties": {
-        "type": { "type": "string", "enum": ["app_api", "db_query", "page_assertion"] },
-        "app": { "type": "string" },
-        "check": { "type": "string" },
-        "args": { "type": "object" }
-      }
+        "type": {
+          "type": "string",
+          "enum": [
+            "app_api",
+            "db_query",
+            "page_assertion"
+          ]
+        },
+        "app": {
+          "type": "string"
+        },
+        "check": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -647,11 +1750,18 @@ Used across all HTTP 4xx/5xx responses, WebSocket error notices, and remote comm
   "$id": "https://digitalghost.local/schemas/error.json",
   "title": "GhostError",
   "type": "object",
-  "required": ["error"],
+  "required": [
+    "error"
+  ],
   "properties": {
     "error": {
       "type": "object",
-      "required": ["code", "message", "retryable", "trace_id"],
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "trace_id"
+      ],
       "properties": {
         "code": {
           "type": "string",
@@ -669,18 +1779,45 @@ Used across all HTTP 4xx/5xx responses, WebSocket error notices, and remote comm
             "APP_UNREACHABLE",
             "DEVICE_OFFLINE",
             "SIGNATURE_INVALID",
-            "INTERNAL"
+            "INTERNAL",
+            "CONFLICT",
+            "STALE_APPROVAL",
+            "REPLAY_DETECTED",
+            "COMMAND_EXPIRED",
+            "RATE_LIMITED",
+            "UNSUPPORTED_VERSION"
           ]
         },
-        "message": { "type": "string" },
-        "retryable": { "type": "boolean" },
-        "run_id": { "type": ["string", "null"] },
-        "step_id": { "type": ["string", "null"] },
-        "details": { "type": "object" },
-        "trace_id": { "type": "string", "format": "uuid" }
-      }
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "step_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "type": "object"
+        },
+        "trace_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }
 ```
 
@@ -911,6 +2048,7 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
 | `DELETE` | `/remote/devices/{id}` | Revoke paired device | M2 | — | `204 No Content` |
 | `GET` | `/audit` | Query audit log with hash-chain check | M4 | Query: `from, to, limit` | `200 AuditResponse` |
 | `POST` | `/data/delete` | Wipe data (all, per-workflow, or per-day) | M4 | `DataDeleteRequest` | `200 { deleted: true }` |
+| `POST` | `/stream/tickets` | Mint single-use stream ticket | M4 | - | `201 { ticket: string, expires_at: string }` |
 | `GET` | `/health` | Heartbeat & subsystem connectivity | M4 | — | `200 HealthStatus` |
 
 ---
@@ -922,9 +2060,8 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
 ```json
 {
   "mode": "supervised",
-  "parameters": {
-    "account_ids": ["ACC-1042", "ACC-1088", "ACC-1102"]
-  }
+  "workflow_version": 4,
+  "parameters": {}
 }
 ```
 **Response `201 Created`:**
@@ -932,7 +2069,7 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
 {
   "run_id": "run_01j9b2e4t3n2y",
   "workflow_id": "wf_at_risk_seg",
-  "workflow_version": 3,
+  "workflow_version": 4,
   "mode": "supervised",
   "state": "preflight",
   "created_at": "2026-10-22T09:30:00.000Z",
@@ -940,10 +2077,8 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
   "finished_at": null,
   "current_step_id": null,
   "current_loop_index": 0,
-  "total_loop_count": 3,
-  "parameters": {
-    "account_ids": ["ACC-1042", "ACC-1088", "ACC-1102"]
-  },
+  "total_loop_count": 0,
+  "parameters": {},
   "step_records": [],
   "checkpoint": null,
   "pending_approval": null,
@@ -985,7 +2120,7 @@ When candidate workflows reach the mining threshold (≥ 3 repetitions, alignmen
 ## 4. WebSocket Event Bus Specification
 
 **Connection URL:** `ws://127.0.0.1:7777/api/v1/stream`  
-**Authentication:** Pass header `Authorization: Bearer <token>` during WebSocket handshake.
+**Authentication:** Browser clients obtain a single-use, 30-second stream ticket via authenticated `POST /api/v1/stream/tickets`, then connect to `/api/v1/stream?ticket=...`. Consume the ticket atomically, redact it from logs, and verify Origin. Browser WebSocket constructors cannot set an Authorization header. Native clients may use the Bearer header.
 
 All frames are JSON objects matching this envelope:
 ```json
@@ -1016,7 +2151,7 @@ All frames are JSON objects matching this envelope:
 Connects the desktop agent to the operator’s phone PWA without exposing incoming firewall ports.
 * **Desktop:** Maintains persistent outbound WSS to `wss://relay.digitalghost.io/agent`.
 * **Phone:** Connects to `wss://relay.digitalghost.io/phone`.
-* **Relay Server:** Blind routing switch. It does not store workflows, field values, or private keys.
+* **Relay Server:** Routing service that can read signed payloads. WSS and signatures do not provide end-to-end confidentiality. Do not send field values through this MVP relay; end-to-end encryption requires a separate reviewed protocol.
 
 ```
 ┌──────────────┐         Outbound WSS         ┌──────────────┐         Outbound WSS         ┌──────────────┐
@@ -1039,7 +2174,7 @@ Connects the desktop agent to the operator’s phone PWA without exposing incomi
    }
    ```
 3. Phone scans QR code, generates local Ed25519 keypair in IndexedDB, and sends pairing claim to Relay.
-4. Desktop prompts user: *"Allow iPhone 15 Pro (Fingerprint 849-211) to control this desktop?"*
+4. Desktop prompts user: *"Allow iPhone 15 Pro (public-key fingerprint shown on both devices) to control this desktop?"*
 5. On desktop approval, phone public key is saved into agent database.
 
 ### 5.2 Command Envelope Specification
@@ -1079,7 +2214,7 @@ Every control message crossing the relay is signed by the phone's non-extractabl
 
 #### Signature Verification Rules (Agent-side)
 1. `from_device` must match an active key in `remote_devices`.
-2. `sig` must verify `ed25519_verify(pubkey, canonical_json(payload), sig)`.
+2. `sig` must verify `ed25519_verify(pubkey, UTF8("digitalghost.command.v1\n") + JCS(envelope_without_sig), sig)`.
 3. `|now() - issued_at| <= 60` seconds (Clock skew & freshness check).
 4. `nonce` has not been seen in the last 10 minutes (Replay prevention).
 
@@ -1092,8 +2227,8 @@ Every step is evaluated against its risk class before execution.
 | Risk Class | Description | Examples | Supervised Mode | Trusted Mode | Remote Phone Mode |
 |---|---|---|---|---|---|
 | **R0** | Read-Only | Navigate, open record, read field, assert visible | Auto-allow | Auto-allow | Auto-allow |
-| **R1** | Reversible Write | Set tag, edit draft text field | Requires 1-click confirmation | Auto-allow (audited) | Auto-allow |
-| **R2** | External Effect | Post team note, send message, commit changes | Requires explicit approval | Requires batch approval | Requires signed approval from phone |
+| **R1** | Reversible Write | Set tag, edit draft text field | Requires 1-click confirmation | Auto-allow (audited) | Same trust/approval rules as local |
+| **R2** | External Effect | Post team note, send message, commit changes | Requires explicit approval | Requires explicit approval bound to exact effects | Requires signed approval from phone |
 | **R3** | Destructive / Irreversible | Delete customer, purge records, change permissions | **BLOCKED** (Never executed) | **BLOCKED** | **BLOCKED** |
 
 ### Automated Heuristics for R3 Classification
@@ -1228,12 +2363,17 @@ The agent marks a target element `R3` if:
 ```json
 {
   "workflow_id": "wf_at_risk_seg",
-  "version": 3,
+  "version": 4,
   "name": "Weekly at-risk customer segmentation",
-  "description": "Reads overdue accounts from Acme Portal, inspects CRM history, applies segmentation tags based on login freshness and open tickets, and posts summary note.",
+  "description": "Reads overdue accounts, classifies each by plan and login age, saves tags, and posts a run-specific summary.",
   "trust": "validated",
   "provenance": {
-    "evidence_episode_ids": ["ep_01", "ep_04", "ep_07", "ep_09"],
+    "evidence_episode_ids": [
+      "ep_01",
+      "ep_04",
+      "ep_07",
+      "ep_09"
+    ],
     "support": 4,
     "alignment": 0.88
   },
@@ -1243,8 +2383,7 @@ The agent marks a target element `R3` if:
       "type": "string[]",
       "source": "step:s2_copy_accounts.output",
       "origin": "inferred",
-      "confirmed": true,
-      "default_value": []
+      "confirmed": true
     }
   ],
   "steps": [
@@ -1254,17 +2393,26 @@ The agent marks a target element `R3` if:
       "verb": "navigate",
       "app": "acme-portal",
       "locators": [
-        { "by": "text", "value": "Reports" }
+        {
+          "by": "text",
+          "value": "Reports"
+        }
       ],
       "input": "http://portal.acme.local/reports/overdue",
       "pre": [],
       "post": [
-        { "type": "url_matches", "value": "/reports/overdue" }
+        {
+          "type": "url_matches",
+          "value": "/reports/overdue"
+        }
       ],
       "risk": "R0",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
+      "recovery": {
+        "retries": 1,
+        "on_fail": "pause"
+      }
     },
     {
       "step_id": "s2_copy_accounts",
@@ -1272,79 +2420,289 @@ The agent marks a target element `R3` if:
       "verb": "read_field",
       "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "overdue-account-list" }
+        {
+          "by": "testid",
+          "value": "overdue-account-list"
+        }
       ],
       "input": null,
       "pre": [
-        { "type": "element_visible", "locator_ref": 0 }
+        {
+          "type": "element_visible",
+          "locator_ref": 0
+        }
       ],
       "post": [],
       "risk": "R0",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 2, "on_fail": "pause" }
+      "recovery": {
+        "retries": 2,
+        "on_fail": "pause"
+      },
+      "output_name": "account_ids",
+      "output_type": "string[]"
     },
     {
       "step_id": "s3_loop_crm",
       "kind": "loop",
-      "verb": "navigate",
       "app": "acme-crm",
       "locators": [],
       "input": null,
       "loop_iterator": {
         "source_param": "account_ids",
-        "item_name": "item"
+        "item_name": "item",
+        "max_iterations": 100
       },
       "pre": [],
       "post": [],
       "risk": "R0",
       "required": true,
       "origin": "inferred",
-      "recovery": { "retries": 0, "on_fail": "abort" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "abort"
+      },
+      "body": [
+        {
+          "step_id": "s3_open_record",
+          "kind": "action",
+          "verb": "navigate",
+          "app": "acme-crm",
+          "locators": [],
+          "input": "http://crm.acme.local/customers/{{item}}",
+          "pre": [],
+          "post": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          }
+        },
+        {
+          "step_id": "s3_read_plan",
+          "kind": "action",
+          "verb": "read_field",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "customer-plan"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          },
+          "output_name": "plan",
+          "output_type": "string"
+        },
+        {
+          "step_id": "s3_read_days",
+          "kind": "action",
+          "verb": "read_field",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "last-login-days"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          },
+          "output_name": "last_login_days",
+          "output_type": "number"
+        },
+        {
+          "step_id": "s3_decide",
+          "kind": "decision",
+          "app": "acme-crm",
+          "locators": [],
+          "pre": [],
+          "post": [],
+          "risk": "R0",
+          "required": true,
+          "origin": "inferred",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "abort"
+          },
+          "rule_id": "segment"
+        },
+        {
+          "step_id": "s4_set_tag",
+          "kind": "action",
+          "verb": "select_option",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "tag-select"
+            },
+            {
+              "by": "role",
+              "role": "combobox",
+              "name": "Customer Tag"
+            },
+            {
+              "by": "css",
+              "value": "select#tag"
+            }
+          ],
+          "input": "{{decision.segment}}",
+          "pre": [
+            {
+              "type": "url_matches",
+              "value": "/customers/{{item}}"
+            },
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [
+            {
+              "type": "field_equals",
+              "locator_ref": 0,
+              "value": "{{decision.segment}}"
+            }
+          ],
+          "risk": "R1",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 1,
+            "on_fail": "pause"
+          }
+        },
+        {
+          "step_id": "s5_save_cust",
+          "kind": "action",
+          "verb": "click",
+          "app": "acme-crm",
+          "locators": [
+            {
+              "by": "testid",
+              "value": "save-btn"
+            },
+            {
+              "by": "role",
+              "role": "button",
+              "name": "Save"
+            }
+          ],
+          "input": null,
+          "pre": [
+            {
+              "type": "element_visible",
+              "locator_ref": 0
+            },
+            {
+              "type": "record_id_matches",
+              "value": "{{item}}"
+            }
+          ],
+          "post": [
+            {
+              "type": "network_2xx",
+              "value": "/api/customers/{{item}}"
+            }
+          ],
+          "risk": "R2",
+          "required": true,
+          "origin": "observed",
+          "recovery": {
+            "retries": 0,
+            "on_fail": "pause"
+          }
+        }
+      ]
     },
     {
-      "step_id": "s4_set_tag",
+      "step_id": "s6_open_notes",
+      "kind": "action",
+      "verb": "navigate",
+      "app": "acme-portal",
+      "locators": [],
+      "input": "http://portal.acme.local/team/notes",
+      "pre": [],
+      "post": [
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
+      ],
+      "risk": "R0",
+      "required": true,
+      "origin": "observed",
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
+    },
+    {
+      "step_id": "s6_fill_summary",
       "kind": "action",
       "verb": "set_field",
-      "app": "acme-crm",
+      "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "tag-select" },
-        { "by": "role", "role": "combobox", "name": "Customer Tag" },
-        { "by": "css", "value": "select#tag" }
+        {
+          "by": "testid",
+          "value": "team-note-body"
+        }
       ],
-      "input": "{{decision.segment}}",
+      "input": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}",
       "pre": [
-        { "type": "url_matches", "value": "/customers/{{item}}" },
-        { "type": "record_id_matches", "value": "{{item}}" }
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
       ],
       "post": [
-        { "type": "field_equals", "locator_ref": 0, "value": "{{decision.segment}}" }
+        {
+          "type": "field_equals",
+          "locator_ref": 0,
+          "value": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}"
+        }
       ],
       "risk": "R1",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
-    },
-    {
-      "step_id": "s5_save_cust",
-      "kind": "action",
-      "verb": "click",
-      "app": "acme-crm",
-      "locators": [
-        { "by": "testid", "value": "save-btn" },
-        { "by": "role", "role": "button", "name": "Save" }
-      ],
-      "input": null,
-      "pre": [
-        { "type": "element_visible", "locator_ref": 0 }
-      ],
-      "post": [
-        { "type": "network_2xx", "value": "/api/customers/:id" }
-      ],
-      "risk": "R1",
-      "required": true,
-      "origin": "observed",
-      "recovery": { "retries": 1, "on_fail": "pause" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
     },
     {
       "step_id": "s6_post_summary",
@@ -1352,31 +2710,48 @@ The agent marks a target element `R3` if:
       "verb": "click",
       "app": "acme-portal",
       "locators": [
-        { "by": "testid", "value": "post-team-note-btn" },
-        { "by": "role", "role": "button", "name": "Post Weekly Summary" }
+        {
+          "by": "testid",
+          "value": "post-team-note-btn"
+        },
+        {
+          "by": "role",
+          "role": "button",
+          "name": "Post Weekly Summary"
+        }
       ],
-      "input": "Processed {{account_ids.length}} accounts.",
+      "input": null,
       "pre": [
-        { "type": "url_matches", "value": "/team/notes" }
+        {
+          "type": "url_matches",
+          "value": "/team/notes"
+        }
       ],
       "post": [
-        { "type": "element_visible", "locator_ref": 0 }
+        {
+          "type": "network_2xx",
+          "value": "/api/team/notes"
+        }
       ],
       "risk": "R2",
       "required": true,
       "origin": "observed",
-      "recovery": { "retries": 0, "on_fail": "pause" }
+      "recovery": {
+        "retries": 0,
+        "on_fail": "pause"
+      }
     }
   ],
   "decision_rules": [
     {
       "id": "segment",
       "expr": "plan == 'Pro' and last_login_days > 30",
-      "then": "At-risk – High",
-      "else": "At-risk – Watch",
+      "then": "At-risk \u2013 High",
+      "else": "At-risk \u2013 Watch",
       "origin": "inferred",
       "supported_runs": 4,
-      "contradicting_runs": 0
+      "contradicting_runs": 0,
+      "confirmed": true
     }
   ],
   "outcome_checks": [
@@ -1385,7 +2760,8 @@ The agent marks a target element `R3` if:
       "app": "acme-crm",
       "check": "tag_equals_for_all",
       "args": {
-        "ids": "{{account_ids}}"
+        "ids": "{{account_ids}}",
+        "expected_by_id": "{{expected_tags}}"
       }
     },
     {
@@ -1393,7 +2769,9 @@ The agent marks a target element `R3` if:
       "app": "acme-portal",
       "check": "team_note_exists",
       "args": {
-        "containing": "Weekly at-risk segmentation complete"
+        "containing": "Weekly at-risk segmentation complete; run={{run_id}}; processed={{account_ids.length}}",
+        "run_id": "{{run_id}}",
+        "expected_count": 1
       }
     }
   ],
@@ -1412,7 +2790,7 @@ The agent marks a target element `R3` if:
   "from_device": "device_iphone_15_pro_sahil",
   "to_device": "desktop_win11_sahil",
   "kind": "command",
-  "sig": "e9821a4f0012bc556281736450192837465019283746501928374650192837461234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "sig": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
   "payload": {
     "command_id": "cmd_01j9b44g8",
     "device_id": "device_iphone_15_pro_sahil",
@@ -1422,8 +2800,12 @@ The agent marks a target element `R3` if:
     "step_id": "s6_post_summary",
     "params": {},
     "issued_at": "2026-10-22T09:32:00.100Z",
-    "nonce": "77af32b901fc88a1"
-  }
+    "nonce": "77af32b901fc88a177af32b901fc88a1",
+    "workflow_version": 4,
+    "approval_id": "approval_demo_01",
+    "effect_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "protocol_version": 1
 }
 ```
 
@@ -1443,18 +2825,63 @@ The agent marks a target element `R3` if:
     "params": {},
     "issued_at": "2026-10-20T08:00:00.000Z",
     "nonce": "old_nonce_already_logged"
-  }
+  },
+  "protocol_version": 1
 }
 ```
-*Validation Rejection Reason:* `issued_at` delta exceeds the 60-second freshness window; `nonce` collision triggers immediate rejection with `SIGNATURE_INVALID`.
+*Validation Rejection Reason:* This fixture has malformed signature and nonce fields and fails schema validation. A correctly signed but stale command must return `COMMAND_EXPIRED`; a consumed nonce must return `REPLAY_DETECTED`. See REVIEW.md for runtime gates. The valid fixture is shape-only and has a zero placeholder signature.
 
 ---
 
 ## 8. Day-1 Contract Sign-Off & Verification Checklist
 
-To freeze Version 1.0.0, each owner validates their integration points against these schemas:
+To freeze Version 1.1.0, each owner validates their integration points against these schemas:
 
 - [ ] **M1 (Learning):** Extension batch poster matches `POST /events/batch` with `RawEvent` schema; Normalizer generates valid `Action` records; Compilation outputs valid `Workflow` JSON.
 - [ ] **M2 (Execution & Safety):** Playwright interpreter takes `Workflow` fixture and correctly processes ranked locators; Pre/post condition parser supports all 5 condition types; Risk classifier blocks `R3` buttons; Ed25519 verifier accepts Phone PWA signatures.
 - [ ] **M3 (Frontend):** React dashboard loads `Workflow` fixture and renders steps, parameters, and decision rules; WebSocket client consumes `ws://127.0.0.1:7777/api/v1/stream` events; Phone PWA generates non-extractable Ed25519 keys via WebCrypto.
 - [ ] **M4 (Integration Lead):** Pydantic models generated into `agent/ghost/contracts/`; TypeScript types generated into `web/src/types/contracts.ts`; e2e test verifies that `make reset` seeds both Acme Portal and CRM with fixture accounts.
+
+---
+
+## 9. Four-Person Responsibility Matrix & Ownership Boundaries
+
+Every directory in the monorepo has **exactly one owner**. Shared files (`contracts/`, `agent/ghost/db/`, `agent/ghost/app.py`, `config.py`, and `bus.py`) are owned by M4 and can only be modified through reviewed Pull Requests.
+
+```
+ghost/
+  contracts/        JSON Schemas, OpenAPI, fixtures, generated TS + Pydantic types   (M4)
+  agent/ghost/
+    app.py, config.py, bus.py, db/ (models, migrations)                            (M4)
+    collector/      window + UIA observer, extension ingest endpoint               (M1)
+    learning/       normalize, abstract, segment, mine, describe, compile          (M1)
+    api/learn_routes.py                                                            (M1)
+    execution/      interpreter, plan runtime, recovery, verification              (M2)
+    drivers/        browser.py, uia.py, input_fallback.py                          (M2)
+    safety/         policy.py, risk.py, guard.py, killswitch.py, tray.py           (M2)
+    remote/         relay_client.py, signing.py                                     (M2)
+    api/run_routes.py, api/remote_routes.py                                        (M2)
+    audit/          audit.py (append-only log)                                     (M4)
+  extension/        Chrome MV3 observer                                            (M1)
+  relay/            cloud relay service                                            (M2)
+  web/              dashboard + phone PWA                                          (M3)
+  demo-apps/        acme-portal, acme-crm, seed/reset scripts                      (M4)
+  tests/e2e/, tests/safety/, ci/                                                   (M4)
+```
+
+### Detailed Role Matrix
+
+| Dimension | **M1 — Learning Engine** | **M2 — Execution & Safety** | **M3 — Frontend & Remote UX** | **M4 — Integration Lead** |
+|---|---|---|---|---|
+| **Role Name** | Learning & Extraction Lead | Execution & Safety Architect | Frontend & PWA Engineer | Integration Lead & Repo Custodian |
+| **Owned Directories** | `extension/`<br>`agent/ghost/collector/`<br>`agent/ghost/learning/`<br>`agent/ghost/api/learn_routes.py` | `agent/ghost/execution/`<br>`agent/ghost/drivers/`<br>`agent/ghost/safety/`<br>`agent/ghost/remote/`<br>`agent/ghost/api/run_routes.py`<br>`agent/ghost/api/remote_routes.py`<br>`relay/` | `web/` (Local React Dashboard + Remote Phone PWA) | `contracts/`<br>`agent/ghost/app.py`<br>`agent/ghost/config.py`<br>`agent/ghost/bus.py`<br>`agent/ghost/db/`<br>`agent/ghost/audit/`<br>`demo-apps/`<br>`tests/e2e/`<br>`tests/safety/`<br>`ci/` |
+| **Core Responsibilities** | Consented capture, redaction at source, action normalization, episode segmentation, sequence alignment, OmniRoute LLM hypothesis prompts, validation compilation, recommendation scoring. | Plan interpreter, locator resolution & fallback, pre/postcondition evaluation, loop checkpoint resume, policy engine & risk classifier, mistake guards, kill switch thread & tray icon, relay service & WebCrypto Ed25519 verification. | Consent/onboarding UX, observation controls, candidate + evidence review, workflow editor, execution console, step approvals, live guard warnings, audit explorer + data wipe, phone PWA. | Schema custodianship, type generation, FastAPI skeleton & origin checks, SQLite WAL migrations, seeded demo web apps with reset APIs, CI pipelines, daily e2e smoke tests, independent safety test suite. |
+| **Key Deliverables** | Learns demo workflow from 4 recorded sessions; emits valid `Workflow` JSON. | Runs demo workflow end-to-end to `succeeded` status; blocks `R3` actions; executes signed commands from phone. | All screens responsive and functional against mock fixtures, then live WebSocket / REST API. | Frozen Day-1 contracts; green e2e test suite; repeatable demo apps (`make reset`); final rehearsal runbook. |
+| **Depends On** | Contracts & fixtures (M4), Demo apps (M4). | Contracts (M4), Demo apps (M4), Validated workflow (M1; fixture until Phase 2). | Contracts & fixtures (M4), Live REST & WS APIs (M1, M2). | Inputs and pull requests from M1, M2, and M3. |
+| **Provides To** | Workflows ➔ M2;<br>Candidates & Workflows API ➔ M3. | Run status & approvals API ➔ M3;<br>Policy rules ➔ M4 safety tests. | Validated workflows & user edits ➔ M1. | Stable base, database schemas, fixtures, and CI validation to all members. |
+
+### Ways of Working & Collaboration Protocols
+1. **Protected `main` Branch:** Direct pushes to `main` are disabled. All changes require an approved Pull Request with passing CI (schema validation, unit tests, and e2e smoke).
+2. **Fixture-First Development:** M2 and M3 build and test exclusively against static JSON fixtures in `contracts/fixtures/` until Integration Checkpoints wire in live modules.
+3. **Daily 15-Minute Integration Standup:** M4 leads daily syncs to evaluate checkpoint gates (CP0 through CP4). A phase is completed only when its checkpoint script passes on a clean machine.
+4. **Independent Safety Verification:** M2 authors the runtime safety and guard code (`agent/ghost/safety/`), while M4 authors the adversarial test suite (`tests/safety/`) that attempts to bypass it (e.g. injecting R3 buttons, spoofing timestamps, foreign Origin requests). Neither edits the other's test or enforcement files.

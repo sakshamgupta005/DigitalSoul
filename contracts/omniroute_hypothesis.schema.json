@@ -23,41 +23,98 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "type", "source", "description"],
+        "required": [
+          "name",
+          "type",
+          "source",
+          "description"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "type": { "type": "string", "enum": ["string", "string[]", "number", "boolean"] },
-          "source": { "type": "string" },
-          "description": { "type": "string" }
-        }
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "string[]",
+              "number",
+              "boolean"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "inferred_decision_rules": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "expr", "then", "else", "explanation"],
+        "required": [
+          "id",
+          "expr",
+          "then",
+          "else",
+          "explanation"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "expr": { "type": "string" },
-          "then": { "type": "string" },
-          "else": { "type": "string" },
-          "explanation": { "type": "string" }
-        }
+          "id": {
+            "type": "string"
+          },
+          "expr": {
+            "type": "string"
+          },
+          "then": {
+            "type": "string"
+          },
+          "else": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "inferred_outcome_checks": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["type", "app", "check", "args"],
+        "required": [
+          "type",
+          "app",
+          "check",
+          "args"
+        ],
         "properties": {
-          "type": { "type": "string", "enum": ["app_api", "db_query", "page_assertion"] },
-          "app": { "type": "string" },
-          "check": { "type": "string" },
-          "args": { "type": "object" }
-        }
+          "type": {
+            "type": "string",
+            "enum": [
+              "app_api",
+              "db_query",
+              "page_assertion"
+            ]
+          },
+          "app": {
+            "type": "string"
+          },
+          "check": {
+            "type": "string"
+          },
+          "args": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
       }
     }
-  }
+  },
+  "additionalProperties": false
 }
