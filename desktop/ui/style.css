@@ -417,6 +417,14 @@ footer .text-button{font-size:11px}
 .excel-submit:hover{background:color-mix(in srgb,var(--excel) 88%,#000)}
 .shopify-button{background:color-mix(in srgb,var(--brave) 16%,transparent);color:var(--brave)}
 .shopify-button:hover{filter:none;background:color-mix(in srgb,var(--brave) 24%,transparent)}
+.gform-button{background:color-mix(in srgb,#0ea5e9 16%,transparent);color:#0ea5e9}
+.gform-button:hover{filter:none;background:color-mix(in srgb,#0ea5e9 24%,transparent)}
+.gform-submit{background:#0284c7;color:#fff}
+.gform-submit:hover{background:#0369a1}
+.gform-field-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;margin-bottom:8px}
+.gform-field-card.new{border-color:color-mix(in srgb,#a855f7 40%,transparent);background:color-mix(in srgb,#a855f7 6%,var(--surface))}
+.gform-field-card label{display:block;font-size:11.5px;font-weight:600;margin-bottom:6px;color:var(--text)}
+.gform-field-card input{width:100%;box-sizing:border-box}
 .shop-row{display:flex;gap:8px;align-items:flex-end}
 .shop-row .grow{flex:1}
 .shop-row button{margin-bottom:14px;white-space:nowrap}

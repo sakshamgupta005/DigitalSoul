@@ -44,7 +44,9 @@ class ShopifySession:
 
     async def _run(self, product, click_save, headless):
         async with self._lock:
-            if headless:
+            target_url = str(product.get("store_url", ""))
+            is_local = "127.0.0.1" in target_url or "localhost" in target_url
+            if headless or is_local:
                 actor = self._factory(headless=True)
                 try:
                     return await actor.execute_product_creation(product, click_save=click_save)

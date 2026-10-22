@@ -16,7 +16,7 @@
     <div id="panel" class="panel" hidden>
       <nav class="tabs" aria-label="DigitalSoul views">
         <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Learned <span id="pattern-count">0</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
-        <div class="tab-actions"><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
+        <div class="tab-actions"><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-gform" class="new-button gform-button" title="Auto-fill Google Forms with remembered info">📝 Google Form</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
       </nav>
       <form id="voice-form" class="voice-command"><label for="voice-text">Jarvis <small id="voice-status" role="status">Mic off · local faster-whisper</small></label><div><input id="voice-text" maxlength="512" placeholder="Hey Jarvis, do workflow name" aria-label="Workflow command"><button class="secondary" type="submit">Find</button></div><p>Speak with the mic, type, or dictate here. Review the saved steps before running.</p></form>
       <div id="notice" class="notice" role="status" hidden></div>
@@ -72,6 +72,7 @@
             <button type="button" class="chip-suggestion" data-prompt="Add a Shopify product named Wireless Noise-Cancelling Headphones for $79.99 with 50 in stock">🛍️ Shopify Product</button>
             <button type="button" class="chip-suggestion" data-prompt="Create an Excel sheet for Monthly Marketing Expenses with columns Date, Item, Category, Amount and SUM formula">📊 Excel Sheet</button>
             <button type="button" class="chip-suggestion" data-prompt="Send a WhatsApp message to Alex saying Hey Alex, the project files are ready for review">💬 WhatsApp Send</button>
+            <button type="button" class="chip-suggestion" data-prompt="Fill Google Form at https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform">📝 Google Form</button>
             <button type="button" class="chip-suggestion" data-prompt="Search for latest AI news on Google Chrome">🌐 Web Search</button>
             <button type="button" class="chip-suggestion" data-prompt="Open Notepad and write my daily standup notes">📝 Open Notepad</button>
           </div>
@@ -160,6 +161,32 @@
             <div id="pattern-params-container" class="shop-grid"></div>
             <div class="hint" id="pattern-hint">DigitalSoul will adapt the recorded skeleton steps using your inputs and execute them deterministically.</div>
             <button class="primary wide" type="submit" id="pattern-submit-btn">Execute learned skill</button>
+          </form>
+        </div>
+        <div id="approve-gform-view" hidden>
+          <div class="detail-heading"><span class="eyebrow" style="color:#0ea5e9">Google Forms · Auto-Fill & Memory</span><h1 id="gform-title">Auto-fill Google Form</h1><p id="gform-subtitle">Remembers your information across sessions. Fills known fields and prompts for new ones.</p></div>
+          <form id="gform-form">
+            <div class="shop-row">
+              <label class="grow">Google Form URL<input id="gform-url" value="https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform" placeholder="https://docs.google.com/forms/d/e/.../viewform" required></label>
+              <button id="gform-inspect-btn" type="button" class="secondary" title="Inspect form and map questions to memory">🔍 Map questions</button>
+            </div>
+            
+            <div id="gform-fields-section">
+              <div class="form-category-header" id="gform-known-header" style="display:flex;align-items:center;gap:8px;margin-top:12px;margin-bottom:6px">
+                <span class="badge" style="background:#065f46;color:#a7f3d0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px">⚡ Auto-filled from memory (<span id="gform-known-count">0</span>)</span>
+              </div>
+              <div id="gform-known-container" class="shop-grid"></div>
+
+              <div class="form-category-header" id="gform-new-header" style="display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:6px">
+                <span class="badge" style="background:#581c87;color:#e9d5ff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px">✨ New fields (<span id="gform-new-count">0</span>) — DigitalSoul will remember these!</span>
+              </div>
+              <div id="gform-new-container" class="shop-grid"></div>
+            </div>
+
+            <label class="switch-row" style="margin-top:14px"><input id="gform-remember" type="checkbox" checked><span>Remember my answers for future Google Forms<small>Saves newly entered fields into local profile memory on this PC.</small></span></label>
+            <div class="hint" id="gform-hint">browser-use will open the form, populate all mapped and custom fields, and let you review before submission.</div>
+            <button class="primary wide gform-submit" type="submit" id="gform-submit-btn">Fill & review Google Form</button>
+            <p id="gform-progress" class="hint" role="status" aria-live="polite"></p>
           </form>
         </div>
       </section>

@@ -279,6 +279,7 @@ def main():
                             raise ValueError("Stop recording or wait for the active replay")
                         from ..browser.shopify_session import ShopifySession
                         product_data = payload.get("product") or {}
+                        product_data["store_url"] = shopify_url(product_data.get("store_url"))
                         click_save = payload.get("click_save", False)
                         if shopify_session is None:
                             shopify_session = ShopifySession()
@@ -310,6 +311,29 @@ def main():
                     elif method == "learning_delete":
                         learning_engine.delete_pattern(payload["id"])
                         result = {"deleted": True}
+                    elif method == "gform_inspect":
+                        from ..browser.gform_actor import GFormActor
+                        result = GFormActor.inspect_url(payload.get("url", ""))
+                    elif method == "gform_run":
+                        if session or replay or step_run:
+                            raise ValueError("Stop recording or wait for the active replay")
+                        from ..browser.gform_actor import GFormActor
+                        actor = GFormActor(headless=payload.get("headless", False))
+                        try:
+                            result = asyncio.run(actor.fill_and_review(
+                                payload.get("url", ""),
+                                payload.get("items", []),
+                                click_submit=payload.get("click_submit", False),
+                                save_to_memory=payload.get("save_memory", True)
+                            ))
+                        finally:
+                            asyncio.run(actor.close())
+                    elif method == "gform_memory_get":
+                        from ..browser.gform_memory import GFormMemory
+                        result = {"profile": GFormMemory().profile}
+                    elif method == "gform_memory_save":
+                        from ..browser.gform_memory import GFormMemory
+                        result = {"profile": GFormMemory().save(payload.get("profile", {}))}
                     else:
                         raise ValueError("Unknown desktop command")
                     emit({"id": request_id, "ok": True, "result": result})

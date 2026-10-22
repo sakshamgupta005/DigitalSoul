@@ -27,6 +27,11 @@ class CuaClient:
 
     def _start(self):
         if not self.binary:
+            self.binary = os.environ.get("DIGITALSOUL_CUA_DRIVER") or shutil.which("cua-driver")
+            if not self.binary:
+                candidate = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Cua/cua-driver/bin/cua-driver.exe"
+                self.binary = str(candidate) if candidate.is_file() else None
+        if not self.binary:
             raise RuntimeError("The installed cua-driver could not be found")
         self.process = subprocess.Popen([self.binary, "mcp"], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",

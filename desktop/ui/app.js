@@ -383,6 +383,7 @@ function openPatternWorkflow(pat) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = true;
   $('approve-excel-view').hidden = true;
+  $('approve-gform-view').hidden = true;
   $('approve-pattern-view').hidden = false;
 
   $('pattern-run-title').textContent = `Run “${pat.name}”`;
@@ -1019,6 +1020,7 @@ function openShopifyWorkflow(prefill = {}) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = false;
   $('approve-excel-view').hidden = true;
+  $('approve-gform-view').hidden = true;
   $('shopify-progress').textContent = '';
   $('shopify-title').value = prefill.title || 'Vintage Washed Oversized T-Shirt';
   $('shopify-url').value = prefill.store_url || 'https://admin.shopify.com/store/gzn0vr-qn/products/new';
@@ -1039,6 +1041,7 @@ function openExcelWorkflow(prefill = {}) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = true;
   $('approve-excel-view').hidden = false;
+  $('approve-gform-view').hidden = true;
   $('excel-workbook').value = prefill.workbook || 'Active Excel Workbook';
   $('excel-sheet').value = prefill.sheet || 'Sheet1';
   $('excel-topic').value = prefill.topic || prefill.title || 'Monthly Expenses';
@@ -1063,6 +1066,142 @@ function openExcelWorkflow(prefill = {}) {
 }
 $('new-excel')?.addEventListener('click', () => openExcelWorkflow());
 
+let currentGFormQuestions = [];
+
+async function inspectGForm(url) {
+  $('gform-progress').textContent = '🔍 Inspecting form and matching remembered profile...';
+  try {
+    const res = await rpc('gform_inspect', { url });
+    if (!res) throw new Error('Could not read form.');
+
+    if (res.title) {
+      $('gform-title').textContent = res.title;
+      $('gform-subtitle').textContent = `Total questions: ${res.total_questions} · Auto-filled: ${res.known_fields.length} · New: ${res.new_fields.length}`;
+    }
+
+    $('gform-known-count').textContent = res.known_fields.length;
+    $('gform-new-count').textContent = res.new_fields.length;
+
+    const knownCont = $('gform-known-container');
+    const newCont = $('gform-new-container');
+    knownCont.replaceChildren();
+    newCont.replaceChildren();
+
+    currentGFormQuestions = [];
+
+    // Render known fields
+    if (res.known_fields && res.known_fields.length) {
+      $('gform-known-header').hidden = false;
+      for (const item of res.known_fields) {
+        currentGFormQuestions.push(item);
+        const card = element('div', 'gform-field-card');
+        const lbl = element('label');
+        lbl.textContent = item.title;
+        const inp = element('input');
+        inp.name = item.title;
+        inp.value = item.suggested_value || '';
+        inp.dataset.title = item.title;
+        inp.dataset.key = item.matched_key || '';
+        card.append(lbl, inp);
+        knownCont.append(card);
+      }
+    } else {
+      $('gform-known-header').hidden = true;
+    }
+
+    // Render new fields
+    if (res.new_fields && res.new_fields.length) {
+      $('gform-new-header').hidden = false;
+      for (const item of res.new_fields) {
+        currentGFormQuestions.push(item);
+        const card = element('div', 'gform-field-card new');
+        const lbl = element('label');
+        lbl.textContent = item.title;
+        const inp = element('input');
+        inp.name = item.title;
+        inp.placeholder = item.options ? `e.g. ${item.options.slice(0, 2).join(' or ')}` : 'Enter answer (will be remembered)';
+        inp.value = item.suggested_value || (item.options ? item.options[0] : '');
+        inp.dataset.title = item.title;
+        card.append(lbl, inp);
+        newCont.append(card);
+      }
+    } else {
+      $('gform-new-header').hidden = true;
+    }
+
+    $('gform-progress').textContent = `✨ Mapped ${res.known_fields.length} known answers. ${res.new_fields.length} new fields ready to review.`;
+  } catch (err) {
+    $('gform-progress').textContent = String(err?.message || err);
+  }
+}
+
+function openGFormWorkflow(prefill = {}) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-gform-view').hidden = false;
+
+  $('gform-progress').textContent = '';
+  const url = prefill.url || 'https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform';
+  $('gform-url').value = url;
+  inspectGForm(url);
+}
+$('new-gform')?.addEventListener('click', () => openGFormWorkflow());
+$('gform-inspect-btn')?.addEventListener('click', () => inspectGForm($('gform-url').value));
+
+$('gform-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (state.pending) {
+    $('gform-progress').textContent = 'A request is already running.';
+    return;
+  }
+  action(async () => {
+    const url = $('gform-url').value;
+    const saveMemory = $('gform-remember').checked;
+
+    // Gather all inputs
+    const items = [];
+    const allInputs = $('gform-fields-section').querySelectorAll('input');
+    allInputs.forEach(inp => {
+      if (inp.dataset.title) {
+        items.push({
+          title: inp.dataset.title,
+          value: inp.value,
+          key: inp.dataset.key || ''
+        });
+      }
+    });
+
+    $('gform-progress').textContent = 'Opening browser to fill Google Form...';
+    $('compact-label').textContent = 'Google Forms · filling…';
+    notice(`Automating Google Form with ${items.length} answers...`);
+
+    try {
+      const res = await rpc('gform_run', {
+        url,
+        items,
+        click_submit: false,
+        save_memory: saveMemory,
+        headless: false
+      });
+      await expanded(true);
+      if (res && res.ok) {
+        $('gform-progress').textContent = `✅ Successfully filled ${(res.filled_steps || []).length} form fields! Review the form in your browser before manual Submit.`;
+        notice(`Form filled: ${(res.filled_steps || []).length} fields filled for review. Answers remembered!`, 'success');
+      } else {
+        $('gform-progress').textContent = `Filled ${(res?.filled_steps || []).length} fields. ${(res?.errors || []).join('; ')}`;
+      }
+    } catch (err) {
+      $('gform-progress').textContent = String(err?.message || err);
+      throw err;
+    } finally {
+      $('compact-label').textContent = IDLE_LABEL;
+    }
+  });
+});
+
 async function handleSynthesizedWorkflow(result) {
   if (!result) return;
   if (result.kind === 'error') {
@@ -1079,6 +1218,10 @@ async function handleSynthesizedWorkflow(result) {
     openExcelWorkflow(result.excel || {});
     notice(result.message || `✨ Created Excel workflow: ${result.name}`);
     compactVoice(result.message || `Ready: ${result.name}`, `Excel: ${result.name}`);
+  } else if (result.kind === 'gform') {
+    openGFormWorkflow(result.form || {});
+    notice(result.message || `✨ Created Google Form workflow`);
+    compactVoice(result.message || `Ready: Google Form`, `Form: Google Form`);
   } else if (result.kind === 'whatsapp') {
     view('approve');
     $('approve-whatsapp-view').hidden = false;
@@ -1364,6 +1507,8 @@ $('review-run').addEventListener('click', () => {
   view('approve');
   if (flow?.kind === 'shopify') {
     openShopifyWorkflow(flow.product || { title: detail.name });
+  } else if (flow?.kind === 'gform') {
+    openGFormWorkflow(flow.form || {});
   } else if (flow?.format === 'digitalsoul.excel-flow.v1' || flow?.kind === 'excel' || (detail?.used || []).some(a => /excel/i.test(a))) {
     openExcelWorkflow({
       workbook: flow?.workbook || detail.name,
@@ -1375,6 +1520,7 @@ $('review-run').addEventListener('click', () => {
     $('approve-whatsapp-view').hidden = false;
     $('approve-shopify-view').hidden = true;
     $('approve-excel-view').hidden = true;
+    $('approve-gform-view').hidden = true;
     $('run-recipient').value = flow.recipient;
     $('confirm-run').textContent = $('run-mode').value === 'later' ? 'Approve & schedule' : 'Approve & run';
     $('run-message').value = flow.message;

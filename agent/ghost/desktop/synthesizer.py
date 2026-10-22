@@ -102,7 +102,22 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None) -> Dict[str,
             "message": f"✨ Synthesized Excel spreadsheet for '{topic}'! Review and run below.",
         }
 
-    # 3. WhatsApp workflow
+    # 3. Google Form workflow
+    if any(k in lowered for k in ("google form", "google forms", "gform", "fill form", "fill out form", "survey", "enrolment form", "registration form", "docs.google.com/forms")):
+        url_match = re.search(r'https?://docs\.google\.com/forms/[^\s]+', raw)
+        form_url = url_match.group(0) if url_match else "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
+        return {
+            "ok": True,
+            "kind": "gform",
+            "name": "Google Form · Auto-fill & Memory",
+            "form": {
+                "url": form_url
+            },
+            "summary": "Auto-fill Google Form using remembered profile and learned slots",
+            "message": "✨ Google Form workflow synthesized! Review remembered answers and new fields below."
+        }
+
+    # 4. WhatsApp workflow
     if any(k in lowered for k in ("whatsapp", "whats app", "message", "text to", "chat")):
         # Extract recipient
         to_match = re.search(r'\bto\s+([A-Za-z0-9_]+)', raw, re.I)
