@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.ghost.api.learn_routes import router as learn_router
+from agent.ghost.api.shopify_routes import router as shopify_router
 from agent.ghost.execution.runtime import Runtime
 from agent.ghost.execution.recovery import RunStore
 from agent.ghost.safety.policy import acme_policy
@@ -139,6 +140,9 @@ def health_check():
 
 # Include M1 Learning routes
 app.include_router(learn_router)
+
+# Include Shopify automation routes & test harness
+app.include_router(shopify_router)
 
 # Include M2 Execution & Run routes
 app.include_router(run_router(runtime))

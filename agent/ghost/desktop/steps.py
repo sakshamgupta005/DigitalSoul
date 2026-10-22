@@ -153,7 +153,7 @@ class StepRunner:
 
     def click(self, step):
         window = self._app_window(step["path"])
-        target = self._wait(lambda: self._find(window, step["target"]), f"“{step.get('label') or 'control'}”")
+        target = self._wait(lambda: self._find(window, step["target"]), f"'{step.get('label') or 'control'}'")
         self._app_window(step["path"])
         target.click_input()
 
