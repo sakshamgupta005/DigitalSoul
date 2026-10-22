@@ -10,6 +10,43 @@ from .events import WinEvents
 from .flow import Capture, Native, ancestry, header, locator, validate
 from .whatsapp import executable, WHATSAPP_EXES, is_whatsapp
 
+# Chromium browsers spread one window across child processes.
+BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
+# "Everything" mode still never watches DigitalSoul itself, sign-in prompts or password managers.
+NEVER_RECORD = {"digitalsoul-notch.exe", "consent.exe", "lockapp.exe", "credentialuibroker.exe", "logonui.exe",
+                "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe"}
+
+
+def field_text(control, browser=False):
+    """Typed text of a focused edit. Browser rich-text boxes expose it only via TextPattern."""
+    try:
+        value = control.get_value()
+    except Exception:
+        value = None
+    if not browser:
+        if value is None and control.element_info.control_type == "Document":
+            return document_text(control)
+        return value
+    name = (control.element_info.name or "").strip().rstrip("….�").strip()
+
+    def typed(text):
+        # Chromium reports the placeholder or label as text while a field is empty.
+        text = (text or "").strip() if isinstance(text, str) else ""
+        return "" if text.rstrip("….�").strip() == name else text
+
+    if typed(value):
+        return typed(value)
+    return typed(document_text(control))
+
+
+def document_text(control, limit=4096):
+    """Text of a document surface (Word body, rich web editors), or None when unavailable or too long."""
+    try:
+        text = control.iface_text.DocumentRange.GetText(limit + 1)
+    except Exception:
+        return None
+    return text if isinstance(text, str) and len(text) <= limit else None
+
 
 def matches_send_snapshot(snapshot, event):
     if not snapshot or event["kind"] != "click" or not event.get("point"):
@@ -30,8 +67,9 @@ class Session:
             raise ValueError("Give this recording a name (1–80 characters)")
         self.apps = options.get("apps", ["WhatsApp.exe"])
         if not isinstance(self.apps, list) or not 1 <= len(self.apps) <= 8 or any(
-                not isinstance(app, str) or not re.fullmatch(r"[\w .-]+\.exe", app, re.I) for app in self.apps):
+                not isinstance(app, str) or not (app == "*" or re.fullmatch(r"[\w .-]+\.exe", app, re.I)) for app in self.apps):
             raise ValueError("Choose 1–8 executable names, such as WhatsApp.exe or notepad.exe")
+        self.everything = "*" in self.apps
         self.allowed = set()
         for app in self.apps:
             name = app.lower()
@@ -42,6 +80,7 @@ class Session:
         self.steps = []
         self.started = time.monotonic()
         self.last_edit = None
+        self.focus_key = self.focus_base = None
         self.send_snapshot = None
         self.last_foreground = None
         self.observed_paths = {}
@@ -54,13 +93,15 @@ class Session:
             if not message or len(message) > 4096 or any(ord(c) < 32 for c in message) or search == message:
                 raise ValueError("Use a distinct contact search and single-line message (max 4096 characters)")
             self.capture = Capture(recipient, search, title, message)
+        elif options.get("whatsapp"):
+            self.capture = Capture()
         self.replay_error = None
         self.events = WinEvents()
         self.events.__enter__()
 
     def _active_pids(self, pid, path):
         pids = {pid}
-        if is_whatsapp(path):
+        if is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES:
             try:
                 proc = self.native.psutil.Process(pid)
                 for child in proc.children(recursive=True):
@@ -68,6 +109,13 @@ class Session:
             except (OSError, self.native.psutil.Error):
                 pass
         return pids
+
+    def _identity(self, window):
+        try:
+            return header(window, self.capture.flow["chat_title"])
+        except ValueError:
+            # A clicked search result can carry extra text; the header usually matches the search.
+            return header(window, self.capture.flow["search"])
 
     def _foreground(self):
         user = self.native.user
@@ -82,7 +130,8 @@ class Session:
         if path is None:
             path = executable(pid.value)
             self.observed_paths[pid.value] = path
-        if PureWindowsPath(path).name.lower() not in self.allowed:
+        exe = PureWindowsPath(path).name.lower()
+        if exe in NEVER_RECORD or not (self.everything or exe in self.allowed):
             return None
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
         active_pids = self._active_pids(pid.value, path)
@@ -112,7 +161,11 @@ class Session:
         if active:
             window, pid, path, active_pids = active
             if self.last_foreground != path:
-                self.append({"kind": "open_app", "app": PureWindowsPath(path).name, "path": path})
+                step = {"kind": "open_app", "app": PureWindowsPath(path).name, "path": path}
+                if "\\windowsapps\\" in path.lower():
+                    # Store apps cannot be started from their executable; replay launches the app identity.
+                    step["app_id"] = self.native.app_id(pid)
+                self.append(step)
                 self.last_foreground = path
             if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
@@ -137,8 +190,8 @@ class Session:
                                 focus = self.native.focused()
                                 if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
                                     val = (focus.get_value() or "").strip()
-                                    if val and val != self.capture.flow["search"].strip():
-                                        ident = header(window, self.capture.flow["chat_title"])
+                                    if val and (not self.capture.auto or self.capture.selected) and val != self.capture.flow["search"].strip():
+                                        ident = self._identity(window)
                                         spec_edit = locator(focus, editable=True)
                                         with contextlib.redirect_stdout(sys.stderr):
                                             self.capture.field(spec_edit, val, ident)
@@ -155,8 +208,8 @@ class Session:
                             focus = self.native.focused()
                             if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
                                 val = (focus.get_value() or "").strip()
-                                if val and val != self.capture.flow["search"].strip():
-                                    ident = header(window, self.capture.flow["chat_title"])
+                                if val and (not self.capture.auto or self.capture.selected) and val != self.capture.flow["search"].strip():
+                                    ident = self._identity(window)
                                     spec_edit = locator(focus, editable=True)
                                     with contextlib.redirect_stdout(sys.stderr):
                                         self.capture.field(spec_edit, val, ident)
@@ -192,15 +245,23 @@ class Session:
             return None
         try:
             focus = self.native.focused()
-            if focus.element_info.process_id not in active_pids or focus.element_info.control_type != "Edit":
+            kinds = ("Edit",) if is_whatsapp(path) else ("Edit", "Document")
+            if focus.element_info.process_id not in active_pids or focus.element_info.control_type not in kinds:
                 return None
             if focus.element_info.element.CurrentIsPassword:
                 return None
-            value = focus.get_value()
+            value = field_text(focus, PureWindowsPath(path).name.lower() in BROWSER_EXES)
             if not isinstance(value, str) or len(value) > 4096:
                 return None
             value_clean = value.strip()
-            if not value_clean:
+            try:
+                key = tuple(focus.element_info.runtime_id)
+            except Exception:
+                key = (path, focus.element_info.control_type, focus.element_info.automation_id)
+            if key != self.focus_key:
+                # Text already in a field when it gains focus (a URL, a placeholder) was not typed by the user.
+                self.focus_key, self.focus_base = key, value_clean
+            if not value_clean or value_clean == self.focus_base:
                 return None
             spec = locator(focus, editable=True)
             self.last_edit = spec
@@ -208,8 +269,8 @@ class Session:
                 self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
                              "label": "Text field", "target": spec, "value": value_clean})
             if self.capture and not self.capture.done and is_whatsapp(path):
-                is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and value_clean != self.capture.flow["search"].strip())
-                identity = header(window, self.capture.flow["chat_title"]) if is_msg else None
+                is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and (not self.capture.auto or self.capture.selected) and value_clean != self.capture.flow["search"].strip())
+                identity = self._identity(window) if is_msg else None
                 with contextlib.redirect_stdout(sys.stderr):
                     self.capture.field(spec, value_clean, identity)
                 if self.capture.composed and value_clean == self.capture.flow["message"].strip():

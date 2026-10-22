@@ -115,6 +115,14 @@ class WhatsApp:
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
         if not pid.value or executable(pid.value) != recipe["executable"]:
+            try:
+                top = desktop.window(handle=handle).top_level_parent()
+                if executable(top.element_info.process_id) == recipe["executable"]:
+                    handle = top.handle
+                    pid = wintypes.DWORD(top.element_info.process_id)
+            except Exception:
+                pass
+        if not pid.value or executable(pid.value) != recipe["executable"]:
             raise ValueError("Keep the recorded WhatsApp window foreground on an unlocked desktop")
         window = desktop.window(handle=handle).wrapper_object()
         if not window.is_visible() or not window.is_enabled():

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .catalog import Catalog
 from .jobs import Jobs
+from . import steps as step_replay
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -39,6 +40,7 @@ def main():
     session = None
     replay = None
     replay_id = None
+    step_run = None
 
     def receive():
         for line in sys.stdin:
@@ -82,8 +84,9 @@ def main():
                         result = {"workflows": catalog.list(), "jobs": jobs.list()}
                     elif method == "detail":
                         result = catalog.get(payload["id"])
+                        result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "start":
-                        if session or replay:
+                        if session or replay or step_run:
                             raise ValueError("Stop the current recording or replay first")
                         from .session import Session
                         session = Session(payload)
@@ -100,7 +103,7 @@ def main():
                             raise ValueError("Stop recording before deleting workflows")
                         catalog.delete(payload["id"])
                     elif method in ("replay", "schedule"):
-                        if session or replay:
+                        if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         value = catalog.get(payload["id"])
                         flow = value.get("flow")
@@ -117,10 +120,27 @@ def main():
                             replay_id = job_id
                             emit({"event": "replay_started", "job_id": job_id})
                         result = {"job_id": job_id}
+                    elif method == "replay_steps":
+                        if session or replay or step_run:
+                            raise ValueError("Stop recording or wait for the active replay")
+                        value = catalog.get(payload["id"])
+                        # The approval names the exact steps the user reviewed; any change invalidates it.
+                        if payload.get("approved_digest") != step_replay.digest(value["steps"]):
+                            raise ValueError("These steps changed since you reviewed them; open the recording again")
+                        step_replay.validate(value["steps"])
+                        step_run = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.steps"],
+                            cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            creationflags=0x08000000 if sys.platform == "win32" else 0, text=True, encoding="utf-8")
+                        step_run.stdin.write(json.dumps({"steps": value["steps"]}, ensure_ascii=False) + "\n")
+                        step_run.stdin.close()
+                        emit({"event": "replay_started", "steps": True})
+                        result = {"started": True}
                     elif method == "cancel":
                         result = {"cancelled": jobs.cancel(payload["id"])}
                     elif method == "stop_jobs":
                         jobs.stop()
+                        if step_run:
+                            step_run.terminate()
                         result = {"stopped": True}
                     elif method == "resume_jobs":
                         jobs.resume()
@@ -145,8 +165,15 @@ def main():
                 emit({"event": "replay_finished", "job_id": replay_id,
                       "job": next((j for j in jobs.list() if j["id"] == replay_id), None)})
                 replay, replay_id = None, None
+            if step_run and step_run.poll() is not None:
+                try:
+                    outcome = json.loads(step_run.stdout.read().strip().splitlines()[-1])
+                except (ValueError, IndexError):
+                    outcome = {"ok": False, "detail": "Replay was stopped before it finished."}
+                step_run = None
+                emit({"event": "replay_finished", "steps": True, "job": outcome})
             # Pending scheduled jobs run while the notch is open, without a second worker command.
-            if not session and not replay:
+            if not session and not replay and not step_run:
                 now = time.time()
                 due = next((j for j in jobs.list() if j["state"] == "pending" and j["due"] <= now), None)
                 if due:
@@ -163,6 +190,8 @@ def main():
         if replay:
             jobs.stop()
             replay.terminate()
+        if step_run:
+            step_run.terminate()
         catalog.close()
         jobs.close()
 
