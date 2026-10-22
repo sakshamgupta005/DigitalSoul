@@ -12,7 +12,10 @@ from .whatsapp import executable, WHATSAPP_EXES, is_whatsapp
 
 
 def matches_send_snapshot(snapshot, event):
-    if not snapshot or event["kind"] != "click" or event["pid"] != snapshot["pid"] or not event.get("point"):
+    if not snapshot or event["kind"] != "click" or not event.get("point"):
+        return False
+    allowed_pids = snapshot.get("pids", {snapshot.get("pid")})
+    if event["pid"] not in allowed_pids:
         return False
     age = event["time"] - snapshot["time"]
     x, y = event["point"]
@@ -55,6 +58,17 @@ class Session:
         self.events = WinEvents()
         self.events.__enter__()
 
+    def _active_pids(self, pid, path):
+        pids = {pid}
+        if is_whatsapp(path):
+            try:
+                proc = self.native.psutil.Process(pid)
+                for child in proc.children(recursive=True):
+                    pids.add(child.pid)
+            except (OSError, self.native.psutil.Error):
+                pass
+        return pids
+
     def _foreground(self):
         user = self.native.user
         import ctypes
@@ -71,8 +85,9 @@ class Session:
         if PureWindowsPath(path).name.lower() not in self.allowed:
             return None
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
-        self.events.pids.add(pid.value)
-        return window, pid.value, path
+        active_pids = self._active_pids(pid.value, path)
+        self.events.pids.update(active_pids)
+        return window, pid.value, path, active_pids
 
     def append(self, step):
         if len(self.steps) >= 500:
@@ -95,7 +110,7 @@ class Session:
         except (OSError, ValueError, self.native.psutil.Error):
             pass
         if active:
-            window, pid, path = active
+            window, pid, path, active_pids = active
             if self.last_foreground != path:
                 self.append({"kind": "open_app", "app": PureWindowsPath(path).name, "path": path})
                 self.last_foreground = path
@@ -108,7 +123,7 @@ class Session:
                 break
             if event["kind"] == "stop":
                 return "stop"
-            if not active or event["pid"] != pid:
+            if not active or event["pid"] not in active_pids:
                 continue
             if time.monotonic() - event["time"] > 2:
                 self.replay_error = "Input events arrived too late for reliable replay; evidence saved for review"
@@ -138,7 +153,7 @@ class Session:
                     if self.capture and is_whatsapp(path) and not self.capture.composed:
                         try:
                             focus = self.native.focused()
-                            if focus.element_info.process_id == pid and focus.element_info.control_type == "Edit":
+                            if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
                                 val = focus.get_value()
                                 if val and val != self.capture.flow["search"]:
                                     ident = header(window, self.capture.flow["chat_title"])
@@ -155,7 +170,7 @@ class Session:
                                      "label": "Send", "target": snapshot["target"]})
                         continue
                     control = self.native.desktop.from_point(*event["point"])
-                    if control.element_info.process_id != pid:
+                    if control.element_info.process_id not in active_pids:
                         continue
                     for _ in range(3):
                         name, kind = control.element_info.name or "", control.element_info.control_type
@@ -174,7 +189,7 @@ class Session:
             return None
         try:
             focus = self.native.focused()
-            if focus.element_info.process_id != pid or focus.element_info.control_type != "Edit":
+            if focus.element_info.process_id not in active_pids or focus.element_info.control_type != "Edit":
                 return None
             if focus.element_info.element.CurrentIsPassword:
                 return None
@@ -188,7 +203,8 @@ class Session:
                     self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
                                  "label": "Text field", "target": spec, "value": value})
                 if self.capture and not self.capture.done and is_whatsapp(path):
-                    identity = header(window, self.capture.flow["chat_title"]) if value == self.capture.flow["message"] else None
+                    is_msg = (value == self.capture.flow["message"]) or (not self.capture.composed and value and value != self.capture.flow["search"])
+                    identity = header(window, self.capture.flow["chat_title"]) if is_msg else None
                     with contextlib.redirect_stdout(sys.stderr):
                         self.capture.field(spec, value, identity)
                     if self.capture.composed and value == self.capture.flow["message"]:
@@ -199,7 +215,7 @@ class Session:
                         if len(buttons) == 1:
                             button = buttons[0]
                             rect = button.rectangle()
-                            self.send_snapshot = {"pid": pid, "time": time.monotonic(),
+                            self.send_snapshot = {"pid": pid, "pids": active_pids, "time": time.monotonic(),
                                                   "bounds": (rect.left, rect.top, rect.right, rect.bottom),
                                                   "target": locator(button), "name": button.element_info.name or "Send"}
                     elif value != self.capture.flow["message"]:

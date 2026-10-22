@@ -46,15 +46,27 @@ def selector(control, role):
 
 def resolve(window, spec):
     kwargs = {"control_type": spec["control_type"]}
-    if spec["automation_id"]:
-        kwargs["auto_id"] = spec["automation_id"]
     if spec["name"]:
         kwargs["title"] = spec["name"]
-    # Both type and identifiers constrain the provider query. Reject ambiguity.
-    matches = [c for c in window.descendants(**kwargs) if c.is_visible()]
-    if len(matches) != 1 or not matches[0].is_enabled():
+    matches = [c for c in window.descendants(**kwargs)
+               if c.is_visible() and c.is_enabled()
+               and (not spec.get("automation_id") or getattr(getattr(c, "element_info", None), "automation_id", None) == spec["automation_id"])]
+    unique = []
+    seen = set()
+    for m in matches:
+        info = getattr(m, "element_info", None)
+        rid = getattr(info, "runtime_id", None) if info else None
+        if rid:
+            rid = tuple(rid)
+        else:
+            rid = getattr(info, "handle", id(m))
+        if rid in seen:
+            continue
+        seen.add(rid)
+        unique.append(m)
+    if len(unique) != 1:
         raise ValueError("Recorded control is missing, disabled, or ambiguous")
-    return matches[0]
+    return unique[0]
 
 
 WHATSAPP_EXES = {"whatsapp.exe", "whatsapp.root.exe"}

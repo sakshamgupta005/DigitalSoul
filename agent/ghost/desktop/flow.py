@@ -34,28 +34,48 @@ def locator(control, editable=False):
 
 def find(window, spec):
     query = {"control_type": spec["control_type"]}
-    if spec["automation_id"]:
-        query["auto_id"] = spec["automation_id"]
     if spec["name"]:
         query["title"] = spec["name"]
     matches = [item for item in window.descendants(**query)
-               if item.is_visible() and item.is_enabled() and ancestry(item) == spec["ancestors"]]
-    if len(matches) != 1:
+               if item.is_visible() and item.is_enabled()
+               and (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])
+               and ancestry(item) == spec["ancestors"]]
+    unique = []
+    seen = set()
+    for m in matches:
+        try:
+            rid = tuple(m.element_info.runtime_id)
+        except Exception:
+            rid = m.element_info.handle
+        if rid in seen:
+            continue
+        seen.add(rid)
+        unique.append(m)
+    if not unique:
         raise ValueError("Recorded UIA target changed or is ambiguous; record again")
-    return matches[0]
+    return unique[0]
 
 
 def header(window, title):
     candidates = []
+    seen = set()
     pattern = re.compile(rf"^\s*{re.escape(title.strip())}\s*$", re.IGNORECASE)
-    for item in window.descendants(title_re=pattern):
-        if not item.is_visible() or item.element_info.control_type not in ("Text", "Button"):
-            continue
-        # A matching sidebar/search result cannot establish the current chat.
-        chain = ancestry(item)
-        if any(entry[0] in ("List", "ListItem", "Tree", "TreeItem") for entry in chain):
-            continue
-        candidates.append(item)
+    for ctype in ("Button", "Text"):
+        for item in window.descendants(control_type=ctype):
+            name = item.element_info.name or ""
+            if not pattern.match(name) or not item.is_visible():
+                continue
+            chain = ancestry(item)
+            if any(entry[0] in ("List", "ListItem", "Tree", "TreeItem") for entry in chain):
+                continue
+            try:
+                rid = tuple(item.element_info.runtime_id)
+            except Exception:
+                rid = item.element_info.handle
+            if rid in seen:
+                continue
+            seen.add(rid)
+            candidates.append(item)
     if len(candidates) != 1:
         raise ValueError("Cannot identify a unique chat header outside the contact list. Use --chat-title with its exact displayed name")
     result = locator(candidates[0])
