@@ -170,14 +170,14 @@
     .about-section {
       position: relative;
       z-index: 1;
-      min-height: 135vh;
-      padding: 40px 40px 60px;
+      min-height: 155vh;
+      padding: 60px 40px 100px;
     }
 
     .about-sticky {
       position: sticky;
       top: 0;
-      height: 88vh;
+      height: 90vh;
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -214,14 +214,14 @@
       transform: translateY(0);
     }
 
-    /* Scroll-Driven Polaroid Carousel Track with Balanced Spacing */
+    /* Scroll-Driven Polaroid Carousel Track with Generous Breathing Room */
     .carousel-section {
       position: relative;
       z-index: 2;
       width: 100%;
-      height: 250vh;
-      margin-top: 0;
-      padding-top: 10px;
+      height: 270vh;
+      margin-top: 60px;
+      padding-top: 40px;
     }
 
     .carousel-sticky {
@@ -323,7 +323,8 @@
       display: grid;
       place-items: center;
       min-height: 120vh;
-      padding: clamp(120px, 15vh, 180px) 24px clamp(120px, 14vh, 170px);
+      padding: clamp(140px, 18vh, 220px) 24px clamp(140px, 16vh, 200px);
+      margin-top: 40px;
       overflow: clip;
     }
 
@@ -335,9 +336,9 @@
       justify-content: center;
       align-items: center;
       justify-items: center;
-      gap: clamp(28px, 4vh, 52px) clamp(28px, 3.5vw, 56px);
+      gap: clamp(14px, 2vh, 28px) clamp(24px, 2.8vw, 52px);
       width: 100%;
-      max-width: 1400px;
+      max-width: 1380px;
     }
 
     @media (max-width: 1024px) {
@@ -1330,10 +1331,8 @@
     const toolCards = document.querySelectorAll('.tool-card');
     const systemCards = document.querySelectorAll('.system-card');
 
-    // Collision-free parallax depth factors (harmonious per column so cards never cross)
-    // Card 0: Circle (left top) | Card 1: Amazon (mid top) | Card 2: Dictation (right top)
-    // Card 3: Routine (left btm) | Card 4: ToDo (right btm) | Card 5: Search (mid btm)
-    const cardDepths = [0.035, -0.025, 0.035, 0.04, 0.04, -0.025];
+    // Individual parallax depth factors for each tool card (layered 3D float)
+    const cardDepths = [0.12, -0.09, 0.15, -0.14, 0.11, -0.07];
 
     let currentScrollY = window.scrollY;
     let targetScrollY = window.scrollY;
@@ -1348,29 +1347,27 @@
       currentScrollY += (targetScrollY - currentScrollY) * 0.1;
 
       // 1. Background atmospheric depth
-      if (sunEl) sunEl.style.transform = `translate3d(0, ${currentScrollY * 0.18}px, 0)`;
-      if (gridEl) gridEl.style.transform = `translate3d(0, ${currentScrollY * 0.06}px, 0)`;
+      if (sunEl) sunEl.style.transform = `translate3d(0, ${currentScrollY * 0.22}px, 0)`;
+      if (gridEl) gridEl.style.transform = `translate3d(0, ${currentScrollY * 0.08}px, 0)`;
 
       // 2. Hero subtle depth fade
       if (heroContent && currentScrollY < window.innerHeight) {
-        heroContent.style.transform = `translate3d(0, ${currentScrollY * 0.12}px, 0)`;
+        heroContent.style.transform = `translate3d(0, ${currentScrollY * 0.15}px, 0)`;
         heroContent.style.opacity = Math.max(0, 1 - currentScrollY / 500);
       }
       if (scrollHint && currentScrollY < window.innerHeight) {
         scrollHint.style.opacity = Math.max(0, 1 - currentScrollY / 250);
       }
 
-      // 3. Floating Productivity Cards Collision-Free Parallax
+      // 3. Floating Productivity Cards Multi-Layer Parallax
       if (prodSection) {
         const prodRect = prodSection.getBoundingClientRect();
         if (prodRect.top < window.innerHeight && prodRect.bottom > 0) {
           const sectionProgress = (window.innerHeight - prodRect.top);
           toolCards.forEach((card, idx) => {
             const depth = cardDepths[idx % cardDepths.length];
-            const rawY = (sectionProgress - window.innerHeight * 0.5) * depth;
-            // Strict bound to ensure cards never collide or overlap
-            const boundedY = Math.max(-14, Math.min(14, rawY));
-            card.style.setProperty('--parallax-y', `${boundedY.toFixed(1)}px`);
+            const translateY = (sectionProgress - window.innerHeight * 0.5) * depth;
+            card.style.setProperty('--parallax-y', `${translateY.toFixed(1)}px`);
           });
         }
       }
@@ -1379,7 +1376,7 @@
       systemCards.forEach((card, idx) => {
         const rect = card.getBoundingClientRect();
         if (rect.top < window.innerHeight && rect.bottom > 0) {
-          const shift = (window.innerHeight - rect.top) * (0.03 + idx * 0.012);
+          const shift = (window.innerHeight - rect.top) * (0.04 + idx * 0.015);
           card.style.transform = `translate3d(0, ${-shift.toFixed(1)}px, 0)`;
         }
       });
