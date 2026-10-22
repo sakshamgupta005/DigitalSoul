@@ -119,7 +119,7 @@ fn position(window: &tauri::WebviewWindow, expanded: bool) -> Result<(), String>
         .or(window.primary_monitor().map_err(|e| e.to_string())?).ok_or("No monitor available")?;
     let scale = monitor.scale_factor();
     let width = (if expanded { 660.0_f64 } else { 420.0_f64 }).min(monitor.size().width as f64 / scale);
-    let height = (if expanded { 680.0_f64 } else { 64.0_f64 }).min(monitor.size().height as f64 / scale - 16.0);
+    let height = (if expanded { 680.0_f64 } else { 53.0_f64 }).min(monitor.size().height as f64 / scale - 16.0);
     window.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
     let x = monitor.position().x as f64 + (monitor.size().width as f64 - width * scale) / 2.0;
     window.set_position(tauri::PhysicalPosition::new(x as i32, monitor.position().y)).map_err(|e| e.to_string())
