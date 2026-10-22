@@ -11,6 +11,7 @@ from pathlib import Path
 from .catalog import Catalog
 from .jobs import Jobs
 from . import steps as step_replay
+from .voice import Listener, resolve
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -54,6 +55,7 @@ def main():
     replay = None
     replay_id = None
     step_run = None
+    listener = None
 
     def receive():
         for line in sys.stdin:
@@ -98,9 +100,27 @@ def main():
                     elif method == "detail":
                         result = catalog.get(payload["id"])
                         result["steps_digest"] = step_replay.digest(result["steps"])
+                    elif method == "voice_command":
+                        result = resolve(payload.get("text"), catalog.list())
+                    elif method == "voice_start":
+                        if session or replay or step_run:
+                            raise ValueError("Stop recording or wait for replay before enabling the microphone")
+                        if listener:
+                            listener.close()
+                        listener = Listener([w["name"] for w in catalog.list()])
+                        result = {"starting": True}
+                    elif method == "voice_stop":
+                        if listener:
+                            listener.close()
+                            listener = None
+                        result = {"listening": False}
                     elif method == "start":
                         if session or replay or step_run:
                             raise ValueError("Stop the current recording or replay first")
+                        if listener:
+                            listener.close()
+                            listener = None
+                            emit({"event": "voice", "kind": "stopped"})
                         from .session import Session
                         session = Session(payload)
                         result = {"recording": True}
@@ -116,6 +136,10 @@ def main():
                             raise ValueError("Stop recording before deleting workflows")
                         catalog.delete(payload["id"])
                     elif method in ("replay", "schedule"):
+                        if listener:
+                            listener.close()
+                            listener = None
+                            emit({"event": "voice", "kind": "stopped"})
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         value = catalog.get(payload["id"])
@@ -134,6 +158,10 @@ def main():
                             emit({"event": "replay_started", "job_id": job_id})
                         result = {"job_id": job_id}
                     elif method == "replay_steps":
+                        if listener:
+                            listener.close()
+                            listener = None
+                            emit({"event": "voice", "kind": "stopped"})
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
                         value = catalog.get(payload["id"])
@@ -157,11 +185,49 @@ def main():
                         result = {"stopped": True}
                     elif method == "resume_jobs":
                         jobs.resume()
+                    elif method == "shopify_generate":
+                        from ..browser.shopify import generate_product_fields
+                        result = generate_product_fields(payload)
+                    elif method == "shopify_run":
+                        from ..browser.shopify_actor import ShopifyBrowserActor
+                        import asyncio
+                        product_data = payload.get("product") or {}
+                        click_save = payload.get("click_save", True)
+                        actor = ShopifyBrowserActor(headless=payload.get("headless", False))
+                        try:
+                            result = asyncio.run(actor.execute_product_creation(product_data, click_save=click_save))
+                        finally:
+                            asyncio.run(actor.close())
                     else:
                         raise ValueError("Unknown desktop command")
                     emit({"id": request_id, "ok": True, "result": result})
                 except Exception as exc:
                     emit({"id": request_id, "ok": False, "error": str(exc)[:600]})
+            if listener:
+                for _ in range(16):
+                    try:
+                        event = listener.events.get_nowait()
+                    except queue.Empty:
+                        break
+                    if event.get("kind") == "transcript":
+                        command = resolve(event.get("text", ""), catalog.list(), require_wake=True,
+                                          awake=time.monotonic() < listener.awake_until)
+                        if command["kind"] == "wake":
+                            listener.awake_until = time.monotonic() + 12
+                        elif command["kind"] == "workflow":
+                            listener.awake_until = 0
+                        emit({"event": "voice", **command})
+                        if command["kind"] in ("sleep", "workflow"):
+                            listener.close()
+                            listener = None
+                            emit({"event": "voice", "kind": "stopped"})
+                            break
+                    else:
+                        emit({"event": "voice", **event})
+                if listener and ((listener.finished.is_set() and listener.events.empty()) or time.monotonic() - listener.started > 330):
+                    listener.close()
+                    listener = None
+                    emit({"event": "voice", "kind": "stopped"})
             if session:
                 try:
                     reason = session.poll()
@@ -190,6 +256,10 @@ def main():
                 now = time.time()
                 due = next((j for j in jobs.list() if j["state"] == "pending" and j["due"] <= now), None)
                 if due:
+                    if listener:
+                        listener.close()
+                        listener = None
+                        emit({"event": "voice", "kind": "stopped"})
                     replay = subprocess.Popen([sys.executable, "-u", "-m", "agent.ghost.desktop.replay_worker"],
                         cwd=root, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                         creationflags=0x08000000 if sys.platform == "win32" else 0, text=True)
@@ -198,6 +268,8 @@ def main():
                     replay_id = due["id"]
                     emit({"event": "replay_started", "job_id": replay_id})
     finally:
+        if listener:
+            listener.close()
         if session:
             save_session()
         if replay:

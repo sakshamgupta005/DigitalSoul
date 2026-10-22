@@ -1,5 +1,36 @@
 # Blinky technical reference for DigitalSoul
 
+## Voice and workflow adaptation (2026-10-22)
+
+Inventoried the local Blinky source tree with `rg --files` (653 visible files)
+and searched across frontend, Rust host, and Python code for speech, wake-word,
+Spotify, and browser integrations. This is a repository-wide discovery pass,
+not a claim that every line in every source file was audited.
+
+Read the relevant sections of `common/frontend/src/CommandBar.tsx`,
+`common/frontend/src/lib/assemblyaiVoice.ts`, and `sarvamStream.ts`: explicit
+microphone start/stop, transcript callbacks, audio lifecycle, and wake events.
+DigitalSoul adapts the explicit voice state and transcript-routing pattern;
+the user selected local faster-whisper instead of those cloud providers.
+`agent/ghost/desktop/voice_worker.py` uses CPU int8, bounded RAM audio chunks,
+VAD, a five-minute opt-in session, and local-only model loading. Voice matches
+select saved catalog entries; existing execution review remains required.
+
+Read `common/ai_docs/09_computer_use_and_spotify.md` and app-launch/Spotify
+sections of `common/python/computer_use/tools.py`: Spotify protocol dispatch
+and foreground restoration are useful references. The current notch records
+Spotify through the existing app-scoped UIA recorder and re-resolves recorded
+controls on reviewed replay; it does not copy Blinky's web search for tracks.
+
+Re-read `common/python/tools/browser_use_tool.py` and DigitalSoul's existing
+`agent/ghost/drivers/browser.py`. Blinky's model-driven Agent loop is not
+copied into deterministic workflow execution. Browser-use remains the existing
+BrowserSession/CDP/Actor adapter; UIA browser recordings are not DOM plans.
+
+`DigitalSoul-Blinky.code-workspace` references both checkouts without copying
+Blinky or adding it as a runtime dependency. No Blinky source files were changed.
+See [voice setup and limits](docs/VOICE_WORKFLOWS.md).
+
 Notch implementation: consulted `common/src-tauri/tauri.conf.json` and the
 `common/src-tauri/src/lib.rs` transparent/always-on-top overlay setup, plus
 `common/python/utils/ui_map_cache.py` stable-reference/window-signature patterns.

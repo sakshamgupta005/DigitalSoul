@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+pytest.importorskip("cryptography")
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat

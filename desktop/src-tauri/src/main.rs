@@ -66,7 +66,7 @@ impl Bridge {
     }
 
     fn request(&self, method: String, payload: Value) -> Reply {
-        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "replay_steps", "schedule", "cancel", "stop_jobs", "resume_jobs"].contains(&method.as_str()) {
+        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run"].contains(&method.as_str()) {
             return Err("Unsupported desktop command".into());
         }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();

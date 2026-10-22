@@ -116,3 +116,11 @@ Tests include persistence/restart/deletion, raw-recording trust separation, orde
 replay with a fake native boundary, changed/existing-draft guards, cancellation,
 and actual JSON stdio request/response handling. These do not establish live
 WhatsApp UI compatibility, delivery or visual fidelity of the Windows notch.
+# Local voice commands
+
+The notch mic uses opt-in, local **faster-whisper**. Say “Hey Jarvis, do
+Morning music” to find a recording named “Morning music”, review its steps,
+then approve replay. Install the optional voice dependencies and download the
+model once using [the voice setup guide](../docs/VOICE_WORKFLOWS.md).
+Spotify is available in the recording app picker. Open
+`DigitalSoul-Blinky.code-workspace` at the repository root to browse both projects.

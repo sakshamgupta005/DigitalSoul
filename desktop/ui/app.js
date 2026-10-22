@@ -628,6 +628,12 @@ function stepRoam() {
   }
   if (roam.act?.kind === 'pause' && !roam.fleeing) { ax *= 0.1; ay *= 0.1; vx *= 0.9; vy *= 0.9; }
   if (roam.act && t > roam.act.until) roam.act = null;
+  const edge = 70;
+  const room = [box.left + 22 + edge, box.right - 22 - edge, box.top + 66 + edge, box.bottom - 22 - edge];
+  if (px < room[0]) ax += (room[0] - px) * 0.004;
+  if (px > room[1]) ax -= (px - room[1]) * 0.004;
+  if (py < room[2]) ay += (room[2] - py) * 0.004;
+  if (py > room[3]) ay -= (py - room[3]) * 0.004;
   // Steer: the heading turns at a capped rate (quicker when fleeing), so paths bend into arcs.
   const desired = [(vx + ax) * 0.95, (vy + ay) * 0.95];
   const heading = Math.atan2(vy, vx);
@@ -642,8 +648,9 @@ function stepRoam() {
   py += vy;
   const margin = 22;
   const bounds = [box.left + margin, box.right - margin, box.top + 66, box.bottom - margin];
-  if (px < bounds[0] || px > bounds[1]) { vx *= -0.6; px = Math.min(bounds[1], Math.max(bounds[0], px)); }
-  if (py < bounds[2] || py > bounds[3]) { vy *= -0.6; py = Math.min(bounds[3], Math.max(bounds[2], py)); }
+  // Soft walls: the steering pushes it away before it gets there, so it arcs off edges instead of bouncing.
+  px = Math.min(bounds[1], Math.max(bounds[0], px));
+  py = Math.min(bounds[3], Math.max(bounds[2], py));
   roam.p = [px, py];
   roam.v = [vx, vy];
 }
@@ -698,6 +705,57 @@ let dialogOpen = false;
 window.addEventListener('blur', () => {
   if (state.expanded && !state.pending && !dialogOpen) action(() => expanded(false));
 });
+
+// Local voice commands (Jarvis).
+let voiceOn = false;
+let voicePending = false;
+let voiceFeedback = '';
+function voiceState(on, label) {
+  voiceOn = on;
+  if (on) voiceFeedback = '';
+  $('voice-mic').setAttribute('aria-pressed', String(on));
+  $('voice-mic').setAttribute('aria-label', on ? 'Stop local voice commands' : 'Start local voice commands');
+  $('voice-status').textContent = label || voiceFeedback || (on ? 'Listening locally · say Hey Jarvis' : 'Mic off · local faster-whisper');
+  if (!state.recording && !state.running) {
+    $('compact-label').textContent = voiceFeedback || (on ? (label ? 'Loading voice…' : 'Listening · say Hey Jarvis') : 'Boo! I remember your routines.');
+  }
+}
+function compactVoice(message, label) {
+  voiceFeedback = label || message;
+  $('compact-label').textContent = voiceFeedback;
+  $('voice-status').textContent = message;
+  $('voice-mic').title = message;
+  notice(message);
+}
+async function voiceResult(result) {
+  if (result.kind === 'workflow') {
+    await showDetail(result.id);
+    compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
+  } else if (result.message) {
+    const setup = ['dependencies_missing', 'model_missing'].includes(result.code) || /install voice|download the local/i.test(result.message);
+    compactVoice(result.message, setup ? 'Voice setup needed · expand for help' : result.message);
+  }
+}
+$('voice-mic').addEventListener('click', async () => {
+  if (voicePending) return;
+  voicePending = true;
+  try {
+    await expanded(false);
+    if (voiceOn) { await rpc('voice_stop'); voiceFeedback = ''; voiceState(false); }
+    else {
+      voiceState(true, 'Loading local voice model… click mic to stop');
+      await rpc('voice_start');
+    }
+  } catch (error) {
+    voiceState(false);
+    compactVoice(String(error?.message || error), 'Voice unavailable · expand for help');
+  } finally { voicePending = false; }
+});
+$('voice-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => voiceResult(await rpc('voice_command', { text: $('voice-text').value })));
+});
+
 $('collapse').addEventListener('click', () => action(() => expanded(false)));
 for (const id of ['new-recording', 'empty-record']) $(id).addEventListener('click', newRecording);
 for (const id of ['cancel-create', 'back']) $(id).addEventListener('click', () => view('library'));
@@ -755,14 +813,95 @@ async function stopRecording() {
   if (value) await showDetail(value.id);
 }
 for (const id of ['stop-recording', 'compact-stop']) $(id).addEventListener('click', () => action(stopRecording));
-$('review-run').addEventListener('click', () => {
-  const flow = state.detail?.flow;
-  if (!flow) return;
+function openShopifyWorkflow(prefill = {}) {
   view('approve');
-  $('run-recipient').value = flow.recipient;
-  $('confirm-run').textContent = $('run-mode').value === 'later' ? 'Approve & schedule' : 'Approve & run';
-  $('run-message').value = flow.message;
-  $('approve-send').checked = true;
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = false;
+  $('shopify-title').value = prefill.title || 'Vintage Washed Oversized T-Shirt';
+  $('shopify-url').value = prefill.store_url || 'https://admin.shopify.com/store/gzn0vr-qn/products/new';
+  $('shopify-price').value = prefill.price || '29.99';
+  $('shopify-compare-at').value = prefill.compare_at_price || '39.99';
+  $('shopify-cost').value = prefill.cost_per_item || '12.00';
+  $('shopify-sku').value = prefill.sku || 'VINT-WASH-001';
+  $('shopify-qty').value = prefill.inventory_quantity || 50;
+  $('shopify-category').value = prefill.category || 'Apparel & Accessories > Clothing';
+  $('shopify-tags').value = prefill.tags || 'vintage, summer, cotton, featured';
+  $('shopify-desc').value = prefill.description || '<p>Experience premium comfort with our 100% organic cotton oversized tee.</p>';
+}
+$('new-shopify')?.addEventListener('click', () => openShopifyWorkflow());
+
+$('shopify-ai-btn')?.addEventListener('click', () => action(async () => {
+  const title = $('shopify-title').value.trim();
+  if (!title) {
+    notice('Please enter a product title first so AI can generate the fields.');
+    $('shopify-title').focus();
+    return;
+  }
+  notice('✨ AI is analyzing title and generating product details...');
+  const generated = await rpc('shopify_generate', {
+    title,
+    price: $('shopify-price').value,
+    category: $('shopify-category').value,
+    store_url: $('shopify-url').value,
+  });
+  if (generated) {
+    $('shopify-desc').value = generated.description || $('shopify-desc').value;
+    $('shopify-price').value = generated.price || $('shopify-price').value;
+    $('shopify-compare-at').value = generated.compare_at_price || $('shopify-compare-at').value;
+    $('shopify-cost').value = generated.cost_per_item || $('shopify-cost').value;
+    $('shopify-sku').value = generated.sku || $('shopify-sku').value;
+    $('shopify-qty').value = generated.inventory_quantity || $('shopify-qty').value;
+    $('shopify-category').value = generated.category || $('shopify-category').value;
+    $('shopify-tags').value = generated.tags || $('shopify-tags').value;
+    $('shopify-status').value = generated.status || 'Active';
+    notice('✨ Product fields generated by AI! Review before browser-use runs.');
+  }
+}));
+
+$('shopify-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => {
+    const isTest = $('shopify-test-mode').checked;
+    const storeUrl = isTest ? 'http://127.0.0.1:7777/api/v1/shopify/test-form' : $('shopify-url').value;
+    const product = {
+      title: $('shopify-title').value,
+      description: $('shopify-desc').value,
+      price: $('shopify-price').value,
+      compare_at_price: $('shopify-compare-at').value,
+      cost_per_item: $('shopify-cost').value,
+      sku: $('shopify-sku').value,
+      inventory_quantity: parseInt($('shopify-qty').value, 10) || 50,
+      category: $('shopify-category').value,
+      tags: $('shopify-tags').value,
+      status: $('shopify-status').value,
+      store_url: storeUrl,
+    };
+    notice(`Launching browser-use for "${product.title}"...`);
+    await expanded(false);
+    const report = await rpc('shopify_run', { product, click_save: true, headless: false });
+    await expanded(true);
+    if (report && report.ok) {
+      notice(`✅ browser-use added product: "${product.title}"! (${(report.filled_steps || []).length} fields filled)`);
+    } else {
+      notice(`Shopify run completed: ${JSON.stringify(report?.errors || report)}`);
+    }
+  });
+});
+
+$('review-run').addEventListener('click', () => {
+  const detail = state.detail;
+  const flow = detail?.flow;
+  view('approve');
+  if (flow) {
+    $('approve-whatsapp-view').hidden = false;
+    $('approve-shopify-view').hidden = true;
+    $('run-recipient').value = flow.recipient;
+    $('confirm-run').textContent = $('run-mode').value === 'later' ? 'Approve & schedule' : 'Approve & run';
+    $('run-message').value = flow.message;
+    $('approve-send').checked = true;
+  } else {
+    openShopifyWorkflow({ title: detail.name });
+  }
 });
 $('cancel-run').addEventListener('click', () => view('detail'));
 $('replay-steps').addEventListener('click', () => action(async () => {
@@ -826,7 +965,11 @@ async function boot() {
   }
   await tauri.event.listen('desktop-event', async ({ payload }) => {
     try {
-      if (payload.event === 'recording_progress') {
+      if (payload.event === 'voice') {
+        if (payload.kind === 'ready') voiceState(true);
+        else if (['stopped', 'error', 'sleep'].includes(payload.kind)) voiceState(false);
+        await voiceResult(payload);
+      } else if (payload.event === 'recording_progress') {
         $('live-count').textContent = `${payload.step_count} steps`;
         $('live-time').textContent = $('compact-time').textContent = timeLabel(payload.elapsed);
         $('live-last').textContent = payload.last_step ? stepLabel(payload.last_step) : 'Open an allowed app to begin.';
