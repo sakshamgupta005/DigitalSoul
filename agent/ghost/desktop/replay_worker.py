@@ -20,6 +20,11 @@ def main():
             time.sleep(0.1)
     finally:
         jobs.close()
+        try:
+            from .ghost import Ghost
+            Ghost().park()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

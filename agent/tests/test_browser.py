@@ -173,6 +173,7 @@ def test_cdp_monitor_requires_fresh_matching_mutation_request():
 
 @pytest.mark.skipif(os.environ.get("DIGITALSOUL_TEST_NO_IO") == "1", reason="Requires OS async IO and a local Chrome/Edge installation")
 def test_real_browser_use_actor_connection(tmp_path):
+    pytest.importorskip("browser_use")
     async def check():
         from browser_use import Browser
         from agent.ghost.drivers.browser import browser_executable

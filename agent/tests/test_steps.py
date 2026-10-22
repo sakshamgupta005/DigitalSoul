@@ -161,3 +161,84 @@ def test_missing_field_before_enter_still_stops():
     with pytest.raises(ValueError, match="text field"):
         runner(desktop).run([{"kind": "set_text", "path": APP, "target": spec("Edit", "", "x"), "value": "hi"},
                              {"kind": "press_enter", "path": APP}])
+
+
+def test_stable_name_ignores_unread_counts_and_previews():
+    from agent.ghost.desktop.steps import stable_name
+    assert stable_name("(33) WhatsApp") == "whatsapp"
+    assert stable_name("Vansh Arora, birthday postponed, 8:05 PM") == "vansh arora"
+    assert stable_name("New Tab") == "new tab"
+
+
+def test_click_falls_back_to_stable_name_when_preview_text_changed():
+    contact = Control("DataItem", "Vansh Arora, see you soon, 9:10 PM")
+    other = Control("DataItem", "Saksham, ok, 9:00 PM")
+    desktop = FakeDesktop(Window([contact, other]))
+    runner(desktop).click({"kind": "click", "path": APP, "label": "Vansh", "target": spec("DataItem", "Vansh Arora, birthday postponed, 8:05 PM")})
+    assert contact.clicked == 1 and other.clicked == 0
+
+
+def test_clean_control_name_strips_metadata_and_internal_ids():
+    from agent.ghost.desktop.session import clean_control_name
+    c = Control("ListItem", "Downloads, 10/22/2026 2:15 PM, File folder")
+    assert clean_control_name(c, c.element_info.name, "ListItem") == "Downloads"
+
+    c_file = Control("DataItem", "photo.png, 10/15/2026 10:30 AM, PNG image, 2.4 MB")
+    assert clean_control_name(c_file, c_file.element_info.name, "DataItem") == "photo.png"
+
+    c_unread = Control("Text", "(5) Team Chat")
+    assert clean_control_name(c_unread, c_unread.element_info.name, "Text") == "Team Chat"
+
+
+def test_explorer_windows_filters_shell_tray_and_desktop():
+    from agent.ghost.desktop.steps import Desktop, SHELL_CLASSES
+    taskbar = Control("Window")
+    taskbar.element_info.class_name = "Shell_TrayWnd"
+    taskbar.element_info.process_id = 100
+
+    explorer_win = Control("Window", name="Downloads")
+    explorer_win.element_info.class_name = "CabinetWClass"
+    explorer_win.element_info.process_id = 100
+
+    d = Desktop.__new__(Desktop)
+    class FakeUia:
+        def windows(self):
+            return [taskbar, explorer_win]
+    d.desktop = FakeUia()
+
+    import agent.ghost.desktop.steps as steps_mod
+    orig_exec = steps_mod.executable
+    try:
+        steps_mod.executable = lambda pid: r"c:\windows\explorer.exe" if pid == 100 else None
+        res = d.windows(r"c:\windows\explorer.exe")
+        assert res == [explorer_win]
+    finally:
+        steps_mod.executable = orig_exec
+
+
+
+def test_open_url_steps_only_accept_web_addresses_in_browsers():
+    good = [{"kind": "open_url", "path": APP, "url": "https://www.youtube.com/watch?v=abc&t=95s"}]
+    validate(good)
+    for url in ("file:///C:/secret.txt", "javascript:alert(1)", "https://bad url"):
+        with pytest.raises(ValueError):
+            validate([{"kind": "open_url", "path": APP, "url": url}])
+    with pytest.raises(ValueError):
+        validate([{"kind": "open_url", "path": r"C:\Windows\notepad.exe", "url": "https://x.com"}])
+
+
+def test_replay_opens_the_exact_page_without_touching_the_mouse():
+    opened = []
+    desktop = FakeDesktop(Window([]))
+    desktop.open_url = lambda path, url: opened.append((path, url))
+    runner(desktop).run([{"kind": "open_url", "path": APP, "url": "https://youtube.com/watch?v=abc&t=95s"}])
+    assert opened == [(APP, "https://youtube.com/watch?v=abc&t=95s")]
+
+
+def test_clicks_go_through_the_ghost_not_the_pointer_when_available():
+    acted = []
+    tab = Control("TabItem", "New Tab")
+    desktop = FakeDesktop(Window([tab]))
+    desktop.act = acted.append
+    runner(desktop).click({"kind": "click", "path": APP, "label": "New Tab", "target": spec("TabItem", "New Tab")})
+    assert acted == [tab] and tab.clicked == 0

@@ -66,7 +66,7 @@ impl Bridge {
     }
 
     fn request(&self, method: String, payload: Value) -> Reply {
-        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs"].contains(&method.as_str()) {
+        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run"].contains(&method.as_str()) {
             return Err("Unsupported desktop command".into());
         }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
@@ -114,30 +114,57 @@ async fn backend_request(app: tauri::AppHandle, method: String, payload: Value) 
     }).await.map_err(|e| e.to_string())?
 }
 
-fn position(window: &tauri::WebviewWindow, expanded: bool) -> Result<(), String> {
+fn position(window: &tauri::WebviewWindow, expanded: bool, keep: bool) -> Result<(), String> {
     let monitor = window.current_monitor().map_err(|e| e.to_string())?
         .or(window.primary_monitor().map_err(|e| e.to_string())?).ok_or("No monitor available")?;
     let scale = monitor.scale_factor();
-    let width = (if expanded { 660.0_f64 } else { 420.0_f64 }).min(monitor.size().width as f64 / scale);
-    let height = (if expanded { 680.0_f64 } else { 53.0_f64 }).min(monitor.size().height as f64 / scale - 16.0);
+    let (left, top) = (monitor.position().x as f64, monitor.position().y as f64);
+    let (screen_w, screen_h) = (monitor.size().width as f64, monitor.size().height as f64);
+    let width = (if expanded { 660.0_f64 } else { 420.0_f64 }).min(screen_w / scale);
+    let height = (if expanded { 680.0_f64 } else { 53.0_f64 }).min(screen_h / scale - 16.0);
+    // After the user drags the banner, grow and shrink around where they left it.
+    let (center_x, y) = match (keep, window.outer_position(), window.outer_size()) {
+        (true, Ok(pos), Ok(size)) => (pos.x as f64 + size.width as f64 / 2.0, pos.y as f64),
+        _ => (left + screen_w / 2.0, top),
+    };
+    let x = (center_x - width * scale / 2.0).clamp(left, left + screen_w - width * scale);
+    let y = y.clamp(top, top + screen_h - height * scale);
     window.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
-    let x = monitor.position().x as f64 + (monitor.size().width as f64 - width * scale) / 2.0;
-    window.set_position(tauri::PhysicalPosition::new(x as i32, monitor.position().y)).map_err(|e| e.to_string())
+    window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) -> Result<(), String> { position(&window, expanded) }
+fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) -> Result<(), String> { position(&window, expanded, true) }
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) { app.exit(0) }
 
+/// While recording the notch gets out of the way entirely; F8 stops and brings it back.
+#[tauri::command]
+fn set_notch_hidden(window: tauri::WebviewWindow, hidden: bool) -> Result<(), String> {
+    if hidden { window.hide() } else { window.show() }.map_err(|e| e.to_string())
+}
+
+/// The replay ghost: a click-through overlay that the Python replayer flies to each control it acts on.
+/// It is created once and never focused, so moving it cannot steal focus from the app being replayed.
+const GHOST_PARKED: (i32, i32) = (-4000, -4000);
+
 fn main() {
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, quit_app])
+        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, set_notch_hidden, quit_app])
         .setup(|app| {
             let backend = Bridge::start(app.handle().clone());
             app.manage(Backend(backend));
-            if let Some(window) = app.get_webview_window("notch") { let _ = position(&window, false); }
+            if let Some(window) = app.get_webview_window("notch") { let _ = position(&window, false, false); }
+            let ghost = tauri::WebviewWindowBuilder::new(app, "ghost-cursor", tauri::WebviewUrl::App("ghost.html".into()))
+                .title("DigitalSoul ghost").inner_size(44.0, 44.0).position(GHOST_PARKED.0 as f64, GHOST_PARKED.1 as f64)
+                .decorations(false).transparent(true).shadow(false).resizable(false)
+                .always_on_top(true).skip_taskbar(true).focused(false).visible(true)
+                .build()?;
+            let _ = ghost.set_ignore_cursor_events(true);
+            // Windows ignores a far-off builder position and enforces a minimum width; park it explicitly.
+            let _ = ghost.set_size(tauri::LogicalSize::new(44.0, 44.0));
+            let _ = ghost.set_position(tauri::PhysicalPosition::new(GHOST_PARKED.0, GHOST_PARKED.1));
             Ok(())
         })
         .build(tauri::generate_context!()).expect("Unable to create DigitalSoul window");

@@ -79,6 +79,9 @@ def is_whatsapp(path_or_name):
 
 
 def validate_recipe(recipe):
+    if recipe.get("format") == "digitalsoul.whatsapp-send.v1":
+        from .whatsapp_send import validate
+        return validate(recipe)
     if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
         from .flow import validate
         return validate(recipe)
@@ -139,6 +142,11 @@ class WhatsApp:
         return True
 
     def prepare(self, recipe, message):
+        if recipe.get("format") == "digitalsoul.whatsapp-send.v1":
+            from .ghost import Ghost, act
+            from .whatsapp_send import WhatsAppSend
+            self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost(), press=act)
+            return self._flow_adapter.prepare(recipe, message)
         if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
             from .flow import FlowAdapter
             self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
@@ -168,7 +176,7 @@ class WhatsApp:
         return resolve(window, recipe["controls"]["send"])
 
     def send(self, recipe, message):
-        if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
+        if recipe.get("format") in ("digitalsoul.whatsapp-flow.v1", "digitalsoul.whatsapp-send.v1"):
             return self._flow_adapter.send(recipe, message)
         self._ready(recipe, message).invoke()
 

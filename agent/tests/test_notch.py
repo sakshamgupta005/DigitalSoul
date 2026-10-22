@@ -178,6 +178,32 @@ def test_stdio_backend_hello_list_and_invalid_start(tmp_path):
     assert replies["3"]["ok"] is False
 
 
+def test_stdio_backend_replay_steps_validates_digest(tmp_path):
+    from agent.ghost.desktop.catalog import Catalog
+    from agent.ghost.desktop import steps as step_replay
+    data = tmp_path / ".ghost" / "notch"
+    data.mkdir(parents=True, exist_ok=True)
+    catalog = Catalog(data / "workflows.sqlite3")
+    steps = [{"kind": "open_app", "path": r"C:\Windows\notepad.exe", "app": "notepad.exe", "at": 0}]
+    item = catalog.save({"name": "Test", "steps": steps, "duration": 1, "apps": ["*"]})
+    catalog.close()
+
+    requests = [
+        {"id": "1", "method": "replay_steps", "payload": {"id": item["id"], "approved_digest": "wrong"}},
+        {"id": "2", "method": "replay_steps", "payload": {"id": item["id"], "approved_digest": step_replay.digest(steps)}},
+        {"method": "shutdown"}
+    ]
+    result = subprocess.run([sys.executable, "-u", "-m", "agent.ghost.desktop.notch_bridge", str(tmp_path)],
+                            input="".join(json.dumps(r) + "\n" for r in requests), text=True,
+                            capture_output=True, timeout=15, cwd=Path(__file__).resolve().parents[2])
+    assert result.returncode == 0, result.stderr
+    replies = {r["id"]: r for r in map(json.loads, result.stdout.splitlines()) if "id" in r}
+    assert replies["1"]["ok"] is False
+    assert "changed" in replies["1"]["error"]
+    assert replies["2"]["ok"] is True
+    assert replies["2"]["result"]["started"] is True
+
+
 def test_send_observation_is_process_bound_and_expires():
     snapshot = {"pid": 42, "time": 10, "bounds": [10, 10, 30, 30]}
     event = {"kind": "click", "pid": 42, "time": 11, "point": [20, 20]}
@@ -206,16 +232,17 @@ def test_whatsapp_root_exe_and_case_insensitive_matching():
     assert capture.flow["send"]["kind"] == "enter"
 
 
-def test_session_allows_whatsapp_root_exe_automatically():
+def test_session_everything_mode():
     from agent.ghost.desktop.session import Session
-    # Using monkeypatch/try to avoid WinEvents hook error in headless test if needed
     try:
-        session = Session({"name": "Test Routine", "apps": ["WhatsApp.exe"], "recipient": "vansh arora"})
+        session = Session({"name": "Test Everything", "apps": ["*"]})
         session.finish()
-        assert "whatsapp.root.exe" in session.allowed
-        assert "whatsapp.exe" in session.allowed
+        assert session.everything is True
+        assert session.events.everything is True
+        # Everything mode also learns WhatsApp sends (who was searched and what was typed).
+        assert session.capture is not None and session.capture.auto
     except Exception as exc:
-        if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc):
+        if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc) or "Cannot load" in str(exc):
             pass
         else:
             raise
@@ -258,3 +285,86 @@ def test_browser_field_text_reads_rich_text_and_ignores_placeholder():
     assert field_text(WebField("Add a comment…", "", "Add a comment…"), browser=True) == ""
     assert field_text(WebField("Search", "cats", "ignored"), browser=True) == "cats"
     assert field_text(WebField("Type a message", "", "Type a message"), browser=False) == ""
+
+
+def test_typed_but_unsent_message_still_becomes_a_send_routine():
+    capture = Capture()
+    capture.flow.update(executable=r"C:\Apps\WhatsApp.exe", app_id=None)
+    capture.field(spec("search"), "vansh")
+    capture.click(spec("contact"), "Vansh Arora", "DataItem")
+    identity = spec("header")
+    identity["name"] = "Vansh Arora"
+    capture.field(spec("compose"), "birthday postponed", identity)
+    assert capture.composed and not capture.done
+    capture.enter()  # what Session.finish does for an unsent draft
+    validate(capture.flow)
+    assert capture.flow["recipient"] == "Vansh Arora" and capture.flow["message"] == "birthday postponed"
+
+
+def test_routine_can_be_retargeted_to_another_person():
+    from agent.ghost.desktop.flow import chat_name, retarget
+    flow = recorded()
+    other = retarget(flow, "Saksham")
+    validate(other)
+    assert other["retarget"] and other["search"] == "Saksham" and other["header"]["name"] == "Saksham"
+    assert retarget(flow, "  saksham gupta ") is flow  # same person keeps the recorded routine
+    assert chat_name("(3) Vansh Arora, see you, 9:10 PM") == "Vansh Arora"
+
+
+def test_understand_steps_explorer():
+    from agent.ghost.desktop.catalog import understand_steps
+    steps = [
+        {"kind": "open_app", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "title": "Downloads"},
+        {"kind": "click", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "label": "project_report.pdf",
+         "target": {"control_type": "ListItem"}},
+        {"kind": "click", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "label": "Open"}
+    ]
+    u = understand_steps(steps)
+    assert "project_report.pdf" in u["intent"]
+    assert "Downloads" in u["intent"]
+    assert len(u["explanations"]) == 3
+    assert "Navigated to 'Downloads' folder" in u["explanations"][0]
+    assert "Selected item 'project_report.pdf'" in u["explanations"][1]
+    assert any(p["name"] == "target_item" and p["value"] == "project_report.pdf" for p in u["parameters"])
+    assert any(p["name"] == "folder" and p["value"] == "Downloads" for p in u["parameters"])
+
+
+def test_understand_steps_whatsapp_flow():
+    from agent.ghost.desktop.catalog import understand_steps
+    flow = {"recipient": "Saksham Gupta", "message": "Meeting at 5", "search": "Saksham", "send": {"kind": "button"}}
+    u = understand_steps([], flow=flow)
+    assert u["intent"] == "Send WhatsApp message to Saksham Gupta"
+    assert any(p["name"] == "recipient" and p["value"] == "Saksham Gupta" for p in u["parameters"])
+    assert any(p["name"] == "message" and p["value"] == "Meeting at 5" for p in u["parameters"])
+    assert len(u["explanations"]) == 5
+
+
+
+def test_whatsapp_send_is_rebuilt_from_the_labelled_message_box():
+    from agent.ghost.desktop.whatsapp_send import derive
+    wa = r"C:\Program Files\WindowsApps\5319275A.WhatsAppDesktop_2.2640.100.0_x64__cv1g1gvanyjgm\WhatsApp.Root.exe"
+    steps = [
+        {"kind": "open_app", "path": wa, "app_id": "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"},
+        {"kind": "set_text", "path": wa, "value": "vansh"},
+        {"kind": "click", "path": wa, "label": "Vansh Arora"},
+        {"kind": "set_text", "path": wa, "value": "birthday postponed", "field": "Type a message to Vansh Arora"},
+    ]
+    recipe = derive(steps)
+    assert recipe["recipient"] == "Vansh Arora" and recipe["search"] == "vansh"
+    assert recipe["message"] == "birthday postponed" and recipe["unsent"] is True
+    assert derive(steps + [{"kind": "press_enter", "path": wa}])["unsent"] is False
+    assert derive(steps[:3]) is None
+
+
+def test_browsing_is_folded_into_exact_pages_and_videos_resume():
+    from agent.ghost.desktop.session import compress_browsing, web_address, with_time
+    b = r"C:\Apps\brave.exe"
+    steps = [{"kind": "open_app", "path": b}, {"kind": "set_text", "path": b, "value": "youtube"},
+             {"kind": "press_enter", "path": b}, {"kind": "open_url", "path": b, "url": "https://youtube.com/"},
+             {"kind": "click", "path": b, "label": "Some video"}, {"kind": "open_url", "path": b, "url": "https://youtube.com/watch?v=x"},
+             {"kind": "set_text", "path": b, "value": "nice video"}]
+    folded = compress_browsing(steps)
+    assert [s["kind"] for s in folded] == ["open_url", "set_text"] and folded[0]["url"].endswith("v=x")
+    assert web_address("youtube.com/watch?v=x") == "https://youtube.com/watch?v=x"
+    assert web_address("how to cook rice") is None and web_address("chrome://settings") is None
+    assert with_time("https://youtube.com/watch?v=x&t=3s", 95) == "https://youtube.com/watch?v=x&t=95s"
