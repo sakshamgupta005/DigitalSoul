@@ -6,6 +6,12 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
     throw 'Project Python venv not found. Follow desktop/README.md.'
 }
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+    if (Test-Path -LiteralPath (Join-Path $cargoBin 'cargo.exe')) {
+        $env:PATH = "$cargoBin;$env:PATH"
+    }
+}
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw 'Rust/Cargo is required. Install the Rust MSVC toolchain and Windows build tools.'
 }
 & $pythonPath -c "import win32api, pythoncom, psutil; from pywinauto import Desktop; print('Windows automation imports OK')"

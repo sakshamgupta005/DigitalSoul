@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.ghost.api.learn_routes import router as learn_router
@@ -102,6 +103,13 @@ def index_page():
         </div>
         <span>Port 7702 &rarr;</span>
       </a>
+      <a class="link-item" href="/notch" target="_blank">
+        <div>
+          <strong>DigitalSoul Notch UI (Web View)</strong>
+          <div style="font-size: 13px; color: #94a3b8;">Workflow Recording & Step Review UI</div>
+        </div>
+        <span>/notch &rarr;</span>
+      </a>
       <a class="link-item" href="/health">
         <div>
           <strong>Health Endpoint</strong>
@@ -134,6 +142,11 @@ app.include_router(learn_router)
 
 # Include M2 Execution & Run routes
 app.include_router(run_router(runtime))
+
+# Mount Notch Desktop UI static files
+_notch_ui_dir = Path(__file__).resolve().parents[2] / "desktop" / "ui"
+if _notch_ui_dir.is_dir():
+    app.mount("/notch", StaticFiles(directory=str(_notch_ui_dir), html=True), name="notch")
 
 
 if __name__ == "__main__":
