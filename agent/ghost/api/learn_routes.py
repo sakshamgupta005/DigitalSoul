@@ -504,6 +504,23 @@ async def import_skill_document(payload: SkillImportRequest) -> WorkflowCandidat
     return candidate
 
 
+@router.get("/skills/hermes")
+def get_hermes_skills():
+    """List available skills from NousResearch/hermes-agent."""
+    from ..learning.hermes_sync import list_hermes_skills
+    return {"skills": list_hermes_skills()}
+
+
+@router.post("/skills/hermes/copy")
+def copy_hermes_skill_endpoint(skill_name: str):
+    """Copy a skill from Hermes Agent into DigitalSoul."""
+    from ..learning.hermes_sync import copy_hermes_skill
+    ok, msg, path = copy_hermes_skill(skill_name)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+    return {"success": True, "message": msg, "path": str(path) if path else None}
+
+
 @router.post("/learning/redact", response_model=RedactResponse)
 def redact_telemetry(payload: RedactRequest) -> RedactResponse:
     """On-device sensitive data scrubber for telemetry or steps."""

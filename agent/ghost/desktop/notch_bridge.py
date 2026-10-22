@@ -335,6 +335,12 @@ def main():
                         result = {"skill_markdown": learning_engine.export_skill(payload["id"])}
                     elif method == "import_skill":
                         result = learning_engine.import_skill(payload["skill_markdown"])
+                    elif method == "list_hermes_skills":
+                        from ..learning.hermes_sync import list_hermes_skills
+                        result = {"skills": list_hermes_skills()}
+                    elif method == "import_hermes_skill":
+                        from ..learning.hermes_sync import import_hermes_skill_to_patterns
+                        result = import_hermes_skill_to_patterns(payload["skill_name"], learning_engine)
                     elif method == "demonstration_synthesize":
                         from ..learning.skill_recorder import SkillSynthesizer
                         synth = SkillSynthesizer()

@@ -17,7 +17,7 @@ from pathlib import PureWindowsPath
 from .flow import Native, ancestry
 from .whatsapp import executable, hosted_pid, libraries
 
-STEP_KINDS = ("open_app", "open_url", "click", "set_text", "press_enter")
+STEP_KINDS = ("open_app", "open_url", "click", "double_click", "right_click", "scroll", "set_text", "press_enter", "press_key", "hotkey")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
 
@@ -163,7 +163,7 @@ class Desktop:
         # The browser itself opens the exact page in a new tab; no typing into the address bar.
         subprocess.Popen([path, url], creationflags=0x08000000)
 
-    def cursor_click(self, x, y):
+    def cursor_click(self, x, y, button="left"):
         """Active cursor capability for whole browser and desktop execution."""
         if hasattr(self, "ghost"):
             try:
@@ -174,9 +174,27 @@ class Desktop:
         try:
             self.user.SetCursorPos(int(x), int(y))
             time.sleep(0.04)
-            self.user.mouse_event(0x0002, 0, 0, 0, 0)
+            down = 0x0008 if button == "right" else 0x0002
+            up = 0x0010 if button == "right" else 0x0004
+            self.user.mouse_event(down, 0, 0, 0, 0)
             time.sleep(0.04)
-            self.user.mouse_event(0x0004, 0, 0, 0, 0)
+            self.user.mouse_event(up, 0, 0, 0, 0)
+        except Exception:
+            pass
+
+    def double_click(self, x, y):
+        self.cursor_click(x, y, button="left")
+        time.sleep(0.06)
+        self.cursor_click(x, y, button="left")
+
+    def scroll(self, delta, x=None, y=None):
+        if x is not None and y is not None:
+            try:
+                self.user.SetCursorPos(int(x), int(y))
+            except Exception:
+                pass
+        try:
+            self.user.mouse_event(0x0800, 0, 0, int(delta), 0)
         except Exception:
             pass
 
@@ -400,13 +418,17 @@ class StepRunner:
             try:
                 self.native.act(target)
                 return
-            except Exception:
-                rect = target.rectangle()
-                if rect.right > rect.left and rect.bottom > rect.top and hasattr(self.native, "cursor_click"):
-                    cx = (rect.left + rect.right) // 2
-                    cy = (rect.top + rect.bottom) // 2
-                    self.native.cursor_click(cx, cy)
-                    return
+            except Exception as act_err:
+                try:
+                    rect = target.rectangle()
+                    if rect.right > rect.left and rect.bottom > rect.top and hasattr(self.native, "cursor_click"):
+                        cx = (rect.left + rect.right) // 2
+                        cy = (rect.top + rect.bottom) // 2
+                        self.native.cursor_click(cx, cy)
+                        return
+                except Exception:
+                    pass
+                raise act_err
 
         # Cursor capability fallback: resolve by relative or absolute coordinates
         rel_pt = step.get("relative_point")
@@ -506,6 +528,73 @@ class StepRunner:
         self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="press_enter", label="Enter", rect=None, status="Submitting (Enter)")
         self._app_window(step["path"])
         self.native.send_keys("{ENTER}")
+
+    def double_click(self, step):
+        self.click(step)
+        self.sleep(0.06)
+        rel_pt = step.get("relative_point")
+        point = step.get("point")
+        if (rel_pt or point) and hasattr(self.native, "cursor_click"):
+            window = self._app_window(step["path"])
+            try:
+                wrect = window.rectangle()
+                cx = wrect.left + rel_pt[0] if rel_pt else point[0]
+                cy = wrect.top + rel_pt[1] if rel_pt else point[1]
+                self.native.cursor_click(cx, cy)
+            except Exception:
+                pass
+
+    def right_click(self, step):
+        window = self._app_window(step["path"])
+        label = step.get("label") or "context menu"
+        self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=label, rect=None, status=f"Locating: {label}")
+        rel_pt = step.get("relative_point")
+        point = step.get("point")
+        if (rel_pt or point) and hasattr(self.native, "cursor_click"):
+            try:
+                wrect = window.rectangle()
+                cx = wrect.left + rel_pt[0] if rel_pt else point[0]
+                cy = wrect.top + rel_pt[1] if rel_pt else point[1]
+                rect = {"left": cx - 8, "top": cy - 8, "width": 16, "height": 16}
+                self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=label, rect=rect, status=f"Right click: {label}")
+                self.native.cursor_click(cx, cy, button="right")
+                return
+            except Exception:
+                pass
+        self._app_window(step["path"])
+        self.native.send_keys("+{F10}")
+
+    def scroll(self, step):
+        delta = step.get("delta", -120)
+        window = self._app_window(step["path"])
+        rel_pt = step.get("relative_point")
+        point = step.get("point")
+        cx, cy = None, None
+        if rel_pt or point:
+            try:
+                wrect = window.rectangle()
+                cx = wrect.left + rel_pt[0] if rel_pt else point[0]
+                cy = wrect.top + rel_pt[1] if rel_pt else point[1]
+            except Exception:
+                pass
+        self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="scroll", label=f"Scroll ({delta})", rect=None, status="Scrolling")
+        if hasattr(self.native, "scroll"):
+            self.native.scroll(delta, cx, cy)
+
+    def press_key(self, step):
+        key = step.get("key", "").lower()
+        key_map = {"tab": "{TAB}", "escape": "{ESC}", "esc": "{ESC}", "backspace": "{BACKSPACE}", "delete": "{DELETE}",
+                   "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}", "space": "{SPACE}"}
+        mapped = key_map.get(key, key)
+        self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="press_key", label=key.upper(), rect=None, status=f"Key: {key.upper()}")
+        self._app_window(step["path"])
+        self.native.send_keys(mapped)
+
+    def hotkey(self, step):
+        combo = step.get("combo") or step.get("keys") or ""
+        self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="hotkey", label=combo, rect=None, status=f"Hotkey: {combo}")
+        self._app_window(step["path"])
+        self.native.send_keys(combo)
 
     def run(self, steps, progress=lambda index, step: None):
         self.total_steps = len(steps)

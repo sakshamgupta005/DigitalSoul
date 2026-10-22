@@ -336,7 +336,7 @@ def test_whatsapp_composer_supports_webview2_window_text_and_unlabelled_field():
     s.chat = "Alice"
     s.prepare(recipe(), "hello there")
     assert composer.value == "hello there"
-    # Send verifies and completes without crashing on get_value
+    sent = []
     import pytest
     pytest.importorskip("pywinauto")
     import pywinauto.keyboard

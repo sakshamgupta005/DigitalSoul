@@ -282,7 +282,7 @@ def clean_steps(steps):
         following = steps[index + 1] if index + 1 < len(steps) else {}
         has_point = bool(step.get("point") or step.get("relative_point"))
         c_type = target.get("control_type")
-        if step["kind"] == "click":
+        if step["kind"] in ("click", "double_click", "right_click"):
             if str(target.get("automation_id", "")).startswith("Appid:"):
                 continue
             if c_type in ("Pane", "Group", "Window") and not has_point:

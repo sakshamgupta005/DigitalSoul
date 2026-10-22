@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], jobs: [], detail: null, pending: false };
+const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], profiles: [], activeProfile: null, profileWorkflow: null, jobs: [], detail: null, pending: false };
 const tauri = window.__TAURI__;
 const timeLabel = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 const dateLabel = (date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -74,8 +74,8 @@ async function expanded(value) {
 }
 
 function view(name) {
-  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
-  const tab = ['activity', 'patterns'].includes(name) ? name : 'library';
+  for (const id of ['library', 'patterns', 'profiles', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
+  const tab = ['activity', 'patterns', 'profiles'].includes(name) ? name : 'library';
   document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   movePill();
   $('panel').dataset.view = name;
@@ -1805,8 +1805,20 @@ async function boot() {
   state.connected = true;
   $('connection').className = 'connection online';
   $('connection').title = 'Local desktop backend connected';
+  $('hermes-sync-btn')?.addEventListener('click', () => action(async () => {
+    notice('Loading skills from Hermes Agent...', 'info');
+    const data = await rpc('list_hermes_skills');
+    const skills = data?.skills || [];
+    const listStr = skills.slice(0, 10).map(s => `• ${s.name} (${s.category})`).join('\n');
+    const choice = promptDialog(`Available skills from Hermes Agent:\n${listStr}\n\nEnter skill name to copy & import (e.g. computer-use, youtube-content, blocked-page-recovery, systematic-debugging):`, 'computer-use');
+    if (!choice || !choice.trim()) return;
+    notice(`Copying & importing '${choice.trim()}' from Hermes...`, 'info');
+    const res = await rpc('import_hermes_skill', { skill_name: choice.trim() });
+    await refresh();
+    notice(`Imported Hermes skill "${choice.trim()}" into learned patterns!`, 'success');
+  }));
   $('import-skill-btn')?.addEventListener('click', () => action(async () => {
-    const md = promptDialog('Paste standard Microsoft SKILL.md specification:');
+    const md = promptDialog('Paste standard Microsoft or Hermes SKILL.md specification:');
     if (!md || !md.trim()) return;
     const res = await rpc('import_skill', { skill_markdown: md.trim() });
     await refresh();
