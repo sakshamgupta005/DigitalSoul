@@ -282,7 +282,13 @@ def update_workflow(workflow_id: str, updated: Workflow) -> Workflow:
 
 @router.post("/workflows/{workflow_id}/validate", response_model=Workflow)
 def validate_workflow(workflow_id: str, payload: ValidationRequest) -> Workflow:
-    """User validates and approves draft workflow -> compiles execution plan, bumps version."""
+    """User validates and approves draft workflow -> compiles execution plan, bumps version.
+
+    Enforces REVIEW.md requirements:
+    - Rejects missing/unconfirmed parameters and rules.
+    - Runs semantic checks (step ID uniqueness, loop scopes, parameter bindings).
+    - Increments version and sets trust to 'validated'.
+    """
     existing = db.get_workflow(workflow_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
@@ -298,6 +304,32 @@ def validate_workflow(workflow_id: str, payload: ValidationRequest) -> Workflow:
             "remote_allowed": payload.remote_allowed,
         }
     )
+
+    # 1. Enforce confirmed parameters and rules (REVIEW.md line 15)
+    for p in (validated_wf.parameters or []):
+        if not p.confirmed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Parameter '{p.name}' is unconfirmed. All parameters must be confirmed at validation.",
+            )
+
+    for r in (validated_wf.decision_rules or []):
+        if not r.confirmed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Decision rule '{r.id}' is unconfirmed. All rules must be confirmed at validation.",
+            )
+
+    # 2. Run static semantic verification (REVIEW.md lines 13-17)
+    from contracts.validate import semantic_errors
+    wf_dict = validated_wf.model_dump(mode="json", by_alias=True)
+    errs = semantic_errors(wf_dict)
+    if errs:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Workflow failed semantic validation: {'; '.join(errs)}",
+        )
+
     db.save_workflow(validated_wf)
     return validated_wf
 

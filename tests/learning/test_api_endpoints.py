@@ -144,3 +144,54 @@ def test_workflow_validation_lifecycle():
     assert validated_wf["version"] == 2
     assert validated_wf["remote_allowed"] is True
     assert validated_wf["name"] == "Approved Lifecycle Workflow"
+
+
+def test_workflow_validation_rejects_unconfirmed():
+    # Save a candidate with an unconfirmed parameter
+    cand = WorkflowCandidate(
+        candidate_id="cand_unconfirmed_001",
+        name="Unconfirmed Candidate",
+        description="Testing unconfirmed rejection",
+        support=3,
+        alignment=1.0,
+        steps=[
+            CandidateStep(
+                step_id="s1",
+                kind="action",
+                verb="click",
+                app="acme-crm",
+                locators=[],
+            )
+        ],
+        parameters=[
+            {
+                "name": "account_ids",
+                "type": "string[]",
+                "source": "user",
+                "origin": "inferred",
+                "confirmed": False,  # Not confirmed!
+            }
+        ],
+        outcome_checks=[
+            {
+                "type": "app_api",
+                "app": "acme-crm",
+                "check": "record_exists",
+                "args": {"id": "1042"},
+            }
+        ],
+    )
+    db.save_candidate(cand)
+
+    # Promote candidate to draft workflow
+    prom_resp = client.post("/api/v1/candidates/cand_unconfirmed_001/promote")
+    assert prom_resp.status_code == 200
+    wf_id = prom_resp.json()["workflow_id"]
+
+    # Attempt to validate -> should be rejected with 422
+    val_resp = client.post(
+        f"/api/v1/workflows/{wf_id}/validate",
+        json={"name": "Will Fail"},
+    )
+    assert val_resp.status_code == 422
+    assert "unconfirmed" in val_resp.json()["detail"].lower()
