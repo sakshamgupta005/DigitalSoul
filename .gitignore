@@ -17,6 +17,7 @@ __pycache__/
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 
 # Local / OS
 .DS_Store
