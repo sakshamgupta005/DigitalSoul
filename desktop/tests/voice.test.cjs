@@ -60,3 +60,15 @@ test('matched workflow waits for manual expansion and review', async () => {
   assert.deepEqual(ui.methods, ['voice_start']); // No replay approval from speech.
   assert.equal(ui.nodes.get('compact-label').textContent, 'Ready: Morning music');
 });
+
+test('heard speech and app launch feedback stay inside notch', async () => {
+  const ui = harness();
+  await ui.click();
+  await ui.event({ kind: 'heard', text: 'Open WhatsApp' });
+  assert.equal(ui.nodes.get('voice-text').value, 'Open WhatsApp');
+  await ui.event({ kind: 'app_opened', app: 'whatsapp', message: 'Opening WhatsApp' });
+  ui.context.voiceState(false);
+  assert.equal(ui.nodes.get('compact-label').textContent, 'Opening WhatsApp');
+  assert.deepEqual(ui.sizes, [false]);
+  assert.deepEqual(ui.methods, ['voice_start']);
+});

@@ -27,6 +27,8 @@ Windows Settings and choose the intended default input device.
 
 1. Save a recording with a distinct name, such as **Morning music**.
 2. Click the microphone in the notch. Wait for **Listening locally**.
+   For thirty seconds after the mic becomes ready you can speak a command
+   directly, without a wake phrase: **Open WhatsApp** or **Open Spotify**.
 3. Say **Hey Jarvis, do Morning music**, or **Hey Jarvis, wake up**, followed
    within twelve seconds by **Morning music**.
 4. The compact notch shows **Ready: Morning music**. Click the brand to expand
@@ -39,6 +41,16 @@ names. Duplicate names require selection in the workflow library. Voice input
 never grants approval or changes a workflow. Starting recording, replay, or a
 due scheduled send stops the microphone. Nothing listens at application launch.
 Spoken commands are not saved as a new recording or uploaded to a model gateway.
+
+App-opening commands use only fixed registered Windows protocols (`whatsapp:`
+and `spotify:`). They open the app without sending messages or starting playback.
+They are handled directly; they do not need a recorded workflow. Say **do Open
+Spotify** to select a saved workflow with that name instead. Supported aliases
+include **launch WhatsApp**, **start Spotify**, and **open whats app**.
+The command field shows the most recently recognized phrase, and the compact
+notch shows transcription and launch results. If Windows reports access denied
+when the app was launched inside a restricted agent session, launch DigitalSoul
+from your normal PowerShell. A missing app handler is reported separately.
 
 The Jarvis command field also accepts typed or externally dictated text. That
 lets you use Windows dictation or Wispr Flow as a text input method, without

@@ -206,6 +206,21 @@ class Session:
                 self.visual_memory = VisualMemory()
             except Exception:
                 self.visual_memory = None
+        self.shopify_active = options.get("shopify", True)
+        self.shopify_detected = False
+        self.shopify_data = {
+            "title": "",
+            "description": "",
+            "price": "29.99",
+            "compare_at_price": "39.99",
+            "cost_per_item": "12.00",
+            "sku": "",
+            "inventory_quantity": 50,
+            "category": "Apparel & Accessories",
+            "tags": "featured, new-arrival",
+            "status": "Active",
+            "store_url": "https://admin.shopify.com/store/gzn0vr-qn/products/new",
+        }
         self.replay_error = None
         self.events = WinEvents(everything=self.everything)
         self.events.__enter__()
@@ -502,6 +517,26 @@ class Session:
                 if field and field != value_clean and len(field) <= 160:
                     step["field"] = field  # e.g. WhatsApp's "Type a message to <chat>" names the recipient
                 self.append(step)
+            if self.shopify_active and not is_whatsapp(path):
+                win_text = ""
+                try:
+                    win_text = (window.window_text() or "").lower()
+                except Exception:
+                    pass
+                name_low = self.name.lower()
+                fname = (focus.element_info.name or "").lower()
+                fid = (focus.element_info.automation_id or "").lower()
+                if ("shopify" in win_text or "products" in win_text or "shopify" in name_low
+                        or any("shopify" in str(s.get("value", "")).lower() or "shopify" in str(s.get("label", "")).lower() for s in self.steps)):
+                    self.shopify_detected = True
+                    if "price" in fname or "price" in fid or (value_clean.replace(".", "", 1).isdigit() and len(value_clean) <= 7):
+                        self.shopify_data["price"] = value_clean
+                    elif "sku" in fname or "sku" in fid:
+                        self.shopify_data["sku"] = value_clean
+                    elif "desc" in fname or "desc" in fid or len(value_clean) > 40:
+                        self.shopify_data["description"] = value_clean
+                    elif not self.shopify_data["title"] or "title" in fname or "title" in fid:
+                        self.shopify_data["title"] = value_clean
             if self.capture and not self.capture.done and is_whatsapp(path):
                 is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and (not self.capture.auto or self.capture.selected) and value_clean != self.capture.flow["search"].strip())
                 identity = self._identity(window) if is_msg else None
@@ -548,6 +583,13 @@ class Session:
                 flow = None
             if flow:
                 self.replay_error = None
+        if self.shopify_active and (self.shopify_detected or "shopify" in self.name.lower()) and not flow:
+            from ..browser.shopify import generate_product_fields
+            flow = {
+                "kind": "shopify",
+                "product": generate_product_fields(self.shopify_data),
+            }
+            self.replay_error = None
         if self.capture and not flow and not self.replay_error:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
         self._video_time()

@@ -2,6 +2,13 @@
 
 ## Voice and workflow adaptation (2026-10-22)
 
+Re-inspected `common/python/computer_use/tools.py`'s `APP_PROTOCOLS` mapping
+and `os.startfile` launch path when adding voice **Open WhatsApp/Open Spotify**.
+DigitalSoul adapts only the fixed URI mapping; arbitrary transcript-derived
+paths and shell commands are rejected. Launch requests remain distinct from
+proof of a visible window. Windows permission denials are reported separately
+from missing app protocol handlers.
+
 Inventoried the local Blinky source tree with `rg --files` (653 visible files)
 and searched across frontend, Rust host, and Python code for speech, wake-word,
 Spotify, and browser integrations. This is a repository-wide discovery pass,
