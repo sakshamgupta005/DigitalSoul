@@ -183,6 +183,7 @@ class Origin2(Enum):
 class DecisionRule(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
+        populate_by_name=True,
     )
     id: constr(pattern=r'^[a-z][a-z0-9_]*$')
     expr: str
