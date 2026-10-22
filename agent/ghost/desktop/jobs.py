@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from ..safety.credentials import protect
 from .flow import FORMAT as FLOW_FORMAT, retarget
+from .whatsapp_send import FORMAT as SEND_FORMAT
 from .whatsapp import validate_recipe
 
 
@@ -43,6 +44,10 @@ class Jobs:
         if recipe.get("format") == FLOW_FORMAT:
             # A recorded routine can be sent to someone else; the approval names that person.
             recipe = retarget(recipe, approved_recipient)
+        elif recipe.get("format") == SEND_FORMAT:
+            if approved_recipient.strip().lower() != recipe["recipient"].strip().lower():
+                recipe = dict(recipe, recipient=approved_recipient.strip(), search=approved_recipient.strip())
+            validate_recipe(dict(recipe, message=message))
         elif approved_recipient != recipe["recipient"]:
             raise ValueError("Approve the exact recipient recorded in the recipe")
         if not isinstance(message, str) or not message.strip() or len(message) > 4096:

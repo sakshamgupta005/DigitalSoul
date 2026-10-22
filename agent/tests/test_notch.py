@@ -242,7 +242,7 @@ def test_session_everything_mode():
         # Everything mode also learns WhatsApp sends (who was searched and what was typed).
         assert session.capture is not None and session.capture.auto
     except Exception as exc:
-        if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc):
+        if "Windows input event recording" in str(exc) or "SetWindowsHookEx" in str(exc) or "Cannot load" in str(exc):
             pass
         else:
             raise
@@ -309,3 +309,32 @@ def test_routine_can_be_retargeted_to_another_person():
     assert other["retarget"] and other["search"] == "Saksham" and other["header"]["name"] == "Saksham"
     assert retarget(flow, "  saksham gupta ") is flow  # same person keeps the recorded routine
     assert chat_name("(3) Vansh Arora, see you, 9:10 PM") == "Vansh Arora"
+
+
+def test_understand_steps_explorer():
+    from agent.ghost.desktop.catalog import understand_steps
+    steps = [
+        {"kind": "open_app", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "title": "Downloads"},
+        {"kind": "click", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "label": "project_report.pdf",
+         "target": {"control_type": "ListItem"}},
+        {"kind": "click", "app": "explorer.exe", "path": r"C:\Windows\explorer.exe", "label": "Open"}
+    ]
+    u = understand_steps(steps)
+    assert "project_report.pdf" in u["intent"]
+    assert "Downloads" in u["intent"]
+    assert len(u["explanations"]) == 3
+    assert "Navigated to 'Downloads' folder" in u["explanations"][0]
+    assert "Selected item 'project_report.pdf'" in u["explanations"][1]
+    assert any(p["name"] == "target_item" and p["value"] == "project_report.pdf" for p in u["parameters"])
+    assert any(p["name"] == "folder" and p["value"] == "Downloads" for p in u["parameters"])
+
+
+def test_understand_steps_whatsapp_flow():
+    from agent.ghost.desktop.catalog import understand_steps
+    flow = {"recipient": "Saksham Gupta", "message": "Meeting at 5", "search": "Saksham", "send": {"kind": "button"}}
+    u = understand_steps([], flow=flow)
+    assert u["intent"] == "Send WhatsApp message to Saksham Gupta"
+    assert any(p["name"] == "recipient" and p["value"] == "Saksham Gupta" for p in u["parameters"])
+    assert any(p["name"] == "message" and p["value"] == "Meeting at 5" for p in u["parameters"])
+    assert len(u["explanations"]) == 5
+

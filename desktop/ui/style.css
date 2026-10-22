@@ -51,7 +51,7 @@ kbd{font-family:var(--mono);font-size:10px;border:1px solid var(--line-3);border
 .brand-name>span{display:block;font-family:LocalUI,sans-serif;font-size:11px;color:var(--text-3);font-weight:400;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* The ghost */
-.ghost-float{--size:1;display:inline-grid;flex-shrink:0;perspective:120px;scale:var(--size);transition:scale .38s var(--spring),opacity .2s var(--ease);animation:float 3.6s ease-in-out infinite}
+.ghost-float{--size:1;display:inline-grid;flex-shrink:0;perspective:120px;scale:var(--size);transition:scale .45s var(--spring),opacity .2s var(--ease);animation:float 4.6s ease-in-out infinite}
 /* 2.5D: app.js sets --rx/--ry (turn toward the cursor) and --near (0..1, how close it is). */
 .ghost{width:30px;height:30px;stroke:none;color:var(--ghost);flex-shrink:0;overflow:visible;transform-style:preserve-3d;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) scale(calc(1 + var(--near,0) * .2));transition:transform .35s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(calc(var(--ry,0deg) / -6deg * 1px) 1.5px 4px color-mix(in srgb,var(--glow,var(--accent)) 55%,transparent))}
 .ghost-face{transform:translate(var(--fx,0px),var(--fy,0px));transition:transform .3s cubic-bezier(.2,.8,.2,1)}
@@ -182,6 +182,15 @@ p{color:var(--text-2);line-height:1.55;margin:0;font-size:12px;text-wrap:pretty}
 .step-list code{display:block;font-family:var(--mono);font-size:11px;padding:6px 9px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--text);margin-top:6px;max-height:96px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 .step-list time{font-family:var(--mono);color:var(--text-4);font-size:10.5px;padding-top:7px;font-variant-numeric:tabular-nums}
 .detail-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px;padding:14px 0 4px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--bg)}
+
+/* AI understanding */
+.understanding-card{border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));background:color-mix(in srgb,var(--accent) 6%,var(--surface));border-radius:var(--r-lg);padding:10px 14px;margin:12px 0}
+.understanding-head{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--accent)}
+.understanding-intent{font-size:13px;font-weight:600;color:var(--text);margin:6px 0 6px}
+.understanding-params{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.param-pill{font-size:11px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 8px;color:var(--text-2)}
+.param-pill strong{color:var(--text);font-weight:600}
+.step-explanation{font-size:11.5px;color:var(--text-3);margin:2px 0 0;font-style:italic}
 
 /* WhatsApp routine summary */
 .flow-card{border:1px solid color-mix(in srgb,var(--whatsapp) 30%,var(--line));background:color-mix(in srgb,var(--whatsapp) 6%,var(--surface));border-radius:var(--r-lg);padding:6px 14px;margin:12px 0}
@@ -324,9 +333,9 @@ footer .text-button{font-size:11px}
 .roaming .topbar .ghost-float{opacity:0}
 
 /* ---- Ghost tricks: one short flourish every 6-15 s (scheduled in app.js) ---- */
-.ghost-float.trick-twirl{animation:twirl .9s cubic-bezier(.45,0,.2,1)}
-.ghost-float.trick-wave{animation:wave .9s ease-in-out}
-.ghost-float.trick-peek{animation:peek 1.3s ease-in-out}
+.ghost-float.trick-twirl{animation:twirl 1.15s cubic-bezier(.45,0,.2,1)}
+.ghost-float.trick-wave{animation:wave 1.15s ease-in-out}
+.ghost-float.trick-peek{animation:peek 1.6s ease-in-out}
 .ghost-float.trick-hop{animation:hop .6s var(--spring)}
 .trick-wink .ghost-eyes ellipse:first-child{animation:wink .9s ease-in-out}
 .trick-wink .ghost-mouth{animation:grin .9s ease-in-out}
@@ -341,6 +350,22 @@ footer .text-button{font-size:11px}
 @keyframes glance{25%{transform:translateX(-1.6px)}55%{transform:translateX(1.6px)}80%{transform:translateX(0)}}
 @keyframes yawn{35%,65%{d:path("M14.4 18.9a1.6 2 0 0 0 3.2 0a1.6 2 0 0 0 -3.2 0")}}
 @keyframes squint{35%,65%{transform:scaleY(.35)}}
+
+/* Roaming extras: a gust of wind blown from its mouth, cheeks puffed. */
+.gust{position:absolute;left:50%;top:58%;width:16px;height:1.5px;border-radius:2px;opacity:0;background:linear-gradient(90deg,color-mix(in srgb,var(--ghost) 80%,transparent),transparent);transform-origin:0 50%}
+.blowing .gust{animation:gust 1.4s ease-out}
+.blowing .gust:nth-of-type(4){top:48%;animation-delay:.15s}
+.blowing .gust:nth-of-type(5){top:68%;animation-delay:.3s}
+.blowing .ghost-cheek{animation:puff-cheeks 1.4s ease-in-out}
+.blowing .ghost-mouth{animation:yawn 1.4s ease-in-out}
+@keyframes gust{0%{opacity:0;transform:translate(10px,0) scaleX(.3)}25%{opacity:.85}100%{opacity:0;transform:translate(46px,-2px) scaleX(1.6)}}
+@keyframes puff-cheeks{30%,70%{transform:scale(1.8);opacity:.9}}
+.ghost-cheek{transform-box:fill-box;transform-origin:center}
+
+/* URL steps */
+.kind-open_url{--kind:var(--info)}
+.link-pill,.sum-url{color:var(--info);background:color-mix(in srgb,var(--info) 12%,transparent);border-radius:7px;padding:2px 9px;font-size:12px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resume-pill{font-size:11px;font-weight:700;color:var(--rec);background:color-mix(in srgb,var(--rec) 12%,transparent);border-radius:999px;padding:2px 8px;font-variant-numeric:tabular-nums}
 
 /* ---- Small, noticeable motion ---- */
 .segmented{position:relative}

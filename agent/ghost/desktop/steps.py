@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import PureWindowsPath
@@ -16,7 +17,8 @@ from pathlib import PureWindowsPath
 from .flow import Native, ancestry
 from .whatsapp import executable, libraries
 
-STEP_KINDS = ("open_app", "click", "set_text", "press_enter")
+STEP_KINDS = ("open_app", "open_url", "click", "set_text", "press_enter")
+BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
 
 
@@ -93,12 +95,16 @@ class Desktop:
             return window, None
 
     def focus(self, window):
-        hwnd = window.handle
+        hwnd = getattr(window, "handle", None)
+        if not hwnd:
+            return
         try:
             if self.user.IsIconic(hwnd):
                 self.user.ShowWindow(hwnd, 9)
-            self.user.SwitchToThisWindow(hwnd, True)
+            self.user.keybd_event(0x12, 0, 0, 0)
             self.user.SetForegroundWindow(hwnd)
+            self.user.keybd_event(0x12, 0, 2, 0)
+            self.user.SwitchToThisWindow(hwnd, True)
         except Exception:
             pass
 
@@ -114,8 +120,24 @@ class Desktop:
     focused = Native.focused
 
     def glide_to(self, control):
-        from .pointer import glide_to
-        glide_to(control)
+        # The ghost is the replay's cursor: it flies to the control; the user's mouse never moves.
+        if not hasattr(self, "ghost"):
+            from .ghost import Ghost
+            self.ghost = Ghost()
+        self.ghost.to_control(control)
+        self.ghost.pulse()
+
+    def act(self, control):
+        from .ghost import act
+        act(control)
+
+    def open_url(self, path, url):
+        # The browser itself opens the exact page in a new tab; no typing into the address bar.
+        subprocess.Popen([path, url], creationflags=0x08000000)
+
+    def park(self):
+        if hasattr(self, "ghost"):
+            self.ghost.park()
 
 
 class StepRunner:
@@ -165,6 +187,7 @@ class StepRunner:
                 window, current = self.native.foreground()
                 if current == path:
                     return window
+                return target_window
             return None
         self.window = self._wait(attempt, f"a foreground {PureWindowsPath(path).name} window")
         return self.window
@@ -228,7 +251,11 @@ class StepRunner:
         target = self._wait(lambda: self._find(window, step["target"]), f"“{step.get('label') or 'control'}”")
         self._app_window(step["path"])
         self._glide(target)
-        target.click_input()
+        act = getattr(self.native, "act", None)
+        if act:
+            act(target)  # UI Automation only; the user's pointer stays where it is
+        else:
+            target.click_input()
 
     def set_text(self, step, committed=True):
         window = self._app_window(step["path"])
@@ -248,7 +275,10 @@ class StepRunner:
             self.skipped += 1
             return
         self._glide(target)
-        target.set_focus()
+        try:
+            target.set_focus()
+        except Exception:
+            pass
         try:
             if target.element_info.control_type != "Edit":
                 raise ValueError("Not a plain edit")
@@ -256,6 +286,11 @@ class StepRunner:
         except Exception:
             self._app_window(step["path"])
             self.native.send_keys("^a{BACKSPACE}" + keys(value), with_spaces=True, pause=0.01)
+
+    def open_url(self, step):
+        self.native.open_url(step["path"], step["url"])
+        self._app_window(step["path"])
+        self.sleep(1.5)  # let the page start loading before anything else happens
 
     def press_enter(self, step):
         self._app_window(step["path"])
@@ -267,9 +302,9 @@ class StepRunner:
             if step.get("kind") not in STEP_KINDS:
                 raise ValueError(f"Step {index + 1} has an unsupported action")
             self._check()
-            # Half the recorded rhythm, bounded, so pages and dialogs can load without wasting time.
+            # A softened version of the recorded rhythm: calm, but without wasting time.
             if previous is not None and isinstance(step.get("at"), (int, float)):
-                self.sleep(min(max((step["at"] - previous) * 0.5, 0.25), 1.2))
+                self.sleep(min(max((step["at"] - previous) * 0.6, 0.5), 1.6))
             previous = step.get("at", previous)
             progress(index, step)
             if step["kind"] == "set_text":
@@ -288,15 +323,20 @@ def validate(steps):
             raise ValueError("Recording contains a step that cannot be replayed")
         if step["kind"] == "set_text" and not isinstance(step.get("value"), str):
             raise ValueError("Recording contains a text step without text")
+        if step["kind"] == "open_url" and (PureWindowsPath(step["path"]).name.lower() not in BROWSER_EXES
+                                           or not re.fullmatch(r"https?://[^\s]{1,2040}", step.get("url", ""))):
+            raise ValueError("Recording contains a web address that cannot be opened")
 
 
 def main():
     """Worker entry: reads {"steps": [...]} on stdin, prints one JSON result line."""
     payload = json.loads(sys.stdin.readline())
     done = 0
+    desktop = None
     try:
         validate(payload["steps"])
-        runner = StepRunner(Desktop())
+        desktop = Desktop()
+        runner = StepRunner(desktop)
 
         def progress(index, step):
             nonlocal done
@@ -310,6 +350,9 @@ def main():
         # UIA text can contain private UI content; report the step, not the provider message.
         reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
         result = {"ok": False, "detail": f"Stopped at step {done + 1}: {reason[:200]}"}
+    finally:
+        if desktop:
+            desktop.park()
     print(json.dumps(result), flush=True)
 
 

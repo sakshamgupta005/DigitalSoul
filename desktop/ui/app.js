@@ -123,6 +123,7 @@ function appName(app) {
 }
 
 function stepLabel(step) {
+  if (step.kind === 'open_url') return `Open ${step.label || 'a page'}`;
   if (step.kind === 'open_app') {
     const name = appName(step.app);
     return step.title ? `Open ${name} (${step.title})` : `Open ${name}`;
@@ -143,6 +144,7 @@ const STEP_ICONS = {
   click: '<path d="M5 3l7 5-3 1 2 4-1.5.7-2-4L5 11z"/>',
   set_text: '<path d="M3 5V3.5h10V5M8 3.5v9M6.5 12.5h3"/>',
   press_enter: '<path d="M12.5 4v4.5h-8M7 6l-2.5 2.5L7 11"/>',
+  open_url: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c1.8 2 1.8 9 0 11M8 2.5c-1.8 2-1.8 9 0 11"/>',
 };
 
 function appToken(app) {
@@ -214,6 +216,7 @@ function summaryLine(workflow) {
   for (const piece of pieces) {
     if (piece.kind === 'to') line.append(element('span', 'sum-to', `→ ${piece.text}`));
     else if (piece.kind === 'message' || piece.kind === 'typed') line.append(element('q', `sum-${piece.kind}`, piece.text));
+    else if (piece.kind === 'url') line.append(element('span', 'sum-url', piece.text));
     else line.append(element('span', 'sum-click', piece.text));
   }
   return line;
@@ -321,14 +324,14 @@ async function showDetail(id) {
     meta.append(chip);
   }
   meta.append(element('span', 'fact-chip', `${detail.steps.length} steps`), element('span', 'fact-chip', shortDuration(detail.duration)), element('span', 'fact-chip', ago(detail.created_at)));
+  renderUnderstanding(detail.understanding);
   renderFlow(detail.flow);
   $('detail-warning').textContent = detail.flow
     ? 'WhatsApp send recognized. Check the recipient and message before replaying; it sends a real message.'
     : 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.';
   $('review-run').disabled = !detail.flow || state.recording || state.running;
-  // Recordings that are not a WhatsApp send routine replay step by step instead.
-  $('review-run').hidden = !detail.flow && detail.steps.length > 0;
-  $('replay-steps').hidden = !$('review-run').hidden;
+  $('review-run').hidden = !detail.flow;
+  $('replay-steps').hidden = !detail.steps.length;
   $('replay-steps').disabled = state.recording || state.running;
   $('step-list').replaceChildren();
   let lastApp = null;
@@ -354,15 +357,46 @@ async function showDetail(id) {
       body.append(element('span', 'verb', 'Clicked'), element('span', 'target-pill', step.label || step.target?.name || 'a control'));
     } else if (step.kind === 'set_text') {
       body.append(element('span', 'verb', 'Typed'), element('q', 'typed', step.value));
+    } else if (step.kind === 'open_url') {
+      body.append(element('span', 'verb', 'Opened'), element('span', 'link-pill', step.label || step.url));
+      if (step.resume) body.append(element('span', 'resume-pill', `from ${timeLabel(step.resume)}`));
     } else if (step.kind === 'press_enter') {
       body.append(element('span', 'verb', 'Pressed'), element('kbd', 'keycap', 'Enter ⏎'));
     } else {
       body.append(element('span', 'verb', stepLabel(step)));
     }
+    const explanation = detail.understanding?.explanations?.[index];
+    if (explanation) {
+      body.append(element('p', 'step-explanation', explanation));
+    }
     row.append(node, body, element('time', '', timeLabel(step.at || 0)));
     $('step-list').append(row);
   }
   if (!detail.steps.length) $('step-list').append(element('p', 'hint', 'No allowed-app actions were observed in this recording.'));
+}
+
+function renderUnderstanding(understanding) {
+  const card = $('ai-understanding');
+  if (!card) return;
+  if (!understanding || !understanding.intent) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  card.replaceChildren();
+  const head = element('div', 'understanding-head');
+  head.innerHTML = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1a5 5 0 0 0-5 5c0 1.8.9 3.3 2.3 4.2V12c0 .6.4 1 1 1h3.4c.6 0 1-.4 1-1v-1.8A5 5 0 0 0 13 6a5 5 0 0 0-5-5zm-1.5 13a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3z"/></svg><span>Routine Understanding</span>`;
+  const intent = element('div', 'understanding-intent', understanding.intent);
+  card.append(head, intent);
+  if (understanding.parameters?.length) {
+    const params = element('div', 'understanding-params');
+    for (const p of understanding.parameters) {
+      const pill = element('span', 'param-pill');
+      pill.append(element('strong', '', `${p.name}: `), document.createTextNode(p.value));
+      params.append(pill);
+    }
+    card.append(params);
+  }
 }
 
 // A WhatsApp routine reads as who and what, not as raw clicks.
@@ -435,7 +469,19 @@ function scheduleTrick() {
     const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!calm && !state.recording && !state.running && !document.hidden) {
       const ghost = $('notch').classList.contains('roaming') ? roam.el?.querySelector('.ghost-float') : $('toggle').querySelector('.ghost-float');
-      const trick = TRICKS[Math.floor(sequence(trickCount * 2) * TRICKS.length)];
+      const roaming = $('notch').classList.contains('roaming');
+      const pool = roaming ? [...TRICKS, 'circle', 'blow', 'circle'] : TRICKS;
+      const trick = pool[Math.floor(sequence(trickCount * 2) * pool.length)];
+      if (roaming && trick === 'circle') {
+        const dir = sequence(trickCount * 3) < 0.5 ? 1 : -1;
+        const heading = Math.atan2(roam.v[1], roam.v[0]) + (Math.PI / 2) * dir;
+        roam.act = { kind: 'circle', start: roam.time, until: roam.time + 2.8, dir, angle: heading + Math.PI,
+          center: [roam.p[0] + Math.cos(heading) * 34, roam.p[1] + Math.sin(heading) * 34] };
+      } else if (roaming && trick === 'blow') {
+        roam.act = { kind: 'pause', until: roam.time + 1.6 };
+        roam.el.classList.add('blowing');
+        setTimeout(() => roam.el.classList.remove('blowing'), 1600);
+      }
       if (ghost && !ghost.className.includes('trick-')) {
         ghost.classList.add(`trick-${trick}`);
         setTimeout(() => ghost.classList.remove(`trick-${trick}`), 1500);
@@ -452,12 +498,12 @@ let curious = 1;
 let puffTimer = 0;
 const ghostSize = (size) => document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', size));
 document.addEventListener('pointerdown', () => {
-  ghostSize(1.45);
+  document.querySelectorAll('.ghost-float').forEach((ghost) => ghost.style.setProperty('--size', ghost.closest('.roamer') ? 1.9 : 1.5));
   clearTimeout(puffTimer);
   puffTimer = setTimeout(() => { puffTimer = 0; ghostSize(curious); }, 260);
 });
 document.addEventListener('pointerover', (event) => {
-  curious = event.target.closest('button, .workflow-card, .chip, input, textarea, select') ? 1.18 : 1;
+  curious = event.target.closest('button, .workflow-card, .chip, input, textarea, select') ? 1.3 : 1;
   if (!puffTimer) ghostSize(curious);  // don't cut a click-puff short
 });
 
@@ -483,7 +529,8 @@ function startRoam() {
   if (!roam.el) {
     roam.el = element('div', 'roamer');
     roam.el.setAttribute('aria-hidden', 'true');
-    roam.el.append(element('i', 'wind'), element('i', 'wind'), $('toggle').querySelector('.ghost-float').cloneNode(true));
+    roam.el.append(element('i', 'wind'), element('i', 'wind'), element('i', 'gust'), element('i', 'gust'), element('i', 'gust'),
+      $('toggle').querySelector('.ghost-float').cloneNode(true));
     $('notch').append(roam.el);
   }
   const home = $('toggle').querySelector('.ghost').getBoundingClientRect();
@@ -491,6 +538,7 @@ function startRoam() {
   roam.v = [0.6, 1];
   roam.time = 0;
   roam.carry = 0;
+  roam.act = null;
   roam.last = performance.now();
   $('notch').classList.add('roaming');
   const tick = (now) => {
@@ -569,11 +617,24 @@ function stepRoam() {
   }
   ax += drift(t * 0.6, 0) * 0.012;
   ay += drift(t * 0.52, 2.4) * 0.012;
-  vx = (vx + ax) * 0.95;
-  vy = (vy + ay) * 0.95;
-  // Unhurried: about 3.5px a frame at most.
-  const speed = Math.hypot(vx, vy);
-  if (speed > 3.5) { vx *= 3.5 / speed; vy *= 3.5 / speed; }
+  if (roam.act?.kind === 'circle' && !roam.fleeing) {
+    // Loop-the-loop: chase a point travelling round a small circle.
+    const phase = roam.act.angle + (t - roam.act.start) * (Math.PI * 2 / 2.8) * roam.act.dir;
+    ax += (roam.act.center[0] + Math.cos(phase) * 34 - px) * 0.02;
+    ay += (roam.act.center[1] + Math.sin(phase) * 34 - py) * 0.02;
+  }
+  if (roam.act?.kind === 'pause' && !roam.fleeing) { ax *= 0.1; ay *= 0.1; vx *= 0.9; vy *= 0.9; }
+  if (roam.act && t > roam.act.until) roam.act = null;
+  // Steer: the heading turns at a capped rate (quicker when fleeing), so paths bend into arcs.
+  const desired = [(vx + ax) * 0.95, (vy + ay) * 0.95];
+  const heading = Math.atan2(vy, vx);
+  let turn = Math.atan2(desired[1], desired[0]) - heading;
+  turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  const limit = roam.fleeing ? 0.09 : 0.035;
+  const newHeading = heading + Math.max(-limit, Math.min(limit, turn));
+  const pace = Math.min(roam.act?.kind === 'circle' ? 3.2 : 2.6, Math.hypot(vx, vy) + (Math.hypot(...desired) - Math.hypot(vx, vy)) * 0.12);
+  vx = Math.cos(newHeading) * pace;
+  vy = Math.sin(newHeading) * pace;
   px += vx;
   py += vy;
   const margin = 22;
@@ -701,10 +762,7 @@ $('review-run').addEventListener('click', () => {
 $('cancel-run').addEventListener('click', () => view('detail'));
 $('replay-steps').addEventListener('click', () => action(async () => {
   const detail = state.detail;
-  const apps = [...new Set(detail.steps.map((step) => step.app).filter(Boolean).map(appName))].join(', ') || 'your desktop';
-  if (!confirmDialog(`Replay all ${detail.steps.length} steps in ${apps}?
-
-DigitalSoul will click and type exactly as recorded, including sending messages again. Don't touch the mouse or keyboard while it runs. Press F8 to stop.`)) return;
+  if (!detail || !detail.steps?.length) return;
   await expanded(false);
   await rpc('replay_steps', { id: detail.id, approved_digest: detail.steps_digest });
 }));
@@ -777,14 +835,12 @@ async function boot() {
       } else if (payload.event === 'replay_started') {
         state.running = true;
         $('notch').classList.add('replaying');
-        tauri.core.invoke('set_ghost_cursor', { on: true }).catch(() => {});
         $('compact-label').textContent = payload.steps ? 'Doing it for you… F8 to stop' : 'Sending it for you…';
         $('quit').disabled = true;
       } else if (payload.event === 'replay_finished') {
         state.running = false;
         $('quit').disabled = false;
         $('notch').classList.remove('replaying');
-        tauri.core.invoke('set_ghost_cursor', { on: false }).catch(() => {});
         $('compact-label').textContent = IDLE_LABEL;
         await refresh();
         await expanded(true);

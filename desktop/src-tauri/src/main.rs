@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, mpsc, Arc, Mutex};
+use std::sync::{atomic::{AtomicU64, Ordering}, mpsc, Arc, Mutex};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 #[cfg(windows)]
@@ -139,36 +139,13 @@ fn set_notch_expanded(window: tauri::WebviewWindow, expanded: bool) -> Result<()
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) { app.exit(0) }
 
-/// During replays a small ghost rides next to the real pointer. The overlay is created once,
-/// never focused and click-through; it is only moved, so it cannot steal focus from the app being replayed.
-struct GhostCursor(Arc<AtomicBool>);
+/// The replay ghost: a click-through overlay that the Python replayer flies to each control it acts on.
+/// It is created once and never focused, so moving it cannot steal focus from the app being replayed.
 const GHOST_PARKED: (i32, i32) = (-4000, -4000);
-
-#[tauri::command]
-fn set_ghost_cursor(app: tauri::AppHandle, state: tauri::State<GhostCursor>, on: bool) -> Result<(), String> {
-    let window = app.get_webview_window("ghost-cursor").ok_or("Ghost cursor unavailable")?;
-    if !on {
-        state.0.store(false, Ordering::SeqCst);
-        return window.set_position(tauri::PhysicalPosition::new(GHOST_PARKED.0, GHOST_PARKED.1)).map_err(|e| e.to_string());
-    }
-    if state.0.swap(true, Ordering::SeqCst) { return Ok(()); }
-    let following = state.0.clone();
-    std::thread::spawn(move || {
-        while following.load(Ordering::SeqCst) {
-            if let Ok(point) = window.cursor_position() {
-                let _ = window.set_position(tauri::PhysicalPosition::new(point.x as i32 + 12, point.y as i32 + 8));
-            }
-            std::thread::sleep(Duration::from_millis(7));
-        }
-        let _ = window.set_position(tauri::PhysicalPosition::new(GHOST_PARKED.0, GHOST_PARKED.1));
-    });
-    Ok(())
-}
 
 fn main() {
     let app = tauri::Builder::default()
-        .manage(GhostCursor(Arc::new(AtomicBool::new(false))))
-        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, set_ghost_cursor, quit_app])
+        .invoke_handler(tauri::generate_handler![backend_request, set_notch_expanded, quit_app])
         .setup(|app| {
             let backend = Bridge::start(app.handle().clone());
             app.manage(Backend(backend));

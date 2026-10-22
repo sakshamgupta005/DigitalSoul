@@ -223,13 +223,16 @@ class Native:
         # The point comes from the freshly resolved control, never recorded pixels.
         self.active(flow["executable"])
         self.glide_to(target)
-        target.click_input()
+        from .ghost import act
+        act(target)  # UI Automation only; the user's pointer never moves
 
     def glide_to(self, control):
-        # The replay ghost rides the real pointer; glide there visibly instead of jumping.
+        # The ghost is the replay's cursor: it flies to the control before acting.
         try:
-            from .pointer import glide_to
-            glide_to(control)
+            from .ghost import Ghost
+            ghost = Ghost()
+            ghost.to_control(control)
+            ghost.pulse()
         except Exception:
             pass
 
@@ -296,7 +299,8 @@ class FlowAdapter:
                 self._allow()
                 self.native.active(flow["executable"])
                 getattr(self.native, "glide_to", lambda control: None)(result)
-                result.click_input()
+                from .ghost import act
+                act(result)
                 self._header = dict(flow["header"], name=chat_name(result.element_info.name))
                 continue
             if action["kind"] in ("navigate", "select"):

@@ -129,6 +129,30 @@ def understand_steps(steps, flow=None, name=None):
     }
 
 
+def summarize(value, limit=3):
+    """The few things that tell recordings apart: who and what for a send, else typed text and clicks."""
+    flow = value.get("flow")
+    if flow:
+        return [{"kind": "to", "text": flow["recipient"]}, {"kind": "message", "text": short(flow["message"])}]
+    result = []
+    for step in value.get("steps", []):
+        if step["kind"] == "open_url" and step.get("url"):
+            resume = step.get("resume")
+            text = short(step.get("label") or step["url"], 30) + (f" @ {resume // 60}:{resume % 60:02d}" if resume else "")
+            item = {"kind": "url", "text": text}
+        elif step["kind"] == "set_text" and step.get("value"):
+            item = {"kind": "typed", "text": short(step["value"])}
+        elif step["kind"] == "click" and step.get("label") and step["label"] != "Text field":
+            item = {"kind": "click", "text": short(step["label"], 26)}
+        else:
+            continue
+        if item not in result:
+            result.append(item)
+        if len(result) == limit:
+            break
+    return result
+
+
 class Catalog:
     def __init__(self, path):
         self.db = sqlite3.connect(path)
@@ -145,6 +169,7 @@ class Catalog:
         if not isinstance(value.get("steps"), list) or len(value["steps"]) > 500:
             raise ValueError("Recording exceeds the 500-step limit")
         value["name"] = value["name"].strip()
+        value["understanding"] = understand_steps(value.get("steps", []), value.get("flow"), value.get("name"))
         data = protect(json.dumps(value, ensure_ascii=False).encode())
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO recordings VALUES (?,?)", (value["id"], data))
@@ -154,17 +179,23 @@ class Catalog:
         row = self.db.execute("SELECT payload FROM recordings WHERE id=?", (recording_id,)).fetchone()
         if not row:
             raise ValueError("Recording not found")
-        return json.loads(protect(row[0], decrypt=True))
+        val = json.loads(protect(row[0], decrypt=True))
+        if "understanding" not in val:
+            val["understanding"] = understand_steps(val.get("steps", []), val.get("flow"), val.get("name"))
+        return val
 
     def list(self):
         """Library rows: metadata plus a short, local-only summary of what the recording did."""
         result = []
         for row in self.db.execute("SELECT id FROM recordings"):
             value = self.get(row[0])
+            understanding = value.get("understanding") or understand_steps(value.get("steps", []), value.get("flow"), value.get("name"))
             result.append({key: value.get(key) for key in
                            ("id", "name", "created_at", "apps", "duration", "replay_error")}
                           | {"step_count": len(value["steps"]), "can_run": bool(value.get("flow")),
                              "recipient": (value.get("flow") or {}).get("recipient"),
+                             "intent": understanding.get("intent"),
+                             "understanding": understanding,
                              "used": list(dict.fromkeys(step["app"] for step in value["steps"] if step.get("app"))),
                              "summary": summarize(value)})
         return sorted(result, key=lambda r: r["created_at"], reverse=True)

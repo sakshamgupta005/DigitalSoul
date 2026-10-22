@@ -47,6 +47,49 @@ def clean_control_name(control, name, kind):
     return first or name
 
 
+def web_address(value):
+    """An address-bar value as a full http(s) URL, or None (search text, internal pages)."""
+    value = (value or "").strip()
+    if not value or " " in value or len(value) > 2000:
+        return None
+    if not re.match(r"https?://", value):
+        if not re.match(r"[\w-]+(\.[\w-]+)+(:\d+)?(/|$|\?)", value):
+            return None
+        value = "https://" + value
+    return value
+
+
+def with_time(url, seconds):
+    """A YouTube watch URL that resumes at `seconds`."""
+    url = re.sub(r"([?&])t=\d+s?&?", r"\1", url).rstrip("?&")
+    return f"{url}{'&' if '?' in url else '?'}t={int(seconds)}s"
+
+
+def is_video(url):
+    return bool(re.match(r"https?://(www\.|m\.)?(youtube\.com/(watch|shorts/)|youtu\.be/)", url or ""))
+
+
+def compress_browsing(steps):
+    """A URL step already captures where typing, Enter and link clicks in that browser led,
+    so those are folded into it and replay opens the exact page directly."""
+    out, droppable = [], []
+    for step in steps:
+        kind, path = step["kind"], step.get("path", "")
+        browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
+        if kind == "open_url":
+            drop = {i for i in droppable if out[i].get("path") == path}
+            out = [s for i, s in enumerate(out) if i not in drop]
+            droppable = []
+            if out and out[-1]["kind"] == "open_url" and out[-1].get("path") == path:
+                out.pop()  # passed straight through that page: open only where it ended up
+        elif browser and kind in ("open_app", "set_text", "press_enter", "click"):
+            droppable.append(len(out))
+        else:
+            droppable = []
+        out.append(step)
+    return out
+
+
 def wake_tree(hwnd):
     """Walk one window's UIA tree on a worker thread; big web apps take seconds the first time."""
     try:
@@ -140,6 +183,10 @@ class Session:
         self.last_foreground = None
         self.observed_paths = {}
         self.woken = set()
+        self.omnibox = {}
+        self.url_checked = 0.0
+        self.last_url = None
+        self.last_browser = None
         self.capture = None
         if options.get("recipient"):
             recipient = options["recipient"].strip()
@@ -192,6 +239,45 @@ class Session:
             time.sleep(0.15)
             control = self.native.desktop.from_point(*point)
         return control
+
+    def _track_url(self, window, path):
+        """Browsers: remember the exact page whenever the address bar settles on a new one."""
+        if PureWindowsPath(path).name.lower() not in BROWSER_EXES or time.monotonic() - self.url_checked < 1.0:
+            return
+        self.url_checked = time.monotonic()
+        try:
+            bar = self.omnibox.get(window.handle)
+            if bar is None:
+                bar = next(iter(window.descendants(control_type="Edit", title="Address and search bar")), None)
+                if bar is None:
+                    return
+                self.omnibox[window.handle] = bar
+            if bar.has_keyboard_focus():
+                return  # the user is still typing there
+            url = web_address(bar.get_value())
+        except Exception:
+            self.omnibox.pop(window.handle, None)
+            return
+        if url and url != self.last_url:
+            self.last_url, self.last_browser = url, (window.handle, path)
+            self.append({"kind": "open_url", "app": PureWindowsPath(path).name, "path": path, "url": url,
+                         "label": re.sub(r"^https?://(www\.)?", "", url)[:80]})
+
+    def _video_time(self):
+        """On stop: if the last page is a YouTube video, note where playback is so replay resumes there."""
+        if not is_video(self.last_url) or not self.last_browser:
+            return
+        try:
+            window = self.native.desktop.window(handle=self.last_browser[0]).wrapper_object()
+            seek = next(s for s in window.descendants(control_type="Slider") if "seek" in (s.element_info.name or "").lower())
+            seconds = int(seek.iface_range_value.CurrentValue)
+        except Exception:
+            return
+        for step in reversed(self.steps):
+            if step["kind"] == "open_url" and step["url"] == self.last_url:
+                step["url"] = with_time(step["url"], seconds)
+                step["resume"] = seconds
+                break
 
     def _foreground(self):
         user = self.native.user
@@ -255,6 +341,7 @@ class Session:
                 self.append(step)
                 self.last_foreground = path
             self._wake(window)
+            self._track_url(window, path)
             if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
         while True:
@@ -365,8 +452,12 @@ class Session:
             spec = locator(focus, editable=True)
             self.last_edit = spec
             if not self.steps or self.steps[-1].get("value") != value_clean or self.steps[-1].get("target") != spec:
-                self.append({"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
-                             "label": "Text field", "target": spec, "value": value_clean})
+                step = {"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
+                        "label": "Text field", "target": spec, "value": value_clean}
+                field = (focus.element_info.name or "").strip()
+                if field and field != value_clean and len(field) <= 160:
+                    step["field"] = field  # e.g. WhatsApp's "Type a message to <chat>" names the recipient
+                self.append(step)
             if self.capture and not self.capture.done and is_whatsapp(path):
                 is_msg = (value_clean == self.capture.flow["message"].strip()) or (not self.capture.composed and (not self.capture.auto or self.capture.selected) and value_clean != self.capture.flow["search"].strip())
                 identity = self._identity(window) if is_msg else None
@@ -404,7 +495,18 @@ class Session:
                 flow = self.capture.flow
             except (ValueError, KeyError) as exc:
                 self.replay_error = str(exc)
+        if not flow:
+            # Sturdier fallback: rebuild the send from WhatsApp's labelled message box and what was typed.
+            from .whatsapp_send import derive
+            try:
+                flow = derive(self.steps)
+            except ValueError:
+                flow = None
+            if flow:
+                self.replay_error = None
         if self.capture and not flow and not self.replay_error:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
+        self._video_time()
+        self.steps = compress_browsing(self.steps)
         return {"name": self.name, "apps": self.apps, "steps": self.steps, "flow": flow,
                 "duration": round(time.monotonic() - self.started, 1), "replay_error": self.replay_error}
