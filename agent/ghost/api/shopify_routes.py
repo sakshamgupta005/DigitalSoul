@@ -213,10 +213,14 @@ SHOPIFY_POLARIS_HTML = """<!DOCTYPE html>
 
       <div class="card">
         <h2>Inventory</h2>
-        <div class="grid-2">
+        <div class="grid-3">
           <div>
             <label for="inventory-sku">SKU (Stock Keeping Unit)</label>
             <input type="text" id="inventory-sku" name="sku" placeholder="PROD-001">
+          </div>
+          <div>
+            <label for="inventory-barcode">Barcode (ISBN, UPC, GTIN)</label>
+            <input type="text" id="inventory-barcode" name="barcode" placeholder="12345678">
           </div>
           <div>
             <label for="inventory-quantity">Available quantity</label>
@@ -259,9 +263,10 @@ SHOPIFY_POLARIS_HTML = """<!DOCTYPE html>
       const desc = document.getElementById('product-description').innerHTML;
       const price = document.getElementById('pricing-price').value;
       const sku = document.getElementById('inventory-sku').value;
+      const barcode = document.getElementById('inventory-barcode')?.value || '';
       const status = document.getElementById('product-status').value;
 
-      const data = { title, desc, price, sku, status, timestamp: new Date().toISOString() };
+      const data = { title, desc, price, sku, barcode, status, timestamp: new Date().toISOString() };
       document.body.setAttribute('data-saved-product', JSON.stringify(data));
 
       const banner = document.getElementById('success-banner');

@@ -116,6 +116,10 @@ def test_catalog_understands_excel_workflow(tmp_path):
 
 
 def test_execute_excel_workflow_standalone(tmp_path, monkeypatch):
+    def _mock_no_com(visible=True):
+        raise RuntimeError("COM unavailable in standalone mode test")
+
+    monkeypatch.setattr("agent.ghost.desktop.excel.get_excel_app", _mock_no_com)
     # Set USERPROFILE to tmp_path so desktop directory is redirected
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     (tmp_path / "Desktop").mkdir(parents=True, exist_ok=True)
@@ -131,6 +135,7 @@ def test_execute_excel_workflow_standalone(tmp_path, monkeypatch):
     result = execute_excel_workflow(payload)
     assert result["ok"] is True
     assert result["rows_written"] == 3
+    assert result["mode"] == "standalone_file"
 
 
 def test_inspect_active_excel_contract():
