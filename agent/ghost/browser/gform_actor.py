@@ -44,6 +44,12 @@ GFORM_FILL_SCRIPT = """(data) => (async () => {
         input.dispatchEvent(new Event('blur', { bubbles: true }));
     };
     const findBlock = (item, currentBlocks) => {
+        if (item.entry_id === 'emailAddress' || norm(item.title || item.key) === 'email') {
+            const emailInput = document.querySelector('input[name="emailAddress"], input[type="email"], input[autocomplete="email"]');
+            if (emailInput && visible(emailInput)) {
+                return emailInput.closest('.geS5n, [role="listitem"], .Qr7Oae') || emailInput.parentElement;
+            }
+        }
         const entry = item.entry_id ? `entry.${item.entry_id}` : '';
         if (entry) {
             const control = document.querySelector(`[name="${entry}"]`);
@@ -60,7 +66,8 @@ GFORM_FILL_SCRIPT = """(data) => (async () => {
         if (!targetVal) return false;
         const targetLow = norm(targetVal);
 
-        const input = block.querySelector('input[type="text"], input[type="email"], input[type="url"], input:not([type]), textarea');
+        const input = block.querySelector('input[name="emailAddress"], input[type="email"], input[type="text"], input[type="url"], input:not([type]), textarea')
+            || (block.tagName === 'INPUT' ? block : null);
         if (input && !input.disabled) {
             input.focus();
             fireValue(input, targetVal);
@@ -116,6 +123,18 @@ GFORM_FILL_SCRIPT = """(data) => (async () => {
             if (filled) {
                 item.done = true;
                 report.steps.push({ question: item.title, key: item.key || '', value: String(item.value).trim(), ...filled });
+            }
+        }
+
+        // Ensure any visible built-in email collection input is filled before advancing
+        const emailInput = document.querySelector('input[name="emailAddress"], input[type="email"], input[autocomplete="email"]');
+        if (emailInput && visible(emailInput) && !emailInput.value.trim()) {
+            const emailItem = items.find(it => (it.entry_id === 'emailAddress' || norm(it.title || it.key).includes('email')) && it.value);
+            if (emailItem) {
+                emailInput.focus();
+                fireValue(emailInput, String(emailItem.value).trim());
+                emailItem.done = true;
+                report.steps.push({ question: emailItem.title || 'Email', value: String(emailItem.value).trim(), type: 'email' });
             }
         }
 
@@ -181,6 +200,22 @@ def extract_form_structure(html: str) -> Tuple[str, List[Dict[str, Any]]]:
                             "type_name": {0: "text", 1: "paragraph", 2: "radio", 3: "dropdown", 4: "checkbox", 9: "date"}.get(q_type, "input"),
                             "options": options
                         })
+
+            # Detect built-in Google Forms email collection (e.g. input name="emailAddress")
+            has_email = False
+            if len(data) > 1 and len(data[1]) > 10 and data[1][10] and isinstance(data[1][10], list) and len(data[1][10]) > 0 and data[1][10][0] == 1:
+                has_email = True
+            elif 'name="emailAddress"' in html or 'autocomplete="email"' in html:
+                has_email = True
+
+            if has_email and not any(q.get("entry_id") == "emailAddress" or q["title"].strip().lower() == "email" for q in questions[:3]):
+                questions.insert(0, {
+                    "title": "Email",
+                    "entry_id": "emailAddress",
+                    "type": 0,
+                    "type_name": "text",
+                    "options": None
+                })
         except Exception:
             pass
 
