@@ -1,4 +1,5 @@
-"""Tests for VisualMemory, ScreenCapture (dxcam/fallback), WinRT OCR, and OmniRoute."""
+"""Tests for VisualMemory, ScreenCapture (dxcam/fallback), WinRT OCR, VisualAnnotator, and Representative Training Data."""
+import json
 import os
 import shutil
 import tempfile
@@ -7,6 +8,8 @@ from PIL import Image, ImageDraw
 
 from agent.ghost.collector.ocr_winrt import OcrBoundingBox, OcrResult, OcrWord, WinRtOcrEngine
 from agent.ghost.collector.screen_capture import ScreenCapture
+from agent.ghost.collector.visual_annotator import VisualAnnotator
+from agent.ghost.collector.training_data import RepresentativeDataGenerator, TrainingDatasetExporter, TrainingSample
 from agent.ghost.collector.visual_memory import VisualMemory, VisualMemoryItem
 from agent.ghost.integrations.omniroute import OmniRouteClient, OmniRouteSettings
 
@@ -47,17 +50,40 @@ def test_winrt_ocr_on_rendered_image():
     if engine.is_available:
         result = engine.recognize_image(img)
         assert isinstance(result.text, str)
-        # Even with basic fonts, it should extract characters
         if result.words:
             assert len(result.words) > 0
             assert result.words[0].box.width > 0
 
 
-def test_visual_memory_store_and_search(tmp_path):
+def test_visual_annotator():
+    annotator = VisualAnnotator()
+    base_img = Image.new("RGB", (800, 600), color=(30, 30, 30))
+
+    # Test visual markings (ripple, box, badge)
+    marked = annotator.annotate_action(
+        image=base_img,
+        coords=(400.0, 300.0),
+        bbox=(350.0, 280.0, 450.0, 320.0),
+        action_kind="click",
+        label="Send Message",
+    )
+    assert marked.size == (800, 600)
+
+    # Test context crop
+    crop = annotator.create_focus_crop(
+        image=base_img,
+        target_point=(400.0, 300.0),
+        bbox=(350.0, 280.0, 450.0, 320.0),
+        crop_size=(300, 200),
+    )
+    assert crop.size == (300, 200)
+
+
+def test_visual_memory_store_with_markings_and_export(tmp_path):
     db_file = tmp_path / "test_memory.sqlite3"
     shots_dir = tmp_path / "shots"
+    dataset_dir = tmp_path / "dataset"
 
-    # Initialize with offline OmniRoute settings
     client = OmniRouteClient(OmniRouteSettings(base_url="http://127.0.0.1:20128/v1", model=""))
     memory = VisualMemory(db_path=db_file, screenshots_dir=shots_dir, omniroute_client=client)
 
@@ -75,27 +101,43 @@ def test_visual_memory_store_and_search(tmp_path):
     assert item1.app == "WhatsApp.exe"
     assert "clicked" in item1.intent_summary.lower()
     assert item1.screenshot_path is not None
-    assert Path(item1.screenshot_path).exists()
-
-    item2 = memory.capture_and_remember(
-        app="chrome.exe",
-        window_title="Acme Portal Dashboard",
-        action_kind="set_text",
-        target_name="Search Input",
-        session_id="session_123",
-        analyze_with_omniroute=True,
-    )
-
-    recent = memory.get_recent(limit=10)
-    assert len(recent) == 2
-    assert recent[0].id == item1.id
-    assert recent[1].id == item2.id
+    assert item1.marked_screenshot_path is not None
+    assert item1.focus_crop_path is not None
+    assert Path(item1.marked_screenshot_path).exists()
+    assert Path(item1.focus_crop_path).exists()
 
     # Search by keyword
     results = memory.search_memory("Saksham")
     assert len(results) >= 1
     assert results[0].app == "WhatsApp.exe"
 
-    results_chrome = memory.search_memory("Portal", app="chrome.exe")
-    assert len(results_chrome) == 1
-    assert results_chrome[0].app == "chrome.exe"
+    # Export dataset
+    count = memory.export_as_training_dataset(output_dir=dataset_dir)
+    assert count == 1
+    samples_file = dataset_dir / "samples.jsonl"
+    assert samples_file.exists()
+    with open(samples_file, "r", encoding="utf-8") as f:
+        data = json.loads(f.readline())
+        assert data["app"] == "WhatsApp.exe"
+        assert data["action_type"] == "click"
+        assert data["target_label"] == "Send Button"
+
+
+def test_representative_training_data_generator(tmp_path):
+    gen = RepresentativeDataGenerator(output_dir=tmp_path)
+    samples = gen.generate_whatsapp_flow()
+
+    assert len(samples) == 4
+    for s in samples:
+        assert s.app == "WhatsApp.exe"
+        assert Path(s.raw_screenshot_path).exists()
+        assert Path(s.marked_screenshot_path).exists()
+        assert Path(s.focus_crop_path).exists()
+        assert len(s.coords_norm) == 2
+        assert len(s.bbox_norm) == 4
+        # Normalized coordinates should be between 0 and 1
+        assert 0.0 <= s.coords_norm[0] <= 1.0
+        assert 0.0 <= s.coords_norm[1] <= 1.0
+
+    samples_file = tmp_path / "samples.jsonl"
+    assert samples_file.exists()

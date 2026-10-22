@@ -1,4 +1,4 @@
-"""Live Demonstration & Test of dxcam Screen Capture, WinRT OCR, OmniRoute & VisualMemory."""
+"""Live Demonstration & Test of dxcam Screen Capture, WinRT OCR, Visual Annotator & Representative Training Data."""
 from __future__ import annotations
 
 import os
@@ -18,14 +18,16 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from agent.ghost.collector.screen_capture import ScreenCapture
 from agent.ghost.collector.ocr_winrt import WinRtOcrEngine
+from agent.ghost.collector.visual_annotator import VisualAnnotator
 from agent.ghost.collector.visual_memory import VisualMemory
+from agent.ghost.collector.training_data import RepresentativeDataGenerator
 from agent.ghost.integrations.omniroute import OmniRouteClient, OmniRouteSettings
 
 
 def main():
-    print("=" * 65)
-    print("  DIGITALSOUL: VISUAL MEMORY & PERCEPTION PIPELINE TEST")
-    print("=" * 65)
+    print("=" * 70)
+    print("  DIGITALSOUL: VISUAL ACTION GROUNDING & TRAINING PIPELINE TEST")
+    print("=" * 70)
 
     # 1. Test Screen Capture (dxcam + fallback)
     print("\n[Step 1] Initializing ScreenCapture (dxcam / DXGI duplication)...")
@@ -37,7 +39,7 @@ def main():
     if img is not None:
         print(f"  [OK] Screen captured in {elapsed_ms:.1f}ms")
         print(f"       Resolution: {img.size[0]}x{img.size[1]} pixels")
-        print(f"       Saved to: {shot_path}")
+        print(f"       Raw Screenshot: {shot_path}")
     else:
         print("  [FAIL] Failed to capture screen frame")
         return
@@ -56,23 +58,34 @@ def main():
 
     print(f"  [OK] Screen OCR completed in {ocr_ms:.1f}ms")
     print(f"       Recognized lines: {len(ocr_result.lines)} | Words: {len(ocr_result.words)}")
-    if ocr_result.words:
-        sample_words = [f"'{w.text}' at ({int(w.box.x)}, {int(w.box.y)})" for w in ocr_result.words[:5]]
-        print(f"       Detected screen words: {', '.join(sample_words)}")
 
-    # Also test WinRT OCR on an active text canvas to demonstrate precision
-    from PIL import Image, ImageDraw
-    test_canvas = Image.new("RGB", (480, 120), color=(255, 255, 255))
-    draw = ImageDraw.Draw(test_canvas)
-    draw.text((20, 20), "OmniRoute & WinRT OCR", fill=(0, 0, 0))
-    draw.text((20, 60), "Action: WhatsApp Send Message", fill=(0, 0, 0))
-    sample_ocr = ocr_engine.recognize_image(test_canvas)
-    print(f"  [OK] OCR Precision Verification on Rendered Elements:")
-    for word in sample_ocr.words[:4]:
-        print(f"       -> Word: '{word.text}' | Box: [x={int(word.box.x)}, y={int(word.box.y)}, w={int(word.box.width)}, h={int(word.box.height)}]")
+    # 3. Test Visual Action Marking (VisualAnnotator)
+    print("\n[Step 3] Generating Visual Action Grounding Markings...")
+    annotator = VisualAnnotator()
+    marked_img = annotator.annotate_action(
+        image=img,
+        coords=(img.size[0] // 2, img.size[1] // 2),
+        bbox=(img.size[0] // 2 - 60, img.size[1] // 2 - 20, img.size[0] // 2 + 60, img.size[1] // 2 + 20),
+        action_kind="click",
+        label="Demo Action Target",
+        ocr_words=[w.to_dict() for w in ocr_result.words],
+    )
+    marked_path = ROOT / ".ghost" / "memory" / "screenshots" / "live_demo_marked.png"
+    marked_img.save(marked_path)
+    print(f"  [OK] Annotated Screenshot with Markings: {marked_path}")
 
-    # 3. Test OmniRoute Connection
-    print("\n[Step 3] Checking OmniRoute Gateway (http://127.0.0.1:20128/v1)...")
+    # Localized Context Crop
+    crop_img = annotator.create_focus_crop(
+        image=img,
+        target_point=(img.size[0] // 2, img.size[1] // 2),
+        crop_size=(500, 360),
+    )
+    crop_path = ROOT / ".ghost" / "memory" / "screenshots" / "live_demo_crop.png"
+    crop_img.save(crop_path)
+    print(f"  [OK] High-Res Context Focus Crop (500x360): {crop_path}")
+
+    # 4. Check OmniRoute Gateway
+    print("\n[Step 4] Checking OmniRoute Gateway (http://127.0.0.1:20128/v1)...")
     omniroute = OmniRouteClient(OmniRouteSettings.from_env())
     probe = omniroute.probe(inference=False)
     print(f"       Gateway base URL: {probe['base_url']}")
@@ -81,11 +94,9 @@ def main():
         print("       Health: OK (200)")
     else:
         print(f"       Health: Offline or unreachable ({probe.get('error', 'not running')})")
-    if probe.get("models", {}).get("ok"):
-        print(f"       Configured models count: {probe['models'].get('count', 0)}")
 
-    # 4. Record Action into VisualMemory
-    print("\n[Step 4] Storing episodic event into VisualMemory (SQLite)...")
+    # 5. Record Action into VisualMemory
+    print("\n[Step 5] Storing episodic event into VisualMemory (SQLite)...")
     memory = VisualMemory(
         db_path=ROOT / ".ghost" / "memory" / "visual_memory.sqlite3",
         screenshots_dir=ROOT / ".ghost" / "memory" / "screenshots",
@@ -98,7 +109,7 @@ def main():
         action_kind="click",
         coords=(450.0, 320.0),
         target_name="Run Pipeline",
-        session_id="test_run_001",
+        session_id="test_run_002",
         analyze_with_omniroute=True,
     )
 
@@ -106,21 +117,27 @@ def main():
     print(f"       Timestamp: {mem_item.timestamp}")
     print(f"       App: {mem_item.app} | Action: {mem_item.action_kind}")
     print(f"       Intent Summary: {mem_item.intent_summary}")
-    print(f"       Screenshot: {mem_item.screenshot_path}")
+    print(f"       Raw Shot: {mem_item.screenshot_path}")
+    print(f"       Marked Shot: {mem_item.marked_screenshot_path}")
+    print(f"       Focus Crop: {mem_item.focus_crop_path}")
 
-    # 5. Search & Retrieval
-    print("\n[Step 5] Testing Visual Memory search and retrieval...")
-    recent = memory.get_recent(limit=3)
-    print(f"       Recent memory count: {len(recent)}")
-    for item in recent:
-        print(f"       - [ID {item.id}] {item.timestamp} | {item.app} -> {item.intent_summary}")
+    # 6. Generate Representative Training Data
+    print("\n[Step 6] Generating Representative VLM Training Workflow Data...")
+    gen = RepresentativeDataGenerator(output_dir=ROOT / ".ghost" / "training_dataset")
+    samples = gen.generate_whatsapp_flow()
+    print(f"  [OK] Generated {len(samples)} representative training samples for WhatsApp flow:")
+    for s in samples:
+        print(f"       - Step {s.step_index}: [{s.action_type.upper()}] '{s.target_label}'")
+        print(f"         Prompt: \"{s.instruction_prompt}\"")
+        print(f"         Coords (norm): {s.coords_norm} | BBox: {s.bbox_norm}")
 
-    search_hits = memory.search_memory("DigitalSoul")
-    print(f"       Keyword search for 'DigitalSoul': {len(search_hits)} matching record(s)")
+    # Export dataset from all visual memories
+    exported = memory.export_as_training_dataset(output_dir=ROOT / ".ghost" / "training_dataset")
+    print(f"\n  [OK] Total exported dataset samples: {exported} into .ghost/training_dataset/samples.jsonl")
 
-    print("\n" + "=" * 65)
-    print("  TEST COMPLETED: ALL VISUAL MEMORY COMPONENTS OPERATIONAL!")
-    print("=" * 65)
+    print("\n" + "=" * 70)
+    print("  TEST COMPLETED: VISUAL MARKINGS & TRAINING GENERATOR VERIFIED!")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
