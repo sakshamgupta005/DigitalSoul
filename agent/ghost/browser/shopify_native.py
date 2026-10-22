@@ -18,6 +18,18 @@ def canonical(value):
     value = str(value or "").strip().rstrip("/")
     if value.startswith("admin.shopify.com/"):
         value = "https://" + value
+    parsed = urlsplit(value)
+    # Map myshopify.com admin URLs: https://<store>.myshopify.com/admin/products[/new]
+    if parsed.scheme == "https" and parsed.hostname and parsed.hostname.endswith(".myshopify.com"):
+        store = parsed.hostname.split(".")[0]
+        if parsed.path.rstrip("/").endswith("/products") or parsed.path.rstrip("/").endswith("/products/new"):
+            return f"https://admin.shopify.com/store/{store}/products/new"
+    # Auto-normalize /products -> /products/new and strip query/fragment
+    if parsed.scheme == "https" and parsed.hostname == "admin.shopify.com":
+        path = parsed.path.rstrip("/")
+        if path.endswith("/products"):
+            path = path + "/new"
+        return f"https://admin.shopify.com{path}"
     return value
 
 

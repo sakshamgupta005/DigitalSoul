@@ -129,6 +129,35 @@ def validate_recipe(recipe):
         raise ValueError("A UIA Send button is required")
 
 
+def find_whatsapp_executable():
+    """Find installed WhatsApp desktop executable or running instance."""
+    try:
+        import psutil
+        for p in psutil.process_iter(["name", "exe"]):
+            try:
+                if p.name().lower() in WHATSAPP_EXES:
+                    return os.path.normcase(str(Path(p.exe()).resolve()))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    import glob
+    base = r"C:\Program Files\WindowsApps"
+    try:
+        matches = glob.glob(base + r"\5319275A.WhatsAppDesktop_*_x64__*\WhatsApp.Root.exe")
+        if matches:
+            return os.path.normcase(matches[0])
+        matches = glob.glob(base + r"\5319275A.WhatsAppDesktop_*_x64__*\WhatsApp.exe")
+        if matches:
+            return os.path.normcase(matches[0])
+    except Exception:
+        pass
+    local = os.path.expandvars(r"%LOCALAPPDATA%\WhatsApp\WhatsApp.exe")
+    if os.path.exists(local):
+        return os.path.normcase(local)
+    return r"C:\Program Files\WindowsApps\WhatsApp.exe"
+
+
 class WhatsApp:
     def set_guard(self, guard):
         self._guard = guard
@@ -143,20 +172,36 @@ class WhatsApp:
         handle = user32.GetForegroundWindow()
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
-        if not pid.value or executable(pid.value) != recipe["executable"]:
+        rec_exe = os.path.normcase(str(recipe.get("executable", ""))) if recipe.get("executable") else None
+        if not pid.value or (rec_exe and executable(pid.value) != rec_exe):
             try:
                 top = desktop.window(handle=handle).top_level_parent()
-                if executable(top.element_info.process_id) == recipe["executable"]:
+                if not rec_exe or executable(top.element_info.process_id) == rec_exe:
                     handle = top.handle
                     pid = wintypes.DWORD(top.element_info.process_id)
             except Exception:
                 pass
-        if not pid.value or executable(pid.value) != recipe["executable"]:
+        if not pid.value or (rec_exe and executable(pid.value) != rec_exe):
+            for w in desktop.windows():
+                try:
+                    w_exe = executable(w.element_info.process_id)
+                    if (rec_exe and w_exe == rec_exe) or (not rec_exe and is_whatsapp(w_exe)):
+                        handle = w.handle
+                        pid = wintypes.DWORD(w.element_info.process_id)
+                        user32.ShowWindow(handle, 9)
+                        user32.SwitchToThisWindow(handle, True)
+                        user32.SetForegroundWindow(handle)
+                        time.sleep(0.2)
+                        break
+                except Exception:
+                    continue
+        if not pid.value or (rec_exe and executable(pid.value) != rec_exe):
             raise ValueError("Keep the recorded WhatsApp window foreground on an unlocked desktop")
         window = desktop.window(handle=handle).wrapper_object()
         if not window.is_visible() or not window.is_enabled():
             raise ValueError("WhatsApp is unavailable")
-        resolve(window, recipe["controls"]["header"])
+        if recipe.get("format") == "digitalsoul.whatsapp-teaching.v1" and "controls" in recipe:
+            resolve(window, recipe["controls"]["header"])
         return window
 
     def check(self, recipe):
@@ -175,9 +220,15 @@ class WhatsApp:
             self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost(), press=act)
             return self._flow_adapter.prepare(recipe, message)
         if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
-            from .flow import FlowAdapter
-            self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
-            return self._flow_adapter.prepare(recipe, message)
+            try:
+                from .flow import FlowAdapter
+                self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
+                return self._flow_adapter.prepare(recipe, message)
+            except Exception:
+                from .ghost import Ghost, act
+                from .whatsapp_send import WhatsAppSend
+                self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=Ghost(), press=act)
+                return self._flow_adapter.prepare(recipe, message)
         from .whatsapp_send import control_text
         self.check(recipe)
         composer = resolve(self.window(recipe), recipe["controls"]["composer"])
@@ -235,7 +286,7 @@ def teach(recipient):
         path = executable(control.element_info.process_id)
         if not is_whatsapp(path):
             raise ValueError("Point only at the WhatsApp desktop app")
-        if "executable" in recipe and recipe["executable"] != path:
+        if "executable" in recipe and os.path.normcase(str(recipe["executable"])) != os.path.normcase(str(path)):
             raise ValueError("All controls must belong to the same WhatsApp installation")
         recipe["executable"] = path
         recipe["controls"][role] = selector(control, role)

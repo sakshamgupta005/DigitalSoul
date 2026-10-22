@@ -336,8 +336,9 @@ def test_whatsapp_composer_supports_webview2_window_text_and_unlabelled_field():
     s.chat = "Alice"
     s.prepare(recipe(), "hello there")
     assert composer.value == "hello there"
-    # Send verifies and completes without crashing on get_value
     sent = []
+    import pytest
+    pytest.importorskip("pywinauto")
     import pywinauto.keyboard
     monkeypatch_send = lambda key: sent.append(key)
     old_send = getattr(pywinauto.keyboard, "send_keys", None)
@@ -347,3 +348,29 @@ def test_whatsapp_composer_supports_webview2_window_text_and_unlabelled_field():
     finally:
         pywinauto.keyboard.send_keys = old_send
     assert sent == ["{ENTER}"]
+
+
+def test_chat_name_strips_whatsapp_time_date_preview():
+    from agent.ghost.desktop.flow import chat_name
+    assert chat_name("Vansh 12:47 am Video") == "Vansh"
+    assert chat_name("Vansh 12:47 am") == "Vansh"
+    assert chat_name("VANSH ARORA ID CARD Wednesday You : Sticker Muted chat") == "VANSH ARORA ID CARD"
+    assert chat_name("Alice Yesterday Hello") == "Alice"
+    assert chat_name("Bob 10/22/2026 Hi") == "Bob"
+
+
+def test_exact_chat_match_selected_despite_duplicate_or_similar_rows():
+    # If a chat list contains duplicate UIA rows for the exact contact plus another contact starting with the same name
+    row1 = Field("ListItem", "Alice 10:15 am Message")
+    row2 = Field("ListItem", "Alice 10:15 am")
+    other = Field("ListItem", "Alice Cooper 9:00 am")
+    app = App([Field("Edit", "Search"), row1, row2, other])
+    pressed, g = [], FakeGhost()
+    composer = Field("Edit", "Type a message to Alice")
+
+    def press(control):
+        pressed.append(control)
+        app.controls.append(composer)
+
+    sender(app, press, g).prepare(recipe(recipient="Alice"), "hi")
+    assert pressed == [row1] and composer.value == "hi"

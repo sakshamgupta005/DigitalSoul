@@ -81,7 +81,7 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     )
     if not add_match:
         direct_add = re.match(
-            r"^(?:please\s+)?(?:add|create|new|make|automate)\s+(?:a\s+)?(shopify|excel|whatsapp|routine)\b\s*(.*)$",
+            r"^(?:please\s+)?(?:add|create|new|make|automate|fill)\s+(?:a\s+)?(shopify|excel|whatsapp|gform|google\s*form|routine)\b\s*(.*)$",
             command,
             re.I
         )

@@ -15,8 +15,8 @@
     </header>
     <div id="panel" class="panel" hidden>
       <nav class="tabs" aria-label="DigitalSoul views">
-        <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Learned <span id="pattern-count">0</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
-        <div class="tab-actions"><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
+        <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Learned <span id="pattern-count">0</span></button><button data-tab="profiles">Profiles <span id="profile-count">3</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
+        <div class="tab-actions"><button id="chain-drop-btn" class="new-button chain-button" title="Cross-App Chain: Process today's supplier drop (Excel -> Shopify -> WhatsApp)"><span style="font-size:13px">⚡</span> Supplier Drop</button><button id="scan-screen-btn" class="new-button scan-screen-button" title="Scan screen or active window to propose workflow (Ctrl+Space)"><span style="font-size:13px">📸</span> Scan Screen</button><button id="self-heal-btn" class="new-button heal-button" title="Test Self-Healing Execution demo (Simulated popup obstacle & verified recovery)" style="border-color:rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#a7f3d0"><span style="color:#4ade80">🛡️</span> Self-Healing</button><button id="test-hud-btn" class="new-button hud-button" title="Test Live Ghost Pilot HUD flight demo" style="border-color:rgba(185,166,255,0.4);background:rgba(185,166,255,0.12);color:#e2ddfe"><span style="color:#b9a6ff">👻</span> Pilot HUD</button><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-gform" class="new-button gform-button" title="Auto-fill Google Forms with remembered info">📝 Google Form</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
       </nav>
       <form id="voice-form" class="voice-command"><label for="voice-text">Jarvis <small id="voice-status" role="status">Mic off · local faster-whisper</small></label><div><input id="voice-text" maxlength="512" placeholder="Hey Jarvis, do workflow name" aria-label="Workflow command"><button class="secondary" type="submit">Find</button></div><p>Speak with the mic, type, or dictate here. Review the saved steps before running.</p></form>
       <div id="notice" class="notice" role="status" hidden></div>
@@ -32,11 +32,143 @@
         <div id="empty" class="empty"><div class="empty-symbol" aria-hidden="true"><span class="ghost-float"><svg class="ghost" viewBox="0 0 32 32" aria-hidden="true"><path class="ghost-body" d="M16 3.5C10 3.5 6 7.9 6 13.8V26.6Q8 28.2 10 26.6T14 26.6T18 26.6T22 26.6T26 26.6V13.8C26 7.9 22 3.5 16 3.5Z"/><g class="ghost-face"><g class="ghost-eyes"><ellipse cx="12.4" cy="14" rx="1.7" ry="2.2"/><ellipse cx="19.6" cy="14" rx="1.7" ry="2.2"/></g><ellipse class="ghost-cheek" cx="10.2" cy="17.6" rx="1.5" ry=".9"/><ellipse class="ghost-cheek" cx="21.8" cy="17.6" rx="1.5" ry=".9"/><path class="ghost-mouth" d="M14.6 18.2q1.4 1.3 2.8 0"/></g></svg></span></div><h2>Show me something you do!</h2><p>Hit record, do it once in your apps, or type / speak to create an automated workflow instantly.</p><div class="empty-actions" style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap"><button id="empty-ai-workflow" class="primary" style="background:linear-gradient(135deg,#9333ea,#6366f1)">✨ Add workflow by typing or speaking</button><button id="empty-record" class="secondary">Teach me my first routine</button></div></div>
       </section>
       <section id="patterns" class="view" hidden>
-        <div class="section-heading"><div><span class="eyebrow purple">Pattern Intelligence</span><h1>Skills & habits I learned from you.</h1></div><button id="import-skill-btn" class="secondary mini-btn" title="Import Microsoft SKILL.md specification">📥 Import SKILL.md</button></div>
+        <div class="section-heading"><div><span class="eyebrow purple">Pattern Intelligence</span><h1>Skills & habits I learned from you.</h1></div><div style="display:flex;gap:6px"><button id="hermes-sync-btn" class="secondary mini-btn" title="Sync skills from NousResearch/hermes-agent">⚡ Hermes Skills</button><button id="import-skill-btn" class="secondary mini-btn" title="Import Microsoft or Hermes SKILL.md specification">📥 Import SKILL.md</button></div></div>
         <p class="section-intro">As you do repeated work across multiple recordings, I detect patterns, extract variable input slots (names, files, search terms, cells), and evolve them into reusable automated skills.</p>
 
         <div id="pattern-list" class="pattern-list"></div>
         <div id="pattern-empty" class="empty"><div class="empty-symbol" aria-hidden="true">🧠</div><h2>No repeated patterns discovered yet!</h2><p>Perform a routine 2 or more times. I will automatically align the steps, generalize inputs, and create a reinforced skill you can run anytime.</p></div>
+      </section>
+      <section id="profiles" class="view" hidden>
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow purple">Digital Model of You</span>
+            <h1>Habits & Efficient Persona Twin</h1>
+          </div>
+          <div class="profile-header-actions">
+            <select id="profile-selector" class="profile-select-dropdown" aria-label="Select active profile"></select>
+            <button id="new-profile-btn" class="secondary mini-btn" title="Create a new persona profile">+ New Profile</button>
+          </div>
+        </div>
+        <p class="section-intro">DigitalSoul distills your interactions into an efficient digital model of you. It excises human friction (hesitation delays, typos, duplicate clicks) and preserves your signature habits, shortcuts, and preferred tools. When you ask it to do something, it executes just like you would — with 100% efficiency.</p>
+
+        <div id="active-profile-card" class="profile-hero-card">
+          <div class="profile-hero-header">
+            <div class="profile-avatar-title">
+              <span id="prof-hero-avatar" class="profile-big-avatar">👻</span>
+              <div>
+                <div class="profile-title-row">
+                  <h2 id="prof-hero-name">Saksham (Efficient Digital Twin)</h2>
+                  <span class="active-badge">Active Model</span>
+                  <span class="learning-pulse-badge">Continuous Learning Active</span>
+                </div>
+                <p id="prof-hero-role" class="profile-role-text">Autonomous Digital Twin · Pure Efficiency</p>
+              </div>
+            </div>
+            <div class="profile-score-wrap">
+              <div class="score-circle">
+                <span id="prof-hero-score" class="score-val">97%</span>
+                <span class="score-lbl">Efficiency</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-stats-grid">
+            <div class="prof-stat">
+              <span class="stat-icon">⏱️</span>
+              <div>
+                <strong id="prof-stat-idle">184.5s</strong>
+                <small>Idle Hesitation Pruned</small>
+              </div>
+            </div>
+            <div class="prof-stat">
+              <span class="stat-icon">⌨️</span>
+              <div>
+                <strong id="prof-stat-typos">24</strong>
+                <small>Typos & Retypes Excised</small>
+              </div>
+            </div>
+            <div class="prof-stat">
+              <span class="stat-icon">🎯</span>
+              <div>
+                <strong id="prof-stat-clicks">42</strong>
+                <small>Wandering Clicks Smoothed</small>
+              </div>
+            </div>
+            <div class="prof-stat">
+              <span class="stat-icon">⚡</span>
+              <div>
+                <strong id="prof-stat-shortcuts">18</strong>
+                <small>Shortcuts Accelerated</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-do-card">
+          <div class="do-heading">
+            <span class="eyebrow cyan">Ask Digital Twin</span>
+            <h3>Do something just like I would do it</h3>
+            <p>Type what you need done. DigitalSoul applies this profile's exact habits, shortcuts, and preferred applications with 100% deterministic efficiency.</p>
+          </div>
+          <form id="profile-exec-form" class="profile-exec-form">
+            <div class="do-input-row">
+              <textarea id="profile-exec-prompt" rows="2" placeholder="e.g. Add a new summer linen shirt to Shopify for $34.50 with 30 units" required></textarea>
+              <button type="submit" id="profile-exec-submit-btn" class="primary do-submit-btn">🚀 Execute in My Style</button>
+            </div>
+            <div class="quick-chips profile-chips">
+              <span class="chips-label">Try habit prompts:</span>
+              <button type="button" class="chip-suggestion" data-prompt="Add a Shopify linen shirt for $34.50 with 30 stock">🛍️ Shopify Linen Shirt</button>
+              <button type="button" class="chip-suggestion" data-prompt="Log quarterly software marketing expenses in Excel with SUM formula">📊 Excel Expense Sheet</button>
+              <button type="button" class="chip-suggestion" data-prompt="Send WhatsApp update to Alex: Production deployment is live">💬 WhatsApp Dispatch</button>
+              <button type="button" class="chip-suggestion" data-prompt="Open Notepad and write today's priority task list">📝 Quick Notes</button>
+            </div>
+          </form>
+          <div id="profile-exec-result" class="profile-exec-result" hidden>
+            <div class="exec-res-header">
+              <span class="eyebrow green">Habits Applied</span>
+              <strong id="exec-res-title"></strong>
+            </div>
+            <ul id="exec-res-habits" class="exec-habits-list"></ul>
+            <div class="exec-actions-bar">
+              <span id="exec-res-mode" class="hint">100% Deterministic Execution (0.0s human delay)</span>
+              <button id="profile-run-workflow-btn" class="primary mini-btn">Review & Run Workflow</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-rules-section">
+          <div class="section-subheading">
+            <h3>Distilled Habit Rules</h3>
+            <span class="local-tag"><span></span>Continuous Learning Active</span>
+          </div>
+          <div id="profile-rules-grid" class="profile-rules-grid"></div>
+        </div>
+
+        <div class="profile-all-section">
+          <div class="section-subheading">
+            <h3>All Digital Twin Personas</h3>
+          </div>
+          <div id="profiles-roster" class="profiles-roster"></div>
+        </div>
+
+        <div id="new-profile-modal" class="modal-card" hidden>
+          <h3>Create New Persona Profile</h3>
+          <p class="hint">Add a specialized profile for different tasks (Developer, E-Commerce, Personal).</p>
+          <form id="new-profile-form">
+            <div class="shop-grid">
+              <label>Profile Name<input id="new-prof-name" placeholder="e.g. Fast Keyboard Dev" required maxlength="60"></label>
+              <label>Role / Focus<input id="new-prof-role" placeholder="e.g. Full-Stack Developer" required maxlength="60"></label>
+            </div>
+            <div class="shop-grid">
+              <label>Avatar Emoji<input id="new-prof-avatar" value="⚡" maxlength="4"></label>
+              <label>Signature<input id="new-prof-sig" placeholder="-- sent via automated twin"></label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="primary" type="submit">Create Profile</button>
+              <button class="secondary" type="button" id="cancel-new-prof-btn">Cancel</button>
+            </div>
+          </form>
+        </div>
       </section>
       <section id="activity" class="view" hidden>
         <div class="section-heading"><div><span class="eyebrow">Activity</span><h1>Here’s everything I’ve done.</h1></div></div>
@@ -73,6 +205,7 @@
             <button type="button" class="chip-suggestion" data-prompt="Add a Shopify product named Wireless Noise-Cancelling Headphones for $79.99 with 50 in stock">🛍️ Shopify Product</button>
             <button type="button" class="chip-suggestion" data-prompt="Create an Excel sheet for Monthly Marketing Expenses with columns Date, Item, Category, Amount and SUM formula">📊 Excel Sheet</button>
             <button type="button" class="chip-suggestion" data-prompt="Send a WhatsApp message to Alex saying Hey Alex, the project files are ready for review">💬 WhatsApp Send</button>
+            <button type="button" class="chip-suggestion" data-prompt="Fill Google Form at https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform">📝 Google Form</button>
             <button type="button" class="chip-suggestion" data-prompt="Search for latest AI news on Google Chrome">🌐 Web Search</button>
             <button type="button" class="chip-suggestion" data-prompt="Open Notepad and write my daily standup notes">📝 Open Notepad</button>
           </div>
@@ -161,6 +294,82 @@
             <div id="pattern-params-container" class="shop-grid"></div>
             <div class="hint" id="pattern-hint">DigitalSoul will adapt the recorded skeleton steps using your inputs and execute them deterministically.</div>
             <button class="primary wide" type="submit" id="pattern-submit-btn">Execute learned skill</button>
+          </form>
+        </div>
+        <div id="approve-gform-view" hidden>
+          <div class="detail-heading"><span class="eyebrow" style="color:#0ea5e9">Google Forms · Auto-Fill & Memory</span><h1 id="gform-title">Auto-fill Google Form</h1><p id="gform-subtitle">Remembers your information across sessions. Fills known fields and prompts for new ones.</p></div>
+          <form id="gform-form">
+            <div class="shop-row">
+              <label class="grow">Google Form URL<input id="gform-url" value="https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform" placeholder="https://docs.google.com/forms/d/e/.../viewform" required></label>
+              <button id="gform-inspect-btn" type="button" class="secondary" title="Inspect form and map questions to memory">🔍 Map questions</button>
+            </div>
+            
+            <div id="gform-fields-section">
+              <div class="form-category-header" id="gform-known-header" style="display:flex;align-items:center;gap:8px;margin-top:12px;margin-bottom:6px">
+                <span class="badge" style="background:#065f46;color:#a7f3d0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px">⚡ Auto-filled from memory (<span id="gform-known-count">0</span>)</span>
+              </div>
+              <div id="gform-known-container" class="shop-grid"></div>
+
+              <div class="form-category-header" id="gform-new-header" style="display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:6px">
+                <span class="badge" style="background:#581c87;color:#e9d5ff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px">✨ New fields (<span id="gform-new-count">0</span>) — DigitalSoul will remember these!</span>
+              </div>
+              <div id="gform-new-container" class="shop-grid"></div>
+            </div>
+
+            <label class="switch-row" style="margin-top:14px"><input id="gform-remember" type="checkbox" checked><span>Remember my answers for future Google Forms<small>Saves newly entered fields into local profile memory on this PC.</small></span></label>
+            <div class="hint" id="gform-hint">browser-use will open the form, populate all mapped and custom fields, and let you review before submission.</div>
+            <button class="primary wide gform-submit" type="submit" id="gform-submit-btn">Fill & review Google Form</button>
+            <p id="gform-progress" class="hint" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+        <div id="approve-screen-view" hidden>
+          <div class="detail-heading">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <span class="eyebrow cyan">📸 Screen-to-Workflow</span>
+              <span id="screen-processing-mode" class="privacy-badge">Local (WinRT OCR)</span>
+            </div>
+            <h1 id="screen-proposal-title">Screen Workflow Proposal</h1>
+            <p id="screen-proposal-summary">Analyzed active window. Review and edit extracted details below before executing.</p>
+          </div>
+          <form id="screen-form">
+            <div id="screen-extracted-container"></div>
+            <div class="hint warn" style="margin-top:12px;font-size:12px;background:rgba(255,180,0,0.1);border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;color:#fbbf24">
+              ⚠️ <strong>Safety Policy:</strong> Screen text is untrusted data. DigitalSoul never executes actions without your explicit review and approval.
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button class="primary wide" type="submit" id="screen-approve-btn" style="flex:1">Approve & Execute</button>
+              <button class="secondary" type="button" id="screen-edit-btn" style="flex:0 0 auto">Edit in Synthesizer</button>
+            </div>
+          </form>
+        </div>
+        <div id="approve-chain-view" hidden>
+          <div class="detail-heading">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <span class="eyebrow purple">⚡ Cross-App Orchestrator</span>
+              <span id="chain-status-badge" class="privacy-badge">Ready</span>
+            </div>
+            <h1>Process Today’s Supplier Drop</h1>
+            <p>Coordinates Excel data reading, field validation, Shopify browser-use staging, detail verification, and WhatsApp manager notification.</p>
+          </div>
+          <form id="chain-form">
+            <div class="shop-grid">
+              <label>Workbook / Source<input id="chain-workbook" value=".ghost/supplier_drop.csv" placeholder=".ghost/supplier_drop.csv or Active Excel"></label>
+              <label>Store Manager (WhatsApp)<input id="chain-recipient" value="Store Manager" placeholder="Store Manager"></label>
+            </div>
+            <label>Shopify Store URL<input id="chain-store-url" value="http://127.0.0.1:7777/api/v1/shopify/test-form" placeholder="http://127.0.0.1:7777/api/v1/shopify/test-form or admin.shopify.com"></label>
+            
+            <div id="chain-steps-container" style="display:flex;flex-direction:column;gap:8px;margin:12px 0"></div>
+
+            <div id="chain-report-container" class="screen-data-card" hidden style="margin-top:12px;font-size:12px"></div>
+
+            <div class="hint" id="chain-hint" style="margin-top:10px">
+              Safe execution: Each step verifies outputs and checkpoints progress. Consequential staging and messaging require your explicit approval.
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button class="primary wide" type="submit" id="chain-run-btn" style="flex:1">Approve & Execute Chain</button>
+              <button class="secondary" type="button" id="chain-preview-btn" style="flex:0 0 auto">Preview Plan (Dry Run)</button>
+            </div>
           </form>
         </div>
       </section>

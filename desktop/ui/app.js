@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], jobs: [], detail: null, pending: false };
+const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], profiles: [], activeProfile: null, profileWorkflow: null, jobs: [], detail: null, pending: false };
 const tauri = window.__TAURI__;
 const timeLabel = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 const dateLabel = (date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -74,8 +74,8 @@ async function expanded(value) {
 }
 
 function view(name) {
-  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
-  const tab = ['activity', 'patterns'].includes(name) ? name : 'library';
+  for (const id of ['library', 'patterns', 'profiles', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
+  const tab = ['activity', 'patterns', 'profiles'].includes(name) ? name : 'library';
   document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   movePill();
   $('panel').dataset.view = name;
@@ -93,7 +93,7 @@ function movePill() {
 
 function busy(value) {
   state.pending = value;
-  for (const id of ['new-recording', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) if ($(id)) $(id).disabled = value;
+  for (const id of ['new-recording', 'chain-drop-btn', 'chain-run-btn', 'chain-preview-btn', 'scan-screen-btn', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run', 'screen-approve-btn']) if ($(id)) $(id).disabled = value;
   $('record-form').querySelector('[type=submit]').disabled = value;
 }
 
@@ -400,6 +400,7 @@ function openPatternWorkflow(pat) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = true;
   $('approve-excel-view').hidden = true;
+  $('approve-gform-view').hidden = true;
   $('approve-pattern-view').hidden = false;
 
   $('pattern-run-title').textContent = `Run “${pat.name}”`;
@@ -1058,6 +1059,7 @@ function openShopifyWorkflow(prefill = {}) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = false;
   $('approve-excel-view').hidden = true;
+  $('approve-gform-view').hidden = true;
   $('shopify-progress').textContent = '';
   $('shopify-title').value = prefill.title || 'Vintage Washed Oversized T-Shirt';
   $('shopify-url').value = prefill.store_url || 'https://admin.shopify.com/store/gzn0vr-qn/products/new';
@@ -1078,6 +1080,7 @@ function openExcelWorkflow(prefill = {}) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = true;
   $('approve-excel-view').hidden = false;
+  $('approve-gform-view').hidden = true;
   $('excel-workbook').value = prefill.workbook || 'Active Excel Workbook';
   $('excel-sheet').value = prefill.sheet || 'Sheet1';
   $('excel-topic').value = prefill.topic || prefill.title || 'Monthly Expenses';
@@ -1102,6 +1105,142 @@ function openExcelWorkflow(prefill = {}) {
 }
 $('new-excel')?.addEventListener('click', () => openExcelWorkflow());
 
+let currentGFormQuestions = [];
+
+async function inspectGForm(url) {
+  $('gform-progress').textContent = '🔍 Inspecting form and matching remembered profile...';
+  try {
+    const res = await rpc('gform_inspect', { url });
+    if (!res) throw new Error('Could not read form.');
+
+    if (res.title) {
+      $('gform-title').textContent = res.title;
+      $('gform-subtitle').textContent = `Total questions: ${res.total_questions} · Auto-filled: ${res.known_fields.length} · New: ${res.new_fields.length}`;
+    }
+
+    $('gform-known-count').textContent = res.known_fields.length;
+    $('gform-new-count').textContent = res.new_fields.length;
+
+    const knownCont = $('gform-known-container');
+    const newCont = $('gform-new-container');
+    knownCont.replaceChildren();
+    newCont.replaceChildren();
+
+    currentGFormQuestions = [];
+
+    // Render known fields
+    if (res.known_fields && res.known_fields.length) {
+      $('gform-known-header').hidden = false;
+      for (const item of res.known_fields) {
+        currentGFormQuestions.push(item);
+        const card = element('div', 'gform-field-card');
+        const lbl = element('label');
+        lbl.textContent = item.title;
+        const inp = element('input');
+        inp.name = item.title;
+        inp.value = item.suggested_value || '';
+        inp.dataset.title = item.title;
+        inp.dataset.key = item.matched_key || '';
+        card.append(lbl, inp);
+        knownCont.append(card);
+      }
+    } else {
+      $('gform-known-header').hidden = true;
+    }
+
+    // Render new fields
+    if (res.new_fields && res.new_fields.length) {
+      $('gform-new-header').hidden = false;
+      for (const item of res.new_fields) {
+        currentGFormQuestions.push(item);
+        const card = element('div', 'gform-field-card new');
+        const lbl = element('label');
+        lbl.textContent = item.title;
+        const inp = element('input');
+        inp.name = item.title;
+        inp.placeholder = item.options ? `e.g. ${item.options.slice(0, 2).join(' or ')}` : 'Enter answer (will be remembered)';
+        inp.value = item.suggested_value || (item.options ? item.options[0] : '');
+        inp.dataset.title = item.title;
+        card.append(lbl, inp);
+        newCont.append(card);
+      }
+    } else {
+      $('gform-new-header').hidden = true;
+    }
+
+    $('gform-progress').textContent = `✨ Mapped ${res.known_fields.length} known answers. ${res.new_fields.length} new fields ready to review.`;
+  } catch (err) {
+    $('gform-progress').textContent = String(err?.message || err);
+  }
+}
+
+function openGFormWorkflow(prefill = {}) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-gform-view').hidden = false;
+
+  $('gform-progress').textContent = '';
+  const url = prefill.url || 'https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform';
+  $('gform-url').value = url;
+  inspectGForm(url);
+}
+$('new-gform')?.addEventListener('click', () => openGFormWorkflow());
+$('gform-inspect-btn')?.addEventListener('click', () => inspectGForm($('gform-url').value));
+
+$('gform-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (state.pending) {
+    $('gform-progress').textContent = 'A request is already running.';
+    return;
+  }
+  action(async () => {
+    const url = $('gform-url').value;
+    const saveMemory = $('gform-remember').checked;
+
+    // Gather all inputs
+    const items = [];
+    const allInputs = $('gform-fields-section').querySelectorAll('input');
+    allInputs.forEach(inp => {
+      if (inp.dataset.title) {
+        items.push({
+          title: inp.dataset.title,
+          value: inp.value,
+          key: inp.dataset.key || ''
+        });
+      }
+    });
+
+    $('gform-progress').textContent = 'Opening browser to fill Google Form...';
+    $('compact-label').textContent = 'Google Forms · filling…';
+    notice(`Automating Google Form with ${items.length} answers...`);
+
+    try {
+      const res = await rpc('gform_run', {
+        url,
+        items,
+        click_submit: false,
+        save_memory: saveMemory,
+        headless: false
+      });
+      await expanded(true);
+      if (res && res.ok) {
+        $('gform-progress').textContent = `✅ Successfully filled ${(res.filled_steps || []).length} form fields! Review the form in your browser before manual Submit.`;
+        notice(`Form filled: ${(res.filled_steps || []).length} fields filled for review. Answers remembered!`, 'success');
+      } else {
+        $('gform-progress').textContent = `Filled ${(res?.filled_steps || []).length} fields. ${(res?.errors || []).join('; ')}`;
+      }
+    } catch (err) {
+      $('gform-progress').textContent = String(err?.message || err);
+      throw err;
+    } finally {
+      $('compact-label').textContent = IDLE_LABEL;
+    }
+  });
+});
+
 async function handleSynthesizedWorkflow(result) {
   if (!result) return;
   if (result.kind === 'error') {
@@ -1118,7 +1257,13 @@ async function handleSynthesizedWorkflow(result) {
     openExcelWorkflow(result.excel || {});
     notice(result.message || `✨ Created Excel workflow: ${result.name}`);
     compactVoice(result.message || `Ready: ${result.name}`, `Excel: ${result.name}`);
+  } else if (result.kind === 'gform') {
+    openGFormWorkflow(result.form || {});
+    notice(result.message || `✨ Created Google Form workflow`);
+    compactVoice(result.message || `Ready: Google Form`, `Form: Google Form`);
   } else if (result.kind === 'whatsapp') {
+    state.detail = result.workflow || { id: result.id, flow: result.flow, steps: result.workflow?.steps || [] };
+    await refresh();
     view('approve');
     $('approve-whatsapp-view').hidden = false;
     $('approve-shopify-view').hidden = true;
@@ -1409,6 +1554,8 @@ $('review-run').addEventListener('click', () => {
   view('approve');
   if (flow?.kind === 'shopify') {
     openShopifyWorkflow(flow.product || { title: detail.name });
+  } else if (flow?.kind === 'gform') {
+    openGFormWorkflow(flow.form || {});
   } else if (flow?.format === 'digitalsoul.excel-flow.v1' || flow?.kind === 'excel' || (detail?.used || []).some(a => /excel/i.test(a))) {
     openExcelWorkflow({
       workbook: flow?.workbook || detail.name,
@@ -1420,6 +1567,7 @@ $('review-run').addEventListener('click', () => {
     $('approve-whatsapp-view').hidden = false;
     $('approve-shopify-view').hidden = true;
     $('approve-excel-view').hidden = true;
+    $('approve-gform-view').hidden = true;
     $('run-recipient').value = flow.recipient;
     $('confirm-run').textContent = $('run-mode').value === 'later' ? 'Approve & schedule' : 'Approve & run';
     $('run-message').value = flow.message;
@@ -1485,6 +1633,265 @@ $('delete-workflow').addEventListener('click', () => action(async () => {
 $('quit').addEventListener('click', () => action(() => tauri.core.invoke('quit_app')));
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.expanded) action(() => expanded(false));
+  if (event.ctrlKey && (event.code === 'Space' || event.key === ' ')) {
+    event.preventDefault();
+    triggerScreenScan();
+  }
+});
+
+let currentScreenProposal = null;
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function triggerScreenScan(activeWindow = true) {
+  await expanded(true);
+  notice('📸 Scanning screen / active window & analyzing with AI...', 'info');
+  busy(true);
+  try {
+    const proposal = await rpc('screen_scan', { active_window_only: activeWindow, cleanup_image: true });
+    if (!proposal || !proposal.ok) {
+      notice(proposal?.error || proposal?.summary || 'Screen scan failed or was denied.');
+      return;
+    }
+    currentScreenProposal = proposal;
+    openScreenProposal(proposal);
+  } catch (err) {
+    notice(String(err?.message || err));
+  } finally {
+    busy(false);
+  }
+}
+
+function openScreenProposal(proposal) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-screen-view').hidden = false;
+
+  const modeBadge = $('screen-processing-mode');
+  if (modeBadge) {
+    modeBadge.textContent = proposal.processing_mode || 'Local (WinRT OCR)';
+    modeBadge.className = 'privacy-badge' + (proposal.processing_mode?.includes('Cloud') ? ' cloud' : '');
+  }
+
+  $('screen-proposal-title').textContent = proposal.title || 'Screen Workflow Proposal';
+  $('screen-proposal-summary').textContent = proposal.summary || 'Extracted business information from screen.';
+
+  const container = $('screen-extracted-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const ext = proposal.extracted_data || {};
+  const kind = proposal.kind;
+
+  if (kind === 'shopify') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--brave)">🛍️ Extracted Shopify Product Details (Editable)</div>
+        <div class="screen-field-row"><label>Product Title</label><input id="screen-edit-title" value="${escapeHtml(ext.title || '')}" required></div>
+        <div class="shop-grid">
+          <div class="screen-field-row"><label>Price ($)</label><input id="screen-edit-price" type="number" step="0.01" value="${ext.price || '29.99'}"></div>
+          <div class="screen-field-row"><label>SKU</label><input id="screen-edit-sku" value="${escapeHtml(ext.sku || '')}"></div>
+        </div>
+        <div class="screen-field-row"><label>Description</label><textarea id="screen-edit-desc" rows="2">${escapeHtml(ext.description || '')}</textarea></div>
+      </div>
+    `;
+  } else if (kind === 'excel') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--excel)">📊 Extracted Spreadsheet & Table (Editable)</div>
+        <div class="screen-field-row"><label>Spreadsheet Topic</label><input id="screen-edit-topic" value="${escapeHtml(ext.topic || 'Screen Data')}"></div>
+        <div class="screen-field-row"><label>Columns (Headers)</label><input id="screen-edit-headers" value="${escapeHtml(Array.isArray(ext.headers) ? ext.headers.join(', ') : (ext.headers || ''))}"></div>
+        <div class="screen-field-row"><label>Rows (CSV Format)</label><textarea id="screen-edit-rows" rows="3">${escapeHtml(ext.rows_csv || '')}</textarea></div>
+        <div class="screen-field-row"><label>Summary Formula</label><input id="screen-edit-formula" value="${escapeHtml(ext.formula || '=SUM(...)')}"></div>
+      </div>
+    `;
+  } else if (kind === 'whatsapp') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--whatsapp)">💬 Extracted Communication (Editable)</div>
+        <div class="screen-field-row"><label>Recipient</label><input id="screen-edit-recipient" value="${escapeHtml(ext.recipient || '')}" required></div>
+        <div class="screen-field-row"><label>Message</label><textarea id="screen-edit-message" rows="3" required>${escapeHtml(ext.message || '')}</textarea></div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--info)">🖥️ Extracted Routine Steps (Editable)</div>
+        <div class="screen-field-row"><label>Routine Name</label><input id="screen-edit-name" value="${escapeHtml(proposal.title || 'Screen Routine')}"></div>
+        <div class="screen-field-row"><label>Summary / Notes</label><textarea id="screen-edit-summary" rows="3">${escapeHtml(ext.text_snippet || proposal.summary || '')}</textarea></div>
+      </div>
+    `;
+  }
+}
+
+$('screen-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!currentScreenProposal) return;
+  const p = currentScreenProposal;
+  action(async () => {
+    if (p.kind === 'shopify') {
+      const updatedProduct = {
+        ...(p.extracted_data || {}),
+        title: $('screen-edit-title')?.value || p.extracted_data?.title,
+        price: $('screen-edit-price')?.value || p.extracted_data?.price,
+        sku: $('screen-edit-sku')?.value || p.extracted_data?.sku,
+        description: $('screen-edit-desc')?.value || p.extracted_data?.description,
+      };
+      openShopifyWorkflow(updatedProduct);
+      notice('Approved screen product! Review fields and run in Edge.');
+    } else if (p.kind === 'excel') {
+      const updatedExcel = {
+        ...(p.extracted_data || {}),
+        topic: $('screen-edit-topic')?.value || p.extracted_data?.topic,
+        headers: $('screen-edit-headers')?.value || p.extracted_data?.headers,
+        rows: $('screen-edit-rows')?.value || p.extracted_data?.rows_csv,
+        formula: $('screen-edit-formula')?.value || p.extracted_data?.formula,
+      };
+      openExcelWorkflow(updatedExcel);
+      notice('Approved screen spreadsheet! Review and update Excel.');
+    } else if (p.kind === 'whatsapp') {
+      const recipient = $('screen-edit-recipient')?.value.trim() || p.extracted_data?.recipient;
+      const message = $('screen-edit-message')?.value.trim() || p.extracted_data?.message;
+      view('approve');
+      $('approve-screen-view').hidden = true;
+      $('approve-whatsapp-view').hidden = false;
+      $('run-recipient').value = recipient;
+      $('run-message').value = message;
+      $('approve-send').checked = true;
+      notice('Approved communication! Confirm recipient and send.');
+    } else {
+      notice(`Approved routine "${p.title}".`);
+      view('library');
+    }
+  });
+});
+
+$('screen-edit-btn')?.addEventListener('click', () => {
+  if (!currentScreenProposal) return;
+  const p = currentScreenProposal;
+  openAddWorkflow(`Automate ${p.title}: ${p.summary}`);
+});
+
+$('scan-screen-btn')?.addEventListener('click', () => triggerScreenScan());
+
+// Cross-App Chain Orchestrator: Process today's supplier drop
+function openChainWorkflow(prefill = {}) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-screen-view').hidden = true;
+  $('approve-chain-view').hidden = false;
+
+  if (prefill.workbook) $('chain-workbook').value = prefill.workbook;
+  if (prefill.store_url) $('chain-store-url').value = prefill.store_url;
+  if (prefill.recipient) $('chain-recipient').value = prefill.recipient;
+
+  $('chain-status-badge').textContent = 'Ready';
+  $('chain-status-badge').className = 'privacy-badge';
+  $('chain-report-container').hidden = true;
+
+  const defaultSteps = [
+    { name: "1. Read Supplier Rows (Excel/CSV)", app: "excel", status: "pending" },
+    { name: "2. Validate Fields & Calculate Totals", app: "validator", status: "pending" },
+    { name: "3. Stage Products in Shopify (browser-use)", app: "shopify", status: "pending" },
+    { name: "4. Verify Staged Details Against Source", app: "verifier", status: "pending" },
+    { name: "5. Notify Store Manager (WhatsApp)", app: "whatsapp", status: "pending" },
+  ];
+  renderChainSteps(defaultSteps);
+}
+
+function renderChainSteps(steps = []) {
+  const container = $('chain-steps-container');
+  if (!container) return;
+  container.innerHTML = '';
+  steps.forEach((s) => {
+    const card = document.createElement('div');
+    card.className = `chain-step-card ${s.status}`;
+    const badgeColor = s.status === 'completed' ? 'var(--ok)' : s.status === 'failed' ? 'var(--rec)' : s.status === 'blocked' ? 'var(--warn)' : 'var(--text-3)';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px">
+        <strong>${escapeHtml(s.name)}</strong>
+        <span style="font-size:10px;color:var(--text-4)">[${escapeHtml(s.app)}]</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        ${s.error ? `<span style="color:var(--rec);font-size:11px">${escapeHtml(s.error)}</span>` : ''}
+        ${s.setup_requirement ? `<span style="color:var(--warn);font-size:11px">${escapeHtml(s.setup_requirement)}</span>` : ''}
+        <span style="font-size:11px;font-weight:600;color:${badgeColor};text-transform:uppercase">${escapeHtml(s.status)}</span>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function renderChainReport(report) {
+  const repEl = $('chain-report-container');
+  if (!repEl) return;
+  repEl.hidden = false;
+  repEl.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between">
+      <span>Execution Report: ${escapeHtml(report.status.toUpperCase())}</span>
+      <span>${report.duration_seconds}s</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:8px;border-radius:var(--r-sm);white-space:pre-wrap;line-height:1.4">${escapeHtml(report.summary)}</div>
+  `;
+}
+
+$('chain-drop-btn')?.addEventListener('click', () => openChainWorkflow());
+
+$('chain-preview-btn')?.addEventListener('click', () => action(async () => {
+  notice('⚡ Preparing dry-run preview of supplier drop chain...', 'info');
+  busy(true);
+  try {
+    const report = await rpc('chain_plan', {
+      workbook_path: $('chain-workbook').value.trim(),
+      store_url: $('chain-store-url').value.trim(),
+      recipient: $('chain-recipient').value.trim(),
+      dry_run: true,
+      approved: false,
+    });
+    $('chain-status-badge').textContent = 'Preview';
+    $('chain-status-badge').className = 'privacy-badge cloud';
+    renderChainSteps(report.steps);
+    renderChainReport(report);
+    notice('Dry-run preview generated! Check details above before execution.');
+  } catch (err) {
+    notice(String(err?.message || err));
+  } finally {
+    busy(false);
+  }
+}));
+
+$('chain-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => {
+    notice('⚡ Executing cross-app supplier drop chain...', 'info');
+    busy(true);
+    try {
+      const report = await rpc('chain_run', {
+        workbook_path: $('chain-workbook').value.trim(),
+        store_url: $('chain-store-url').value.trim(),
+        recipient: $('chain-recipient').value.trim(),
+        dry_run: false,
+        approved: true,
+      });
+      $('chain-status-badge').textContent = report.status;
+      $('chain-status-badge').className = 'privacy-badge ' + (report.status === 'succeeded' ? '' : 'cloud');
+      renderChainSteps(report.steps);
+      renderChainReport(report);
+      notice(`Chain execution finished: ${report.status.toUpperCase()} (${report.duration_seconds}s)`);
+    } catch (err) {
+      notice(String(err?.message || err));
+    } finally {
+      busy(false);
+    }
+  });
 });
 
 async function boot() {
@@ -1548,12 +1955,32 @@ async function boot() {
   state.connected = true;
   $('connection').className = 'connection online';
   $('connection').title = 'Local desktop backend connected';
+  $('hermes-sync-btn')?.addEventListener('click', () => action(async () => {
+    notice('Loading skills from Hermes Agent...', 'info');
+    const data = await rpc('list_hermes_skills');
+    const skills = data?.skills || [];
+    const listStr = skills.slice(0, 10).map(s => `• ${s.name} (${s.category})`).join('\n');
+    const choice = promptDialog(`Available skills from Hermes Agent:\n${listStr}\n\nEnter skill name to copy & import (e.g. computer-use, youtube-content, blocked-page-recovery, systematic-debugging):`, 'computer-use');
+    if (!choice || !choice.trim()) return;
+    notice(`Copying & importing '${choice.trim()}' from Hermes...`, 'info');
+    const res = await rpc('import_hermes_skill', { skill_name: choice.trim() });
+    await refresh();
+    notice(`Imported Hermes skill "${choice.trim()}" into learned patterns!`, 'success');
+  }));
   $('import-skill-btn')?.addEventListener('click', () => action(async () => {
-    const md = promptDialog('Paste standard Microsoft SKILL.md specification:');
+    const md = promptDialog('Paste standard Microsoft or Hermes SKILL.md specification:');
     if (!md || !md.trim()) return;
     const res = await rpc('import_skill', { skill_markdown: md.trim() });
     await refresh();
     notice(`Imported skill "${res.name}" with ${res.step_count} verified steps.`, 'success');
+  }));
+  $('test-hud-btn')?.addEventListener('click', () => action(async () => {
+    notice('Live Ghost Pilot HUD demo engaged! Watch the ghost flight overlay.', 'success');
+    await rpc('hud_demo');
+  }));
+  $('self-heal-btn')?.addEventListener('click', () => action(async () => {
+    notice('Self-Healing demo engaged: simulating recoverable obstacle & verified recovery.', 'success');
+    await rpc('self_heal_demo', { obstacle: 'cookie' });
   }));
   await refresh();
 }

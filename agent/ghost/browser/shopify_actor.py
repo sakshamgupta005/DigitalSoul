@@ -23,6 +23,7 @@ except ImportError:
     Browser = None  # type: ignore[assignment, misc]
 from agent.ghost.drivers.browser import browser_executable
 from .edge_session import existing_edge_endpoint, validate_local_cdp
+from ..desktop.self_healing import heal_browser_page, RecoveryStatus
 
 
 FILL_SCRIPT = """(data) => (async () => {
@@ -304,12 +305,12 @@ class ShopifyBrowserActor:
             else:
                 await browser.kill()
 
-    async def execute_product_creation(self, product_data: Dict[str, Any], click_save: bool = False) -> Dict[str, Any]:
+    async def execute_product_creation(self, product_data: Dict[str, Any], click_save: bool = False, event_sink: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
         """Fill literal reviewed values on Shopify or practice harness."""
         target_url = product_data.get("store_url", "")
         parsed = urllib.parse.urlsplit(target_url)
         local_test = (parsed.scheme == "http" and parsed.hostname == "127.0.0.1"
-                      and parsed.path == "/api/v1/shopify/test-form" and not parsed.query and not parsed.fragment)
+                      and parsed.path == "/api/v1/shopify/test-form" and not parsed.fragment)
         live_form = (parsed.scheme == "https" and parsed.hostname == "admin.shopify.com"
                      and parsed.path.startswith("/store/")
                      and (parsed.path.rstrip("/").endswith("/products/new") or parsed.path.rstrip("/").endswith("/products"))
@@ -359,8 +360,29 @@ class ShopifyBrowserActor:
         current_url = await page.get_url()
         if current_url.rstrip("/") != dest_url.rstrip("/"):
             return {"ok":False, "errors":["Shopify redirected away from the reviewed product form"], "save":{}}
+
+        # Self-healing obstacle inspection before attempting to fill form
+        heal_status, heal_reason = await heal_browser_page(page, event_sink=event_sink)
+        if heal_status == RecoveryStatus.BLOCKED_SECURITY:
+            return {
+                "ok": False,
+                "errors": [f"Blocked by security boundary: {heal_reason}. Human authorization required."],
+                "save": {},
+                "status": "blocked_security",
+                "duration_seconds": round(time.monotonic() - started, 2)
+            }
+
         raw = await page.evaluate(FILL_SCRIPT, product_data)
         fill = json.loads(raw) if isinstance(raw, str) else raw
+
+        if fill.get("errors"):
+            # Check if an obstacle appeared or obscured fields
+            heal_status, _ = await heal_browser_page(page, event_sink=event_sink)
+            if heal_status == RecoveryStatus.RESOLVED:
+                # Retry filling once after resolving obstacle
+                raw = await page.evaluate(FILL_SCRIPT, product_data)
+                fill = json.loads(raw) if isinstance(raw, str) else raw
+
         errors = list(fill.get("errors", []))
         supported = {"title", "description", "price", "compare_at_price", "cost_per_item",
                      "sku", "barcode", "inventory_quantity", "category", "vendor", "tags", "status"}
@@ -372,13 +394,13 @@ class ShopifyBrowserActor:
         if not errors and click_save:
             raw = await page.evaluate(CLICK_SAVE_SCRIPT)
             save = json.loads(raw) if isinstance(raw, str) else raw
-            if local_test and save.get("ok"):
+            if local_test and isinstance(save, dict) and save.get("ok"):
                 raw = await page.evaluate("() => document.body.getAttribute('data-saved-product')")
                 saved = json.loads(raw) if raw and raw != "null" else None
                 verified = bool(saved and all(str(saved.get(k)) == str(product_data.get(k))
                                              for k in ("title", "price", "sku", "status")))
                 save = {"ok": verified, "attempted": True, "verified": verified, "product": saved}
-            if not save.get("ok"):
+            if not isinstance(save, dict) or not save.get("ok"):
                 errors.append("Save was not verified; inspect the page before retrying")
         return {"ok": not errors, "engine":"browser-use", "target_url": target_url, "current_url": current_url,
                 "filled_steps": fill.get("steps", []), "errors": errors, "save": save,

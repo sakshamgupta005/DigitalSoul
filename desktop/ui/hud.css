@@ -1,0 +1,587 @@
+/* DigitalSoul Ghost Pilot HUD Overlay Styling */
+:root {
+  --hud-accent: #b9a6ff;
+  --hud-accent-glow: rgba(185, 166, 255, 0.45);
+  --hud-accent-subtle: rgba(185, 166, 255, 0.15);
+  --hud-cyan: #38bdf8;
+  --hud-cyan-glow: rgba(56, 189, 248, 0.45);
+  --hud-success: #4ade80;
+  --hud-success-glow: rgba(74, 222, 128, 0.45);
+  --hud-warning: #fbbf24;
+  --hud-warning-glow: rgba(251, 191, 36, 0.45);
+  --hud-error: #f87171;
+  --hud-error-glow: rgba(248, 113, 113, 0.45);
+  --hud-bg-glass: rgba(18, 16, 28, 0.82);
+  --hud-border-glass: rgba(255, 255, 255, 0.12);
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent !important;
+  font-family: var(--font-family);
+  color: #f1efff;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+
+.hud-body {
+  position: relative;
+}
+
+.hud-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   Top HUD Toolbar
+   ========================================================================== */
+.hud-toolbar {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: var(--hud-bg-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--hud-border-glass);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 0 10px var(--hud-accent-subtle);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: #e2ddfe;
+  transition: all 0.25s ease;
+}
+
+.hud-chip.interactive {
+  background: rgba(43, 26, 75, 0.92);
+  border-color: var(--hud-accent);
+  box-shadow: 0 0 16px var(--hud-accent-glow);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.hud-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 8px var(--hud-cyan);
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+.hud-chip.interactive .hud-chip-dot {
+  background: var(--hud-warning);
+  box-shadow: 0 0 8px var(--hud-warning);
+}
+
+.hud-interactive-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.hud-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.hud-btn-stop {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.hud-btn-stop:hover {
+  background: rgba(248, 113, 113, 0.35);
+  box-shadow: 0 0 12px var(--hud-error-glow);
+}
+
+.hud-btn-mode {
+  background: rgba(185, 166, 255, 0.2);
+  color: #e2ddfe;
+  border: 1px solid rgba(185, 166, 255, 0.35);
+}
+
+.hud-btn-mode:hover {
+  background: rgba(185, 166, 255, 0.35);
+  box-shadow: 0 0 12px var(--hud-accent-glow);
+}
+
+/* ==========================================================================
+   Target Reticle & Bounding Box
+   ========================================================================== */
+.target-reticle {
+  position: absolute;
+  pointer-events: none;
+  z-index: 500;
+  transition: left 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              top 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease,
+              transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reticle-frame {
+  position: absolute;
+  inset: -6px;
+  border-radius: 6px;
+  border: 1px dashed rgba(185, 166, 255, 0.45);
+  background: rgba(185, 166, 255, 0.05);
+  box-shadow: 0 0 18px var(--hud-accent-glow), inset 0 0 14px var(--hud-accent-subtle);
+  overflow: hidden;
+}
+
+.reticle-corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--hud-cyan);
+  border-style: solid;
+}
+
+.reticle-corner.top-left {
+  top: -1px;
+  left: -1px;
+  border-width: 2.5px 0 0 2.5px;
+  border-top-left-radius: 4px;
+}
+
+.reticle-corner.top-right {
+  top: -1px;
+  right: -1px;
+  border-width: 2.5px 2.5px 0 0;
+  border-top-right-radius: 4px;
+}
+
+.reticle-corner.bottom-left {
+  bottom: -1px;
+  left: -1px;
+  border-width: 0 0 2.5px 2.5px;
+  border-bottom-left-radius: 4px;
+}
+
+.reticle-corner.bottom-right {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 2.5px 2.5px 0;
+  border-bottom-right-radius: 4px;
+}
+
+.reticle-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--hud-cyan), transparent);
+  box-shadow: 0 0 10px var(--hud-cyan);
+  opacity: 0.75;
+  animation: scanline 2.2s ease-in-out infinite alternate;
+}
+
+.reticle-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translate(-50%, -50%);
+  opacity: 0.4;
+}
+
+.reticle-crosshair::before,
+.reticle-crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--hud-accent);
+}
+
+.reticle-crosshair::before {
+  top: 5px;
+  left: 0;
+  width: 12px;
+  height: 2px;
+}
+
+.reticle-crosshair::after {
+  top: 0;
+  left: 5px;
+  width: 2px;
+  height: 12px;
+}
+
+.reticle-label-wrap {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--hud-bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--hud-border-glass);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 10px var(--hud-accent-subtle);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #fff;
+}
+
+.reticle-icon {
+  color: var(--hud-cyan);
+  font-size: 13px;
+  animation: spin-pulse 3s linear infinite;
+}
+
+/* Reticle states */
+.target-reticle.acting .reticle-frame {
+  border-color: var(--hud-success);
+  box-shadow: 0 0 24px var(--hud-success-glow), inset 0 0 18px rgba(74, 222, 128, 0.2);
+}
+
+.target-reticle.acting .reticle-corner {
+  border-color: var(--hud-success);
+}
+
+.target-reticle.paused .reticle-frame,
+.target-reticle.error .reticle-frame {
+  border-color: var(--hud-error);
+  box-shadow: 0 0 24px var(--hud-error-glow), inset 0 0 18px rgba(248, 113, 113, 0.2);
+}
+
+.target-reticle.obstacle .reticle-frame,
+.target-reticle.warning .reticle-frame {
+  border-color: var(--hud-warning);
+  box-shadow: 0 0 24px var(--hud-warning-glow), inset 0 0 18px rgba(251, 191, 36, 0.2);
+}
+
+.target-reticle.obstacle .reticle-corner,
+.target-reticle.warning .reticle-corner {
+  border-color: var(--hud-warning);
+}
+
+/* ==========================================================================
+   Truthful Browser-Level HUD Card
+   ========================================================================== */
+.browser-hud-card {
+  position: absolute;
+  top: 65px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--hud-bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--hud-border-glass);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 18px var(--hud-accent-glow);
+  z-index: 600;
+  transition: all 0.3s ease;
+}
+
+.browser-hud-icon {
+  font-size: 26px;
+  filter: drop-shadow(0 0 8px var(--hud-cyan));
+}
+
+.browser-hud-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.browser-hud-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browser-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--hud-cyan);
+}
+
+.browser-step-badge {
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #c4b5fd;
+}
+
+.browser-hud-target {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.browser-hud-action {
+  font-size: 11px;
+  color: #a78bfa;
+}
+
+/* ==========================================================================
+   Floating Ghost Pilot Avatar
+   ========================================================================== */
+.ghost-pilot {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  z-index: 700;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.3s ease;
+}
+
+.ghost-pilot.parked {
+  opacity: 0;
+  transform: translate3d(-200px, -200px, 0);
+}
+
+.ghost-aura {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--hud-accent-glow) 0%, transparent 70%);
+  animation: aura-breathe 2.5s infinite ease-in-out;
+  pointer-events: none;
+}
+
+.cursor-ghost {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 0 12px var(--hud-accent)) drop-shadow(0 0 24px var(--hud-accent-glow));
+  animation: ghost-bob 2.4s ease-in-out infinite;
+}
+
+.cursor-ghost .body {
+  fill: #f5f3ff;
+  stroke: rgba(0, 0, 0, 0.15);
+  stroke-width: 0.6;
+  animation: hem-flutter 1.4s ease-in-out infinite alternate;
+}
+
+.cursor-ghost .eye {
+  fill: #1d1b2a;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ghost-blink 4.2s infinite;
+}
+
+.cursor-ghost .cheek {
+  fill: #ff7f9f;
+  opacity: 0.65;
+}
+
+.cursor-ghost .mouth {
+  fill: none;
+  stroke: #1d1b2a;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+
+/* Ghost acting pulse */
+.ghost-pilot.acting .cursor-ghost {
+  animation: ghost-pulse 0.6s ease-in-out;
+}
+
+.ghost-pilot.paused .cursor-ghost,
+.ghost-pilot.error .cursor-ghost {
+  filter: drop-shadow(0 0 14px var(--hud-error)) drop-shadow(0 0 24px var(--hud-error-glow));
+}
+
+.ghost-pilot.paused .cursor-ghost .body,
+.ghost-pilot.error .cursor-ghost .body {
+  fill: #fee2e2;
+}
+
+/* Ghost Status Bubble */
+.ghost-status-bubble {
+  position: absolute;
+  left: 64px;
+  top: 8px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: var(--hud-bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--hud-border-glass);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px var(--hud-accent-subtle);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: bubble-fade-in 0.25s ease;
+}
+
+.ghost-status-bubble::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 11px;
+  width: 8px;
+  height: 8px;
+  background: var(--hud-bg-glass);
+  border-left: 1px solid var(--hud-border-glass);
+  border-bottom: 1px solid var(--hud-border-glass);
+  transform: rotate(45deg);
+}
+
+/* ==========================================================================
+   Completion / Failure Toast
+   ========================================================================== */
+.completion-toast {
+  position: absolute;
+  bottom: 45px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  background: var(--hud-bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--hud-border-glass);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 22px var(--hud-success-glow);
+  z-index: 900;
+  animation: toast-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.completion-toast.error {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 22px var(--hud-error-glow);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.completion-icon {
+  font-size: 20px;
+  color: var(--hud-success);
+}
+
+.completion-toast.error .completion-icon {
+  color: var(--hud-error);
+}
+
+.completion-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.completion-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.completion-subtitle {
+  font-size: 11px;
+  color: #a78bfa;
+}
+
+/* ==========================================================================
+   Keyframe Animations
+   ========================================================================== */
+@keyframes ghost-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-7px) rotate(-3deg); }
+}
+
+@keyframes hem-flutter {
+  to { d: path("M16 3.5C10 3.5 6 7.9 6 13.8V26.4Q8 25 10 26.6T14 26.6T18 26.6T22 26.6T26 26.4V13.8C26 7.9 22 3.5 16 3.5Z"); }
+}
+
+@keyframes ghost-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+
+@keyframes ghost-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35) rotate(4deg); }
+  100% { transform: scale(1); }
+}
+
+@keyframes aura-breathe {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 0.8; transform: scale(1.15); }
+}
+
+@keyframes scanline {
+  0% { top: 0; }
+  100% { top: 100%; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.6; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes spin-pulse {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes bubble-fade-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

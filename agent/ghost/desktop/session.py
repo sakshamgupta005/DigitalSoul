@@ -280,10 +280,16 @@ def clean_steps(steps):
         target = step.get("target") or {}
         browser = exe_name(step.get("path", "")) in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
-        if step["kind"] == "click" and (browser or (target.get("control_type") and target.get("control_type") not in CLICKABLE_KINDS)
-                                        or str(target.get("automation_id", "")).startswith("Appid:")):
-            continue
-        if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter":
+        has_point = bool(step.get("point") or step.get("relative_point"))
+        c_type = target.get("control_type")
+        if step["kind"] in ("click", "double_click", "right_click"):
+            if str(target.get("automation_id", "")).startswith("Appid:"):
+                continue
+            if c_type in ("Pane", "Group", "Window") and not has_point:
+                continue
+            if c_type and c_type not in CLICKABLE_KINDS and not has_point:
+                continue
+        if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter" and not has_point:
             continue
         out.append(step)
 
@@ -863,6 +869,20 @@ class Session:
                 continue
             try:
                 if event["kind"] == "enter":
+                    try:
+                        focus = self.native.focused()
+                        if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
+                            val = (field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES) or "").strip()
+                            if val:
+                                spec_edit = locator(focus, editable=True)
+                                field = (focus.element_info.name or "").strip()
+                                step = {"kind": "set_text", "app": PureWindowsPath(path).name, "path": path,
+                                        "label": "Text field", "target": spec_edit, "value": val}
+                                if field and field != val and len(field) <= 160:
+                                    step["field"] = field
+                                self.append(step)
+                    except Exception:
+                        pass
                     self.append({"kind": "press_enter", "app": PureWindowsPath(path).name, "path": path})
                     if self.capture:
                         if not self.capture.composed and is_whatsapp(path):
@@ -879,6 +899,28 @@ class Session:
                                 pass
                         if self.capture.composed:
                             self.capture.enter()
+                elif event["kind"] == "tab":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "tab"})
+                elif event["kind"] == "escape":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "escape"})
+                elif event["kind"] == "hotkey":
+                    self.append({"kind": "hotkey", "app": PureWindowsPath(path).name, "path": path, "combo": event.get("combo")})
+                elif event["kind"] == "scroll":
+                    pt = event.get("point")
+                    rel_pt = None
+                    if pt and window:
+                        try:
+                            wrect = window.rectangle()
+                            rel_pt = [pt[0] - wrect.left, pt[1] - wrect.top]
+                        except Exception:
+                            pass
+                    step = {"kind": "scroll", "app": PureWindowsPath(path).name, "path": path,
+                            "delta": event.get("delta", -120)}
+                    if pt:
+                        step["point"] = list(pt)
+                    if rel_pt:
+                        step["relative_point"] = rel_pt
+                    self.append(step)
                 else:
                     if self._ignored(point=event["point"]):
                         continue  # the notch's own buttons, or a never-record window
@@ -926,14 +968,28 @@ class Session:
                     # Fall back to the nearest named element, then the clicked element itself.
                     control = found or named or leaf
                     name, kind = control.element_info.name or "", control.element_info.control_type
-                    if kind not in CLICKABLE_KINDS:
+                    is_browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
+                    pt = event["point"]
+                    rel_pt = None
+                    try:
+                        wrect = window.rectangle()
+                        rel_pt = [pt[0] - wrect.left, pt[1] - wrect.top]
+                    except Exception:
+                        pass
+                    if kind not in CLICKABLE_KINDS and not (is_browser or self.everything):
                         continue  # panes, groups, toolbars, page roots: nothing replayable was clicked
                     label = clean_control_name(control, name, kind)
-                    spec = locator(control, editable=kind == "Edit")
+                    if not label or label in ("Pane", "Document", "Group"):
+                        label = name or (f"Browser click ({rel_pt[0]}, {rel_pt[1]})" if rel_pt else f"Click at ({pt[0]}, {pt[1]})")
+                    spec = locator(control, editable=kind == "Edit") if control else {"control_type": kind or "Pane"}
                     if label and label not in ("Text field", kind) and not spec.get("name"):
                         spec["name"] = label
-                    self.append({"kind": "click", "app": PureWindowsPath(path).name, "path": path,
-                                 "label": label, "target": spec})
+                    step_kind = event["kind"] if event["kind"] in ("double_click", "right_click") else "click"
+                    step = {"kind": step_kind, "app": PureWindowsPath(path).name, "path": path,
+                            "label": label, "target": spec, "point": list(pt)}
+                    if rel_pt:
+                        step["relative_point"] = rel_pt
+                    self.append(step)
                     if self.capture and is_whatsapp(path):
                         with contextlib.redirect_stdout(sys.stderr):
                             self.capture.click(spec, name, kind)
@@ -948,6 +1004,16 @@ class Session:
             # whose text must never be recorded as typing.
             browser = PureWindowsPath(path).name.lower() in BROWSER_EXES
             kinds = ("Edit",) if is_whatsapp(path) or browser else (("Edit", "Document", "DataItem") if is_excel else ("Edit", "Document"))
+            if is_whatsapp(path) and focus.element_info.control_type not in kinds:
+                try:
+                    from pywinauto.uia_defines import IUIA
+                    from pywinauto.uia_element_info import UIAElementInfo
+                    from pywinauto.controls.uiawrapper import UIAWrapper
+                    deep = window.element_info.element.FindFirst(4, IUIA().iuia.CreatePropertyCondition(30008, True))
+                    if deep:
+                        focus = UIAWrapper(UIAElementInfo(deep))
+                except Exception:
+                    pass
             if focus.element_info.process_id not in active_pids or focus.element_info.control_type not in kinds:
                 return None
             if focus.element_info.element.CurrentIsPassword or SECRET_FIELD.search(focus.element_info.name or ""):

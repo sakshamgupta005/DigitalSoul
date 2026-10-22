@@ -184,16 +184,17 @@ class Native:
         self.user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 
     def active(self, path=None):
+        target_path = os.path.normcase(str(path)) if path else None
         hwnd = self.user.GetForegroundWindow()
         pid = wintypes.DWORD()
         self.user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         current = executable(pid.value) if pid.value else None
-        if not current or not is_whatsapp(current) or (path and current != path):
+        if not current or not is_whatsapp(current) or (target_path and current != target_path):
             try:
                 top = self.desktop.window(handle=hwnd).top_level_parent()
                 top_pid = top.element_info.process_id
                 top_exe = executable(top_pid)
-                if is_whatsapp(top_exe) and (not path or top_exe == path):
+                if is_whatsapp(top_exe) and (not target_path or top_exe == target_path):
                     return top, top_pid, top_exe
             except Exception:
                 pass
@@ -201,7 +202,7 @@ class Native:
                 try:
                     w_pid = w.element_info.process_id
                     w_exe = executable(w_pid)
-                    if is_whatsapp(w_exe) and (not path or w_exe == path):
+                    if is_whatsapp(w_exe) and (not target_path or w_exe == target_path):
                         self.user.ShowWindow(w.handle, 9)
                         try:
                             self.user.keybd_event(0x12, 0, 0, 0)
@@ -221,7 +222,17 @@ class Native:
         from pywinauto.uia_defines import IUIA
         from pywinauto.uia_element_info import UIAElementInfo
         from pywinauto.controls.uiawrapper import UIAWrapper
-        return UIAWrapper(UIAElementInfo(IUIA().iuia.GetFocusedElement()))
+        iuia = IUIA().iuia
+        raw = iuia.GetFocusedElement()
+        if raw and getattr(raw, "CurrentControlType", None) in (50033, 50032, 50026):
+            try:
+                cond = iuia.CreatePropertyCondition(30008, True)
+                deep = raw.FindFirst(4, cond)
+                if deep:
+                    return UIAWrapper(UIAElementInfo(deep))
+            except Exception:
+                pass
+        return UIAWrapper(UIAElementInfo(raw))
 
     def app_id(self, pid):
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -244,9 +255,10 @@ class Native:
     def open(self, flow):
         # Restore an existing recorded process first. No arbitrary shell commands.
         matches = []
+        flow_exe = os.path.normcase(str(flow.get("executable", ""))) if flow.get("executable") else None
         for window in self.desktop.windows():
             try:
-                if executable(window.element_info.process_id) == flow["executable"]:
+                if flow_exe and executable(window.element_info.process_id) == flow_exe:
                     matches.append(window)
             except (OSError, self.psutil.Error):
                 continue
@@ -300,9 +312,13 @@ class Native:
 
 
 def chat_name(name):
-    """A chat row's display name without unread counters or the last-message preview."""
+    """A chat row's display name without unread counters, timestamps, or last-message previews."""
     name = re.sub(r"^\(\d+\)\s*", "", name or "")
-    return re.split(r"[,\n]", name, maxsplit=1)[0].strip()
+    name = re.split(r"[,\n]", name, maxsplit=1)[0]
+    name = re.sub(r"\s+\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)\b.*", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\s+(?:Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b.*", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b.*", "", name)
+    return name.strip()
 
 
 def retarget(flow, recipient):
