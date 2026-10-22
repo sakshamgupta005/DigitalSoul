@@ -30,8 +30,13 @@ if (-not $env:CARGO_HOME -and (Test-Path -LiteralPath $projectCache)) {
 if (-not $env:CARGO_TARGET_DIR) {
     $env:CARGO_TARGET_DIR = Join-Path $env:USERPROFILE '.notch-target'
 }
-# Stop any running notch instance so Cargo can overwrite the binary without Access Denied errors.
+# Stop any running notch instance and orphaned WebView2 processes so Cargo and WebView2 can start cleanly without locks.
 Get-Process -Name 'digitalsoul-notch' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { 
+    ($_.CommandLine -like '*in.digitalsoul.notch*' -and $_.Name -eq 'msedgewebview2.exe') -or 
+    ($_.CommandLine -like '*notch_bridge*' -and $_.Name -like 'python*.exe')
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Milliseconds 250
 $env:DIGITALSOUL_PROJECT_DIR = $projectRoot
 $cargoArgs = @('run', '--manifest-path', (Join-Path $projectRoot 'desktop\src-tauri\Cargo.toml'))
 if ($Offline) { $cargoArgs += '--offline' }
