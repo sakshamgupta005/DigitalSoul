@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notch-local",
+  "description": "Local notch event subscription; native commands are implemented in Rust",
+  "windows": ["notch"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DigitalSoul</title><link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+  <main id="notch" class="notch">
+    <header class="topbar">
+      <button id="toggle" class="brand" aria-label="Expand DigitalSoul" aria-expanded="false">
+        <span class="soul-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-name">DigitalSoul<span id="compact-label">Your work, remembered.</span></span>
+      </button>
+      <div class="top-actions"><span id="connection" class="connection" title="Connecting to local backend"></span><span id="compact-time" hidden>00:00</span><button id="compact-stop" class="mini-stop" hidden aria-label="Stop and save recording"><span></span></button><button id="collapse" class="icon-button" aria-label="Collapse notch" hidden>⌃</button></div>
+    </header>
+    <div id="panel" class="panel" hidden>
+      <nav class="tabs" aria-label="DigitalSoul views"><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button><button id="new-recording" class="new-button"><b>+</b> New recording</button></nav>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <section id="live" class="live" hidden>
+        <div class="live-heading"><span class="record-dot"></span><div><strong id="live-name">Recording</strong><p>Only your selected apps are being observed.</p></div><time id="live-time">00:00</time></div>
+        <div class="live-step"><span id="live-count">0 steps</span><span id="live-last">Open an allowed app to begin.</span></div>
+        <div class="live-footer"><span><kbd>F8</kbd> Stop & save</span><button id="stop-recording" class="danger-button">■ Stop recording</button></div>
+      </section>
+      <section id="library" class="view">
+        <div class="section-heading"><div><span class="eyebrow">YOUR DESKTOP MEMORY</span><h1>A little less repetitive.</h1><p>Record a routine. Review the steps. Make it yours.</p></div><span class="local-tag"><span></span> On this device</span></div>
+        <div class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a workflow…" aria-label="Find a workflow"><kbd>Local</kbd></div>
+        <div id="workflow-list" class="workflow-list"></div>
+        <div id="empty" class="empty"><div class="empty-symbol">↳</div><h2>Teach it something you do.</h2><p>Start a recording, do the steps on your desktop,<br>then stop to see them here.</p><button id="empty-record" class="primary">＋ Record your first workflow</button><span>No recordings yet. Nothing is running.</span></div>
+      </section>
+      <section id="activity" class="view" hidden><div class="section-heading"><div><span class="eyebrow">EXECUTION HISTORY</span><h1>Every attempt, accounted for.</h1><p>Scheduled sends and replay outcomes stay here.</p></div></div><div id="job-list"></div><button id="stop-all" class="danger-button">Stop queued desktop jobs</button><button id="resume-all" class="secondary">Re-arm worker</button></section>
+      <section id="detail" class="view" hidden><button id="back" class="text-button">← All workflows</button><div class="detail-heading"><span class="eyebrow">RECORDED WORKFLOW</span><h1 id="detail-title"></h1><p id="detail-meta"></p></div><div id="detail-warning" class="hint"></div><ol id="step-list" class="step-list"></ol><div class="detail-actions"><button id="delete-workflow" class="text-button muted">Delete recording</button><button id="review-run" class="primary">Review & run →</button></div></section>
+      <section id="create" class="view" hidden>
+        <button id="cancel-create" class="text-button">← All workflows</button><div class="detail-heading"><span class="eyebrow">SHOW IT HOW</span><h1>Record a routine.</h1><p>Start here, then do the work in your desktop apps.</p></div>
+        <form id="record-form"><label>Workflow name<input name="name" required maxlength="80" placeholder="e.g. Say hello to Saksham"></label><label>Apps to observe<input name="apps" required value="WhatsApp.exe" placeholder="WhatsApp.exe, notepad.exe"><small>Only these processes are recorded. Password fields are skipped.</small></label>
+        <label class="switch-row"><input name="whatsapp" type="checkbox" checked><span>Prepare this WhatsApp routine for replay<small>Record search → contact click → message → Send.</small></span></label>
+        <div id="whatsapp-fields" class="form-grid"><label>Recipient / search name<input name="recipient" placeholder="Saksham Gupta"></label><label>Exact chat header<input name="chat_title" placeholder="Leave empty if the same"><small>Use the saved contact name, such as “chigga”, if different.</small></label><label class="full">Message to demonstrate<input name="message" value="hello" maxlength="4096"><small>Sending during the demonstration sends a real message.</small></label></div>
+        <div class="hint">After Start, open WhatsApp, search the full name, click the verified contact, type your message, and send it. Pause briefly after typing. Press F8 or use the notch to stop.</div><button type="submit" class="primary wide">● Start recording</button></form>
+      </section>
+      <section id="approve" class="view" hidden><button id="cancel-run" class="text-button">← Back to steps</button><div class="detail-heading"><span class="eyebrow">REVIEW THE SEND</span><h1>One message. Your say.</h1><p>The app will open WhatsApp and replay the recorded routine.</p></div><form id="run-form"><label>Verified recipient<input id="run-recipient" readonly></label><label>Message<textarea id="run-message" rows="3" required maxlength="4096"></textarea></label><label>When<select id="run-mode"><option value="now">Run now</option><option value="later">Schedule a time</option></select></label><label id="schedule-label" hidden>Local date & time<input id="run-at" type="datetime-local"><small>Your Windows time zone is used. Keep the app open and PC awake/unlocked.</small></label><label class="switch-row"><input id="approve-send" type="checkbox" required><span>I verified the contact and approve this message.</span></label><div class="hint">A replay sends another real message. UIA invocation does not prove delivery; check WhatsApp afterward.</div><button class="primary wide" type="submit" id="confirm-run">Approve & run →</button></form></section>
+      <footer><span><i></i> Local by default. Yours to control.</span><button id="refresh" class="text-button" aria-label="Refresh workflows">↻ Refresh</button><button id="quit" class="text-button" aria-label="Quit DigitalSoul">Quit</button></footer>
+    </div>
+  </main>
+</body>
+</html>

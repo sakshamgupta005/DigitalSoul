@@ -49,3 +49,5 @@ scratch/
 check_end.py
 scratch_extract.py
 .ghost/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

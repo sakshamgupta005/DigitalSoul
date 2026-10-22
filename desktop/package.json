@@ -1,0 +1,7 @@
+{
+  "name": "digitalsoul-notch",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": { "dev": "tauri dev", "build": "tauri build --no-bundle", "check": "node --check ui/app.js && cargo check --manifest-path src-tauri/Cargo.toml" },
+  "devDependencies": { "@tauri-apps/cli": "2.11.2" }
+}
