@@ -21,6 +21,13 @@
       --font-display: 'EB Garamond', Georgia, serif;
       --font-body: 'Figtree', system-ui, -apple-system, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
+      --card-theme-bg: linear-gradient(160deg, #24221c 0%, #161511 100%);
+      --card-theme-border: rgba(255, 255, 235, 0.12);
+      --card-theme-text: #ffffeb;
+      --card-theme-text-muted: rgba(255, 255, 235, 0.74);
+      --card-theme-accent: #e09f3e;
+      --card-theme-accent-soft: rgba(224, 159, 62, 0.12);
+      --card-theme-accent-border: rgba(224, 159, 62, 0.28);
     }
 
     * {
@@ -716,10 +723,13 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      color: #ffffeb;
+      background: var(--card-theme-bg) !important;
+      color: var(--card-theme-text);
       text-align: left;
       overflow: hidden;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      border: 1px solid var(--card-theme-border);
+      border-radius: 4px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
     .c-card-top {
@@ -733,9 +743,9 @@
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 700;
-      color: #ffffeb;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: var(--card-theme-accent);
+      background: var(--card-theme-accent-soft);
+      border: 1px solid var(--card-theme-accent-border);
       padding: 2px 7px;
       border-radius: 5px;
       letter-spacing: 0.05em;
@@ -752,9 +762,9 @@
       text-transform: uppercase;
       padding: 2px 7px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      color: #ffffeb;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 235, 0.85);
     }
 
     .c-card-mid {
@@ -765,9 +775,9 @@
     .c-card-title {
       font-family: var(--font-display);
       font-size: 1.25rem;
-      font-weight: 600;
+      font-weight: 500;
       line-height: 1.18;
-      color: #ffffff;
+      color: var(--card-theme-text);
       margin-bottom: 5px;
       letter-spacing: -0.01em;
     }
@@ -776,7 +786,7 @@
       font-family: var(--font-body);
       font-size: 11px;
       line-height: 1.45;
-      color: rgba(255, 255, 235, 0.82);
+      color: var(--card-theme-text-muted);
       margin: 0;
     }
 
@@ -785,18 +795,18 @@
       align-items: center;
       justify-content: space-between;
       padding-top: 8px;
-      border-top: 1px dashed rgba(255, 255, 255, 0.2);
+      border-top: 1px dashed rgba(255, 255, 235, 0.15);
       font-family: var(--font-mono);
       font-size: 10px;
     }
 
     .c-card-metric-label {
-      color: rgba(255, 255, 235, 0.65);
+      color: rgba(255, 255, 235, 0.5);
     }
 
     .c-card-metric-val {
       font-weight: 700;
-      color: #fde047;
+      color: var(--card-theme-accent);
     }
     .pl-note {
       height: 44px;
@@ -1691,13 +1701,12 @@
     .detail-photo-wrap {
       position: relative;
       width: 100%;
-      aspect-ratio: 1.55 / 1;
-      max-height: 320px;
+      min-height: 290px;
       overflow: hidden;
       border-radius: 16px;
-      background: #181714;
+      background: var(--card-theme-bg);
       border: 1px solid var(--border);
-      box-shadow: 0 8px 30px rgba(58, 46, 14, 0.08);
+      box-shadow: 0 12px 36px rgba(58, 46, 14, 0.1);
     }
 
     .detail-card-layer {
@@ -1726,10 +1735,12 @@
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      color: #ffffeb;
+      background: var(--card-theme-bg) !important;
+      color: var(--card-theme-text);
       text-align: left;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      border: 1px solid var(--card-theme-border);
       border-radius: 16px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
     .detail-card-topbar {
@@ -1747,9 +1758,9 @@
       text-transform: uppercase;
       padding: 3px 9px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #ffffeb;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 235, 0.85);
     }
 
     .detail-card-center-copy {
@@ -1759,8 +1770,8 @@
     .detail-card-head-title {
       font-family: var(--font-display);
       font-size: 1.45rem;
-      font-weight: 600;
-      color: #ffffff;
+      font-weight: 500;
+      color: var(--card-theme-text);
       line-height: 1.2;
       margin-bottom: 6px;
     }
@@ -1769,14 +1780,14 @@
       font-family: var(--font-body);
       font-size: 12px;
       line-height: 1.5;
-      color: rgba(255, 255, 235, 0.82);
+      color: var(--card-theme-text-muted);
       margin-bottom: 10px;
       max-width: 480px;
     }
 
     .detail-card-code-block {
-      background: rgba(0, 0, 0, 0.38);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 235, 0.1);
       border-radius: 8px;
       padding: 8px 12px;
       display: flex;
@@ -1787,7 +1798,7 @@
     }
 
     .code-indicator {
-      color: #fbbf24;
+      color: #b8561d;
       font-size: 9.5px;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -1795,7 +1806,7 @@
     }
 
     .detail-card-code-block code {
-      color: #38bdf8;
+      color: var(--card-theme-accent);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1806,34 +1817,35 @@
       align-items: center;
       justify-content: space-between;
       padding-top: 10px;
-      border-top: 1px dashed rgba(255, 255, 255, 0.16);
+      border-top: 1px dashed rgba(255, 255, 235, 0.15);
       font-family: var(--font-mono);
       font-size: 10.5px;
     }
 
     .detail-pill-phase {
-      color: rgba(255, 255, 235, 0.65);
+      color: rgba(255, 255, 235, 0.5);
     }
 
     .detail-pill-verified {
       font-weight: 700;
-      color: #4ade80;
+      color: var(--card-theme-accent);
     }
 
     .gondola-colored-card {
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      border-radius: 5px;
+      background: var(--card-theme-bg) !important;
+      border: 1px solid rgba(255, 255, 235, 0.15);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
     .gondola-card-num {
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 700;
-      color: #ffffff;
+      color: var(--card-theme-accent);
       letter-spacing: 0.04em;
     }
 
