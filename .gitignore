@@ -34,3 +34,4 @@ scratch_extract.py
 *.db
 *.db-wal
 *.db-shm
+.ghost/
