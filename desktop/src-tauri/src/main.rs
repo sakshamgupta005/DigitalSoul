@@ -84,7 +84,8 @@ impl Bridge {
             self.pending.lock().unwrap().remove(&id);
             return Err(error);
         }
-        let result = receiver.recv_timeout(Duration::from_secs(20));
+        let timeout_secs = if method == "shopify_run" { 180 } else { 20 };
+        let result = receiver.recv_timeout(Duration::from_secs(timeout_secs));
         self.pending.lock().unwrap().remove(&id);
         result.map_err(|_| "Desktop command timed out; check the app before retrying".to_string())?
     }

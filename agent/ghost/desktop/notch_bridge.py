@@ -11,7 +11,7 @@ from pathlib import Path
 from .catalog import Catalog
 from .jobs import Jobs
 from . import steps as step_replay
-from .voice import Listener, resolve
+from .voice import Listener, dispatch
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -101,7 +101,7 @@ def main():
                         result = catalog.get(payload["id"])
                         result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "voice_command":
-                        result = resolve(payload.get("text"), catalog.list())
+                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run))
                     elif method == "voice_start":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for replay before enabling the microphone")
@@ -210,19 +210,24 @@ def main():
                     except queue.Empty:
                         break
                     if event.get("kind") == "transcript":
-                        command = resolve(event.get("text", ""), catalog.list(), require_wake=True,
-                                          awake=time.monotonic() < listener.awake_until)
+                        emit({"event": "voice", "kind": "heard", "text": event.get("text", "")})
+                        command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
+                                           awake=time.monotonic() < listener.awake_until,
+                                           busy=bool(session or replay or step_run))
                         if command["kind"] == "wake":
                             listener.awake_until = time.monotonic() + 12
                         elif command["kind"] == "workflow":
                             listener.awake_until = 0
                         emit({"event": "voice", **command})
-                        if command["kind"] in ("sleep", "workflow"):
+                        if command["kind"] in ("sleep", "workflow", "app_opened"):
                             listener.close()
                             listener = None
                             emit({"event": "voice", "kind": "stopped"})
                             break
                     else:
+                        if event.get("kind") == "ready":
+                            # The mic click authorizes the first command without a wake phrase.
+                            listener.awake_until = time.monotonic() + 30
                         emit({"event": "voice", **event})
                 if listener and ((listener.finished.is_set() and listener.events.empty()) or time.monotonic() - listener.started > 330):
                     listener.close()
