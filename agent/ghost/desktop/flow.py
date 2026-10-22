@@ -32,14 +32,29 @@ def locator(control, editable=False):
     return result
 
 
+def _ancestors_match(actual, expected):
+    if not expected or actual == expected:
+        return True
+    if len(actual) != len(expected):
+        return False
+    for (a_type, a_id, a_cls), (e_type, e_id, e_cls) in zip(actual, expected):
+        if a_type != e_type:
+            return False
+        if a_id != e_id and not (a_id.startswith("mount_") and e_id.startswith("mount_")):
+            return False
+    return True
+
+
 def find(window, spec):
     query = {"control_type": spec["control_type"]}
-    if spec["name"]:
-        query["title"] = spec["name"]
+    name_spec = spec.get("name", "").strip().lower()
     matches = [item for item in window.descendants(**query)
                if item.is_visible() and item.is_enabled()
                and (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])
-               and ancestry(item) == spec["ancestors"]]
+               and (not name_spec or 
+                    (item.element_info.name or "").strip().lower() == name_spec or
+                    (item.element_info.name or "").strip().lower().startswith(name_spec + " "))
+               and _ancestors_match(ancestry(item), spec.get("ancestors", []))]
     unique = []
     seen = set()
     for m in matches:
@@ -59,11 +74,14 @@ def find(window, spec):
 def header(window, title):
     candidates = []
     seen = set()
-    pattern = re.compile(rf"^\s*{re.escape(title.strip())}\s*$", re.IGNORECASE)
+    target_clean = title.strip().lower()
     for ctype in ("Button", "Text"):
         for item in window.descendants(control_type=ctype):
-            name = item.element_info.name or ""
-            if not pattern.match(name) or not item.is_visible():
+            name = (item.element_info.name or "").strip()
+            name_clean = name.lower()
+            if not (name_clean == target_clean or name_clean.startswith(target_clean + " ") or name_clean.splitlines()[0] == target_clean):
+                continue
+            if not item.is_visible():
                 continue
             chain = ancestry(item)
             if any(entry[0] in ("List", "ListItem", "Tree", "TreeItem") for entry in chain):
@@ -79,7 +97,7 @@ def header(window, title):
     if len(candidates) != 1:
         raise ValueError("Cannot identify a unique chat header outside the contact list. Use --chat-title with its exact displayed name")
     result = locator(candidates[0])
-    find(window, result)
+    result["name"] = title.strip()
     return result
 
 
