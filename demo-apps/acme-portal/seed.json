@@ -1,0 +1,18 @@
+{
+  "_comment": "SYNTHETIC DEMO DATA for the Digital Ghost demo. Not real customers. Account IDs match acme-crm/seed.json.",
+  "overdue_accounts": [
+    {"account_id": "1042", "customer_name": "Synthetic Demo Co 1042", "amount_due_cents": 129900, "days_overdue": 45},
+    {"account_id": "1043", "customer_name": "Synthetic Demo Co 1043", "amount_due_cents": 4900, "days_overdue": 32},
+    {"account_id": "1044", "customer_name": "Synthetic Demo Co 1044", "amount_due_cents": 89900, "days_overdue": 31},
+    {"account_id": "1045", "customer_name": "Synthetic Demo Co 1045", "amount_due_cents": 89900, "days_overdue": 60},
+    {"account_id": "1046", "customer_name": "Synthetic Demo Co 1046", "amount_due_cents": 499900, "days_overdue": 90},
+    {"account_id": "1047", "customer_name": "Synthetic Demo Co 1047", "amount_due_cents": 89900, "days_overdue": 35}
+  ],
+  "team_notes": [
+    {
+      "body": "Weekly at-risk segmentation complete; run=run_seed_previous_week; processed=5",
+      "author": "demo-user (synthetic)",
+      "created_at": "2026-10-15T17:00:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+body { font-family: system-ui, sans-serif; margin: 0; color: #1d2330; background: #f7f8fa; }
+.demo-banner { margin: 0; padding: 8px 16px; background: #fff3c4; border-bottom: 1px solid #e0c96b; font-weight: 600; }
+header { display: flex; gap: 24px; align-items: center; padding: 12px 16px; background: #24324a; color: #fff; }
+header a { color: #cfe0ff; margin-right: 12px; }
+.brand { font-weight: 700; }
+main { padding: 16px; max-width: 760px; }
+.muted { color: #5b6476; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+dt { font-weight: 600; }
+dd { margin: 0; }
+textarea, select { display: block; margin: 6px 0 10px; font: inherit; width: 100%; max-width: 520px; }
+button { font: inherit; padding: 6px 14px; }

@@ -1,36 +1,51 @@
-# Environments
-.venv/
-env/
-venv/
-ENV/
-
-# Python
+# Python environments and caches
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.venv/
+venv/
+env/
+ENV/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Secrets and local credentials (keep templates such as .env.example tracked)
+.env
+.env.*
+.env.local
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated local database files (SQLite, including WAL/journal sidecars)
+*.db
+*.sqlite
+*.sqlite3
+*-journal
+*-wal
+*-shm
 
 # Node / JS
 node_modules/
-dist/
-build/
 
-# Local / OS
+# Local / OS / Editor
 .DS_Store
 Thumbs.db
 *.log
-.env
-.env.local
 *.swp
 *.swo
 
-# Project temp
+# Project temp and runtime artifacts
 scratch/
 check_end.py
 scratch_extract.py
-
 .ghost/
-*.egg-info/
