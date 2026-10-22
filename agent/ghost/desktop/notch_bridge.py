@@ -75,6 +75,13 @@ def spawn_replay(root, job_data, job_id):
 
 
 def main():
+    # On Windows, initialize browser-use's optional native numeric dependency
+    # before the stdin reader starts blocking on the pipe. Loading it later
+    # during a Shopify command stalls this stdio host on this installation.
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        pass
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
     data = root / ".ghost" / "notch"
     job_data = root / ".ghost" / "desktop"
@@ -88,6 +95,10 @@ def main():
     replay_id = None
     step_run = None
     listener = None
+    shopify_session = None
+    shopify_future = None
+    shopify_request_id = None
+    shopify_deadline = 0
 
     def receive():
         for line in sys.stdin:
@@ -135,6 +146,9 @@ def main():
                     result = None
                     if method == "shutdown":
                         break
+                    if shopify_future is not None and method in (
+                            "start", "replay", "schedule", "replay_steps", "voice_start", "shopify_run"):
+                        raise ValueError("A Shopify run is active; wait for it or cancel it first")
                     if method == "hello":
                         result = {"platform": sys.platform, "recording": bool(session), "running": replay_id or bool(step_run),
                                   "data": str(data), "version": "0.1.0", "accent": accent_color(),
@@ -234,6 +248,8 @@ def main():
                         result = {"cancelled": jobs.cancel(payload["id"])}
                     elif method == "stop_jobs":
                         jobs.stop()
+                        if shopify_future is not None:
+                            shopify_future.cancel()
                         if step_run:
                             step_run.terminate()
                             park_ghost()
@@ -257,16 +273,20 @@ def main():
                     elif method == "shopify_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
+                        from ..browser.shopify_session import ShopifySession
                         product_data = payload.get("product") or {}
-                        shopify_url(product_data.get("store_url") or "https://admin.shopify.com/")
-                        from ..browser.shopify_actor import ShopifyBrowserActor
-                        import asyncio
-                        click_save = payload.get("click_save", True)
-                        actor = ShopifyBrowserActor(headless=payload.get("headless", False))
-                        try:
-                            result = asyncio.run(actor.execute_product_creation(product_data, click_save=click_save))
-                        finally:
-                            asyncio.run(actor.close())
+                        click_save = payload.get("click_save", False)
+                        if shopify_session is None:
+                            shopify_session = ShopifySession()
+                        shopify_future = shopify_session.submit(product_data, click_save=click_save,
+                                                               headless=payload.get("headless", False))
+                        shopify_request_id = request_id
+                        shopify_deadline = time.monotonic() + 165
+                        emit({"event": "shopify_started", "message": "Connecting to your Edge. Allow its debugging prompt if shown."})
+                        # Leave the command loop free for status, cancellation, and shutdown.
+                        continue
+                    elif method == "shopify_cancel":
+                        result = {"cancelled": shopify_future.cancel() if shopify_future is not None else False}
                     elif method == "learning_patterns":
                         result = {"patterns": learning_engine.list_patterns()}
                     elif method == "learning_detail":
@@ -291,6 +311,18 @@ def main():
                     emit({"id": request_id, "ok": True, "result": result})
                 except Exception as exc:
                     emit({"id": request_id, "ok": False, "error": str(exc)[:600]})
+            if shopify_future is not None:
+                if time.monotonic() > shopify_deadline and not shopify_future.done():
+                    shopify_future.cancel()
+                if shopify_future.done():
+                    future, shopify_future = shopify_future, None
+                    try:
+                        if future.cancelled():
+                            raise ValueError("Shopify run stopped. Any filled fields remain unsaved; inspect the form before retrying.")
+                        emit({"id": shopify_request_id, "ok": True, "result": future.result()})
+                    except Exception as exc:
+                        emit({"id": shopify_request_id, "ok": False, "error": str(exc)[:600]})
+                    shopify_request_id = None
             if listener:
                 for _ in range(16):
                     try:
@@ -350,7 +382,7 @@ def main():
                 park_ghost()
                 emit({"event": "replay_finished", "steps": True, "job": outcome})
             # Pending scheduled jobs run while the notch is open, without a second worker command.
-            if not session and not replay and not step_run:
+            if not session and not replay and not step_run and shopify_future is None:
                 now = time.time()
                 # Past its send window a job is never started; a worker that dies early is not respawned forever.
                 due = next((j for j in jobs.list() if j["state"] == "pending" and j["due"] <= now < j["expires"]), None)
@@ -362,6 +394,10 @@ def main():
                     replay, replay_id = spawn_replay(root, job_data, due["id"]), due["id"]
                     emit({"event": "replay_started", "job_id": replay_id})
     finally:
+        if shopify_future is not None:
+            shopify_future.cancel()
+        if shopify_session:
+            shopify_session.close()
         if listener:
             listener.close()
         if session:

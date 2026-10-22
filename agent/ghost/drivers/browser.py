@@ -52,6 +52,7 @@ class BrowserDriver:
         if self.browser is None:
             os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
             from browser_use import Browser
+            Path(self.profile).mkdir(parents=True, exist_ok=True)
             self.browser = Browser(
                 user_data_dir=str(Path(self.profile).resolve()), headless=self.headless,
                 executable_path=browser_executable(), is_local=True, use_cloud=False,

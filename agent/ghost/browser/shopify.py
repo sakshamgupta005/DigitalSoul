@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import re
+import hashlib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -44,7 +45,7 @@ def generate_sku(title: str, category: str = "") -> str:
     words = re.findall(r"[A-Za-z0-9]+", title.upper())
     prefix = words[0][:4] if words else "PRD"
     suffix = words[1][:3] if len(words) > 1 else "001"
-    num = abs(hash(title)) % 900 + 100
+    num = int(hashlib.sha256(title.encode()).hexdigest()[:8], 16) % 900 + 100
     return f"{prefix}-{suffix}-{num}"
 
 
@@ -91,7 +92,7 @@ def heuristic_generate(partial: Dict[str, Any]) -> ShopifyProduct:
         sku=sku,
         barcode=partial.get("barcode", ""),
         track_quantity=bool(partial.get("track_quantity", True)),
-        inventory_quantity=int(partial.get("inventory_quantity") or 50),
+        inventory_quantity=int(partial.get("inventory_quantity", 50)),
         category=category,
         product_type=partial.get("product_type", "Standard"),
         vendor=partial.get("vendor", "GZN Store"),
@@ -106,7 +107,7 @@ def generate_product_fields(partial: Dict[str, Any]) -> Dict[str, Any]:
 
     # Attempt OmniRoute / LLM enhancement if configured
     client = OmniRouteClient()
-    probe = client.probe(inference=False)
+    probe = client.probe(inference=False) if client.settings.model else {}
     if probe.get("reachable") and client.settings.model:
         prompt = (
             f"You are a Shopify e-commerce merchandising specialist. "

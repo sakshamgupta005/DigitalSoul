@@ -1,5 +1,13 @@
 # Blinky technical reference for DigitalSoul
 
+Existing Edge attachment (2026-10-22): re-read
+`common/python/tools/browser_use_tool.py`'s browser lifecycle. Its fresh
+`Browser(channel=...)` does not attach to an already-running signed-in session.
+DigitalSoul's interactive Shopify actor instead discovers Edge's user-enabled
+`DevToolsActivePort` and uses browser-use's `cdp_url` with `keep_alive=True`.
+This avoids copied profiles/cookies and reuses an exact matching product tab.
+See [existing Edge setup and verification](docs/SHOPIFY_EDGE.md).
+
 ## Voice and workflow adaptation (2026-10-22)
 
 Re-inspected `common/python/computer_use/tools.py`'s `APP_PROTOCOLS` mapping

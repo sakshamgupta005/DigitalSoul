@@ -85,22 +85,24 @@
             </div>
             <label>Description (AI generated / editable HTML)<textarea id="shopify-desc" rows="4" placeholder="Compelling product copy, features, materials..."></textarea></label>
             <div class="shop-grid three">
-              <label>Price ($)<input id="shopify-price" type="number" step="0.01" value="29.99"></label>
-              <label>Compare-at ($)<input id="shopify-compare-at" type="number" step="0.01" value="39.99"></label>
-              <label>Cost per item ($)<input id="shopify-cost" type="number" step="0.01" value="12.00"></label>
+              <label>Price (store currency)<input id="shopify-price" type="number" step="0.01" value="29.99"></label>
+              <label>Compare-at (optional)<input id="shopify-compare-at" type="number" step="0.01" value="39.99"></label>
+              <label>Cost per item (optional)<input id="shopify-cost" type="number" step="0.01" value="12.00"></label>
             </div>
             <div class="shop-grid three">
               <label>SKU<input id="shopify-sku" placeholder="VINT-WASH-001"></label>
               <label>Stock Qty<input id="shopify-qty" type="number" value="50"></label>
-              <label>Status<select id="shopify-status"><option value="Active">Active</option><option value="Draft">Draft</option></select></label>
+              <label>Status<select id="shopify-status"><option value="">Keep current</option><option value="Active">Active</option><option value="Draft">Draft</option></select></label>
             </div>
             <div class="shop-grid">
               <label>Category<input id="shopify-category" value="Apparel & Accessories"></label>
               <label>Tags<input id="shopify-tags" value="vintage, summer, cotton, featured"></label>
             </div>
             <label class="switch-row"><input id="shopify-test-mode" type="checkbox"><span>Use local Polaris test harness (127.0.0.1:7777)<small>Instant sandbox verification without store credentials.</small></span></label>
-            <div class="hint" id="shopify-hint">browser-use will open the store, fill all decoded and AI fields, and click Save.</div>
-            <button class="primary wide" type="submit" id="shopify-submit-btn">Approve & add product</button>
+            <div class="hint" id="shopify-hint">browser-use fills the store form for your review. Save the live product in Shopify. Practice mode also tests Save.</div>
+            <button class="primary wide" type="submit" id="shopify-submit-btn">Fill & review product</button>
+            <p id="shopify-progress" class="hint" role="status" aria-live="polite"></p>
+            <button class="secondary wide" type="button" id="shopify-cancel" hidden>Cancel Shopify run</button>
           </form>
         </div>
         <div id="approve-excel-view" hidden>

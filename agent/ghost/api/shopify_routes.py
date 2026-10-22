@@ -7,6 +7,8 @@ using AI and execute them through browser-use.
 from __future__ import annotations
 
 import json
+import asyncio
+from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
@@ -14,8 +16,20 @@ from pydantic import BaseModel, Field
 
 from agent.ghost.browser.shopify import generate_product_fields
 from agent.ghost.browser.shopify_actor import ShopifyBrowserActor
+from agent.ghost.browser.shopify_session import ShopifySession
 
-router = APIRouter(prefix="/api/v1/shopify", tags=["shopify"])
+
+@asynccontextmanager
+async def shopify_lifespan(app):
+    app.state.shopify_sessions = {}
+    try:
+        yield
+    finally:
+        for session in app.state.shopify_sessions.values():
+            await asyncio.to_thread(session.close)
+
+
+router = APIRouter(prefix="/api/v1/shopify", tags=["shopify"], lifespan=shopify_lifespan)
 
 
 class GenerateRequest(BaseModel):
@@ -28,7 +42,7 @@ class GenerateRequest(BaseModel):
 
 class RunRequest(BaseModel):
     product: Dict[str, Any]
-    click_save: bool = True
+    click_save: bool = False
     headless: bool = True
     cdp_url: Optional[str] = None
 
@@ -40,16 +54,19 @@ def generate_fields(req: GenerateRequest):
 
 
 @router.post("/run")
-async def run_shopify(req: RunRequest):
+async def run_shopify(req: RunRequest, request: Request):
     """Executes browser-use product automation against the specified store URL."""
-    actor = ShopifyBrowserActor(cdp_url=req.cdp_url, headless=req.headless)
+    sessions = request.app.state.shopify_sessions
+    key = (req.cdp_url, req.headless)
+    if key not in sessions:
+        sessions[key] = ShopifySession(actor_factory=lambda headless: ShopifyBrowserActor(
+            cdp_url=req.cdp_url, headless=headless))
+    session = sessions[key]
     try:
-        result = await actor.execute_product_creation(req.product, click_save=req.click_save)
-        return result
+        return await asyncio.wait_for(asyncio.wrap_future(session.submit(
+            req.product, click_save=req.click_save, headless=req.headless)), timeout=170)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Shopify automation error: {exc}")
-    finally:
-        await actor.close()
 
 
 SHOPIFY_POLARIS_HTML = """<!DOCTYPE html>
@@ -214,6 +231,10 @@ SHOPIFY_POLARIS_HTML = """<!DOCTYPE html>
           <div>
             <label for="product-category">Category</label>
             <input type="text" id="product-category" name="category" placeholder="Apparel & Accessories">
+          </div>
+          <div>
+            <label for="product-vendor">Vendor</label>
+            <input type="text" id="product-vendor" name="vendor" placeholder="Vendor">
           </div>
           <div>
             <label for="product-tags">Tags (comma separated)</label>

@@ -93,7 +93,7 @@ function movePill() {
 
 function busy(value) {
   state.pending = value;
-  for (const id of ['new-recording', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) $(id).disabled = value;
+  for (const id of ['new-recording', 'new-shopify', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) $(id).disabled = value;
   $('record-form').querySelector('[type=submit]').disabled = value;
 }
 
@@ -573,9 +573,13 @@ function newRecording() {
   $('record-form').elements.name.focus();
 }
 
-$('toggle').addEventListener('click', () => {
+$('toggle').addEventListener('click', async () => {
   if (dragged) { dragged = false; return; }
-  action(async () => { await expanded(!state.expanded); if (state.expanded) syncTheme(); });
+  // Opening the panel must remain available while a backend request is pending.
+  try {
+    await expanded(!state.expanded);
+    if (state.expanded && !state.pending) syncTheme();
+  } catch (error) { notice(String(error?.message || error)); }
 });
 
 // While recording the banner hides completely; F8 (or the time limit) saves and brings it back.
@@ -934,7 +938,7 @@ $('voice-form').addEventListener('submit', (event) => {
   action(async () => voiceResult(await rpc('voice_command', { text: $('voice-text').value })));
 });
 
-$('collapse').addEventListener('click', () => action(() => expanded(false)));
+$('collapse').addEventListener('click', () => expanded(false).catch(error => notice(String(error?.message || error))));
 for (const id of ['new-recording', 'empty-record']) $(id).addEventListener('click', newRecording);
 for (const id of ['cancel-create', 'back']) $(id).addEventListener('click', () => view('library'));
 document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => view(button.dataset.tab)));
@@ -1004,15 +1008,17 @@ function openShopifyWorkflow(prefill = {}) {
   $('approve-whatsapp-view').hidden = true;
   $('approve-shopify-view').hidden = false;
   $('approve-excel-view').hidden = true;
+  $('shopify-progress').textContent = '';
   $('shopify-title').value = prefill.title || 'Vintage Washed Oversized T-Shirt';
   $('shopify-url').value = prefill.store_url || 'https://admin.shopify.com/store/gzn0vr-qn/products/new';
   $('shopify-price').value = prefill.price || '29.99';
-  $('shopify-compare-at').value = prefill.compare_at_price || '39.99';
-  $('shopify-cost').value = prefill.cost_per_item || '12.00';
-  $('shopify-sku').value = prefill.sku || 'VINT-WASH-001';
-  $('shopify-qty').value = prefill.inventory_quantity || 50;
-  $('shopify-category').value = prefill.category || 'Apparel & Accessories > Clothing';
-  $('shopify-tags').value = prefill.tags || 'vintage, summer, cotton, featured';
+  $('shopify-compare-at').value = prefill.compare_at_price || '';
+  $('shopify-cost').value = prefill.cost_per_item || '';
+  $('shopify-sku').value = prefill.sku || '';
+  $('shopify-qty').value = prefill.inventory_quantity ?? 50;
+  $('shopify-category').value = prefill.category || '';
+  $('shopify-tags').value = prefill.tags || '';
+  $('shopify-status').value = prefill.status || '';
   $('shopify-desc').value = prefill.description || '<p>Experience premium comfort with our 100% organic cotton oversized tee.</p>';
 }
 $('new-shopify')?.addEventListener('click', () => openShopifyWorkflow());
@@ -1100,7 +1106,7 @@ $('shopify-ai-btn')?.addEventListener('click', () => action(async () => {
     $('shopify-compare-at').value = generated.compare_at_price || $('shopify-compare-at').value;
     $('shopify-cost').value = generated.cost_per_item || $('shopify-cost').value;
     $('shopify-sku').value = generated.sku || $('shopify-sku').value;
-    $('shopify-qty').value = generated.inventory_quantity || $('shopify-qty').value;
+    $('shopify-qty').value = generated.inventory_quantity ?? $('shopify-qty').value;
     $('shopify-category').value = generated.category || $('shopify-category').value;
     $('shopify-tags').value = generated.tags || $('shopify-tags').value;
     $('shopify-status').value = generated.status || 'Active';
@@ -1110,6 +1116,10 @@ $('shopify-ai-btn')?.addEventListener('click', () => action(async () => {
 
 $('shopify-form')?.addEventListener('submit', (event) => {
   event.preventDefault();
+  if (state.pending) {
+    $('shopify-progress').textContent = 'A request is already running. Wait for it or cancel the Shopify run.';
+    return;
+  }
   action(async () => {
     const isTest = $('shopify-test-mode').checked;
     const storeUrl = isTest ? 'http://127.0.0.1:7777/api/v1/shopify/test-form' : $('shopify-url').value;
@@ -1120,22 +1130,44 @@ $('shopify-form')?.addEventListener('submit', (event) => {
       compare_at_price: $('shopify-compare-at').value,
       cost_per_item: $('shopify-cost').value,
       sku: $('shopify-sku').value,
-      inventory_quantity: parseInt($('shopify-qty').value, 10) || 50,
+      inventory_quantity: Number($('shopify-qty').value),
       category: $('shopify-category').value,
       tags: $('shopify-tags').value,
       status: $('shopify-status').value,
       store_url: storeUrl,
     };
-    notice(`Launching browser-use for "${product.title}"...`);
-    await expanded(false);
-    const report = await rpc('shopify_run', { product, click_save: true, headless: false });
+    notice(`Connecting to your Edge for "${product.title}". Allow Edge's debugging prompt if shown; keep this app open.`);
+    $('shopify-progress').textContent = 'Connecting to your open Edge. Allow its debugging prompt if shown.';
+    $('compact-label').textContent = 'Shopify · connecting to Edge…';
+    $('shopify-cancel').hidden = false;
+    let report;
+    try {
+      report = await rpc('shopify_run', { product, click_save: isTest, headless: false });
+    } catch (error) {
+      $('shopify-progress').textContent = String(error?.message || error);
+      throw error;
+    } finally {
+      $('shopify-cancel').hidden = true;
+      $('compact-label').textContent = IDLE_LABEL;
+    }
     await expanded(true);
     if (report && report.ok) {
-      notice(`✅ browser-use added product: "${product.title}"! (${(report.filled_steps || []).length} fields filled)`);
+      $('shopify-progress').textContent = `${(report.filled_steps || []).length} fields filled. Review the product in Edge; live Save was not clicked.`;
+      notice(`browser-use ${report.status === 'saved' ? 'saved the practice product' : 'filled the form for review'}: "${product.title}"! (${(report.filled_steps || []).length} fields filled)`);
     } else {
+      $('shopify-progress').textContent = `Filled ${(report?.filled_steps || []).length} fields. ${(report?.errors || ['The run did not finish.']).join('; ')}`;
       notice(`Shopify run completed: ${JSON.stringify(report?.errors || report)}`);
     }
   });
+});
+$('shopify-form')?.addEventListener('invalid', (event) => {
+  $('shopify-progress').textContent = `Check ${event.target.id?.replace('shopify-', '').replaceAll('-', ' ') || 'the highlighted field'}: ${event.target.validationMessage}`;
+}, true);
+$('shopify-cancel')?.addEventListener('click', async () => {
+  try {
+    await rpc('shopify_cancel');
+    notice('Stopping Shopify. Any filled fields remain unsaved.');
+  } catch (error) { notice(String(error?.message || error)); }
 });
 
 $('review-run').addEventListener('click', () => {

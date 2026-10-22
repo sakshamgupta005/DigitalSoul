@@ -1,6 +1,6 @@
 # M2 execution backend — implementation and handoff
 
-This implementation belongs to Backend Developer 2: workflow execution, drivers, safety, run controls and remote transport. It follows the 1.1.0 draft schemas and `contracts/REVIEW.md`. It does not implement M1 observation/mining, M3 UI, or M4 shared application/database/demo apps.
+This implementation belongs to Backend Developer 2: workflow execution, drivers, safety, run controls and remote transport. It follows the 1.1.0 draft schemas and `contracts/REVIEW.md`. This handoff describes the standalone M2 subsystem. The checkout now also contains learning modules, a shared application, generated models, demo apps and a Tauri notch; see [current working-tree verification](../docs/VALIDATION.md) for their integration gaps and actual test results.
 
 ## Files and responsibilities
 
@@ -93,7 +93,7 @@ Remote `run_workflow` accepts only plans deriving all inputs locally. Remote app
 
 ## Validation and remaining gates
 
-The current sandbox passed 25 M2 tests with the explicit no-IO scheduler and 46 existing contract checks. M2 tests include complete fixture execution against a deterministic app boundary and simulated browser-use Actor objects, CDP event correlation, gateway HTTP mocks, approval drift/expiry/wrong binding, idempotency, single-run ownership, cancellation, kill switch, crash recovery, read-only reconciliation, restricted expressions, origin/host/auth validation, Ed25519 tampering, UTC expiry, atomic nonce races/restart, pairing key replacement rejection, signed/minimized status and in-process relay authentication/routing/spoof rejection.
+The initial implementation pass reported 25 M2 tests and 46 contract checks. The 2026-10-22 working-tree verification passed 122 selected backend/learning tests (one real-browser test skipped), one OCR data-structure test, 46 contract checks and four frontend tests, and linked the Tauri executable. Exact exclusions and blocked integration attempts are in [the verification report](../docs/VALIDATION.md). M2 tests include complete fixture execution against a deterministic app boundary and simulated browser-use Actor objects, CDP event correlation, gateway HTTP mocks, approval drift/expiry/wrong binding, idempotency, single-run ownership, cancellation, kill switch, crash recovery, read-only reconciliation, restricted expressions, origin/host/auth validation, Ed25519 tampering, UTC expiry, atomic nonce races/restart, pairing key replacement rejection, signed/minimized status and in-process relay authentication/routing/spoof rejection.
 
 One real browser-use test was skipped because Python's normal Windows event loop hangs in `socketpair()` in this sandbox. A minimal `asyncio.run(asyncio.sleep(0))` reproduces the environment problem before application code. The live browser-use probe independently captured the same stack. OmniRoute reached startup-ready state, but Python HTTP probes returned WinError 10013 and a browser-tool dashboard request timed out. See [the browser-use migration decision and connection evidence](../docs/ADR_0001_browser_use.md). Real CDP, demo APIs, UIA and DPAPI must be exercised on a normal Windows runtime. The no-IO scheduler is confined to tests and cannot perform network/subprocess IO.
 

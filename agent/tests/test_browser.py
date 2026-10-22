@@ -177,6 +177,7 @@ def test_real_browser_use_actor_connection(tmp_path):
     async def check():
         from browser_use import Browser
         from agent.ghost.drivers.browser import browser_executable
+        (tmp_path / "profile").mkdir()
         browser = Browser(user_data_dir=str(tmp_path / "profile"), headless=True, is_local=True,
                           use_cloud=False, executable_path=browser_executable(),
                           enable_default_extensions=False, auto_download_pdfs=False,

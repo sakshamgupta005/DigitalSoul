@@ -51,12 +51,13 @@ selectors, and edit values as coalesced text changes. OS launcher/start-menu cli
 are not captured: replay opens the app using its observed executable/AUMID. There
 is no stored mouse-pixel replay. The input hooks retain only scoped left-clicks
 and Enter, plus the F8 stop key. Typed text is read from allowed-app UIA edit
-controls; UIA password fields are skipped. No screenshot/history upload or LLM call
-is performed. Selected app fields can contain private information; inspect steps
+controls; UIA password fields are skipped. The current visual-memory addition can capture screenshots/OCR and request
+OmniRoute synthesis; its separate consent/redaction gates are still incomplete.
+See [verification findings](../docs/VALIDATION.md) before recording private work. Selected app fields can contain private information; inspect steps
 before sharing them. Capture stops at five minutes/500 steps.
 
 Recordings survive restart in `.ghost/notch/workflows.sqlite3`, with per-user DPAPI
-encrypted payloads on Windows. This catalog is separate from M1's in-memory learned
+encrypted payloads on Windows. This catalog is separate from M1's SQLite-backed learned
 Workflow API. Raw steps are evidence, not a contract `Workflow` or execution approval.
 Other apps can be recorded and reviewed, but need specific guarded adapters before
 Run is enabled. Partial/failed WhatsApp recordings stay visible with the reason
@@ -154,6 +155,12 @@ the notch library. Replay only after reviewing the demonstrated recipient/messag
 - Windows must stay unlocked and awake; there is no service or wake timer.
 
 ## Checks
+
+The latest working-tree verification linked the Windows developer executable,
+passed Rust checking and all four compact-mic UI tests. See
+[the verification report](../docs/VALIDATION.md) for commands, backend test counts,
+blocked live checks and contract gaps. Compilation does not verify window
+appearance, microphone recognition or personal-app replay.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest agent/tests -q -p no:cacheprovider --ignore=agent/tests/test_remote.py
