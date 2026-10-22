@@ -220,3 +220,41 @@ def test_session_allows_whatsapp_root_exe_automatically():
         else:
             raise
 
+
+
+def test_capture_infers_contact_and_message_from_demonstration():
+    capture = Capture()
+    capture.flow.update(executable=r"C:\Apps\WhatsApp.exe", app_id=None)
+    for typed in ("v", "van", "vansh"):
+        capture.field(spec("search"), typed)
+    capture.click(spec("other"), "Archived", "Button")
+    capture.click(spec("contact"), "Vansh", "ListItem")
+    identity = spec("header")
+    identity["name"] = "Vansh"
+    capture.field(spec("compose"), "b", identity)
+    capture.field(spec("compose"), "birthday postponed")
+    capture.enter()
+    validate(capture.flow)
+    assert capture.flow["search"] == "vansh"
+    assert capture.flow["recipient"] == capture.flow["chat_title"] == "Vansh"
+    assert capture.flow["message"] == "birthday postponed"
+    assert [action["kind"] for action in capture.flow["actions"]] == ["search", "select", "compose"]
+
+
+class WebField:
+    def __init__(self, name, value, text):
+        self.element_info = type("Info", (), {"name": name})()
+        self.value, self.iface_text = value, type("Text", (), {})()
+        self.iface_text.DocumentRange = type("Range", (), {"GetText": lambda _, n: text})()
+
+    def get_value(self):
+        return self.value
+
+
+def test_browser_field_text_reads_rich_text_and_ignores_placeholder():
+    from agent.ghost.desktop.session import field_text
+    assert field_text(WebField("Ask ChatGPT", "", "what is uia\n"), browser=True) == "what is uia"
+    assert field_text(WebField("Ask ChatGPT", "Ask ChatGPT", "Ask ChatGPT"), browser=True) == ""
+    assert field_text(WebField("Add a comment…", "", "Add a comment…"), browser=True) == ""
+    assert field_text(WebField("Search", "cats", "ignored"), browser=True) == "cats"
+    assert field_text(WebField("Type a message", "", "Type a message"), browser=False) == ""

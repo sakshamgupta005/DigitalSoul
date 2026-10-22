@@ -80,7 +80,7 @@ function renderWorkflows() {
   if (!items.length && state.workflows.length) list.append(element('p', '', 'No matching workflows.'));
   for (const workflow of items) {
     const card = element('button', 'workflow-card');
-    card.append(element('span', 'workflow-icon', workflow.apps?.some((app) => /whatsapp/i.test(app)) ? '↗' : '⌘'));
+    card.append(element('span', 'workflow-icon', workflow.apps?.some((app) => /whatsapp/i.test(app)) ? '↗' : workflow.apps?.some((app) => /chrome|brave/i.test(app)) ? '◎' : '⌘'));
     const info = element('span', 'workflow-info');
     info.append(element('strong', '', workflow.name), element('p', '', `${workflow.step_count} steps · ${workflow.apps?.join(', ') || 'Desktop'} · ${dateLabel(workflow.created_at)}`));
     card.append(info, element('span', `badge ${workflow.can_run ? '' : 'review'}`, workflow.can_run ? 'Ready to review' : 'Recorded steps'), element('span', 'card-arrow', '›'));
@@ -149,19 +149,15 @@ for (const id of ['cancel-create', 'back']) $(id).addEventListener('click', () =
 document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => view(button.dataset.tab)));
 $('search').addEventListener('input', renderWorkflows);
 $('refresh').addEventListener('click', () => action(refresh));
-$('record-form').elements.whatsapp.addEventListener('change', (event) => { $('whatsapp-fields').hidden = !event.target.checked; });
 
 $('record-form').addEventListener('submit', (event) => {
   event.preventDefault();
   action(async () => {
     const values = new FormData(event.target);
-    const options = { name: values.get('name').trim(), apps: values.get('apps').split(',').map((app) => app.trim()).filter(Boolean) };
-    if (values.has('whatsapp')) {
-      options.recipient = values.get('recipient').trim();
-      if (!options.recipient) throw new Error('Enter the contact name you will search for, or turn off WhatsApp replay.');
-      options.chat_title = values.get('chat_title').trim() || options.recipient;
-      options.message = values.get('message');
-    }
+    const apps = [...values.getAll('app'), ...values.get('apps').split(',').map((app) => app.trim()).filter(Boolean)];
+    if (!apps.length) throw new Error('Choose at least one app to observe.');
+    const options = { name: values.get('name').trim(), apps };
+    if (values.has('whatsapp') && apps.some((app) => /whatsapp/i.test(app))) options.whatsapp = true;
     await rpc('start', options);
     $('live-name').textContent = options.name;
     $('live-count').textContent = '0 steps';

@@ -277,16 +277,35 @@ class FlowAdapter:
 
 class Capture:
     """State machine fed only explicit search/message values and scoped clicks."""
-    def __init__(self, recipient, search, chat_title, message):
-        self.flow = {"format": FORMAT, "recipient": recipient, "search": search,
-                     "chat_title": chat_title, "message": message, "actions": []}
+    def __init__(self, recipient=None, search=None, chat_title=None, message=None):
+        # Without a recipient, search text, contact and message are inferred from the demonstration.
+        self.auto = not recipient
+        self.flow = {"format": FORMAT, "recipient": recipient or "", "search": search or recipient or "",
+                     "chat_title": chat_title or recipient or "", "message": message or "", "actions": []}
         self.composed = False
         self.done = False
+
+    @property
+    def selected(self):
+        return any(a["kind"] == "select" for a in self.flow["actions"])
 
     def field(self, spec, value, chat_header=None):
         actions = self.flow["actions"]
         val_clean = (value or "").strip()
         if not val_clean:
+            return
+        if self.composed:
+            # Keep the latest text typed into the recorded composer until Send.
+            if not self.done and spec == actions[-1]["target"]:
+                self.flow["message"] = val_clean
+            return
+        if self.auto and not self.selected:
+            search = [a for a in actions if a["kind"] == "search"]
+            if not search:
+                actions.append({"kind": "search", "target": spec})
+                print("Recorded search text.")
+            if not search or search[0]["target"] == spec:
+                self.flow["search"] = val_clean
             return
         if val_clean.lower() == self.flow["search"].strip().lower() and not any(a["kind"] == "search" for a in actions):
             actions.append({"kind": "search", "target": spec})
@@ -297,6 +316,8 @@ class Capture:
                 raise ValueError("Click the intended search result before composing")
             self.flow["header"] = chat_header
             self.flow["chat_title"] = chat_header.get("name") or self.flow["chat_title"]
+            if self.auto:
+                self.flow["recipient"] = self.flow["chat_title"]
             self.flow["message"] = val_clean
             actions.append({"kind": "compose", "target": spec})
             self.composed = True
@@ -312,6 +333,13 @@ class Capture:
         if control_type in ("Edit", "Document"):
             return
         if any(a["kind"] == "search" for a in actions):
+            if self.auto:
+                search = self.flow["search"].strip().lower()
+                if search and search in name.strip().lower():
+                    actions.append({"kind": "select", "target": spec})
+                    self.flow["recipient"] = self.flow["chat_title"] = name.strip()
+                    print("Recorded recipient selection.")
+                return
             target_names = {self.flow["chat_title"].strip().lower(), self.flow["recipient"].strip().lower()}
             clean_name = name.strip().lower()
             first_line = clean_name.splitlines()[0].strip() if clean_name else ""
