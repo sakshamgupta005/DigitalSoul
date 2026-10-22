@@ -285,7 +285,8 @@ class StepRunner:
     def open_app(self, step):
         if not self.native.windows(step["path"]):
             self.native.launch(step)
-        self._app_window(step["path"], title=step.get("title"))
+        window = self._app_window(step["path"], title=step.get("title"))
+        self._glide(window)  # the ghost visibly arrives at the app it is about to use
 
     def click(self, step):
         window = self._app_window(step["path"])
@@ -330,8 +331,14 @@ class StepRunner:
 
     def open_url(self, step):
         self.native.open_url(step["path"], step["url"])
-        self._app_window(step["path"])
+        window = self._app_window(step["path"])
         self.sleep(1.5)  # let the page start loading before anything else happens
+        # Show the ghost at the address bar that now holds the page, or at least at the browser.
+        try:
+            bar = next(iter(window.descendants(control_type="Edit", title="Address and search bar")), None)
+        except Exception:
+            bar = None
+        self._glide(bar or window)
 
     def press_enter(self, step):
         self._app_window(step["path"])

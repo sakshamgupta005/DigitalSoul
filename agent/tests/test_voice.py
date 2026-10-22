@@ -1,6 +1,6 @@
 import pytest
 
-from agent.ghost.desktop.voice import resolve
+from agent.ghost.desktop.voice import dispatch, launch_app, resolve
 
 
 WORKFLOWS = [{"id": "spotify", "name": "Open Spotify"}, {"id": "hello", "name": "Say hello"}]
@@ -46,7 +46,7 @@ def test_conversational_asks_and_intent_understanding():
         {"id": "msg", "name": "Send Update", "intent": "Open WhatsApp and send message to team", "apps": ["WhatsApp.exe"]},
     ]
     # Conversational phrasing with wake word
-    assert resolve("Hey Jarvis, please launch spotify", WORKFLOWS)["id"] == "spotify"
+    assert resolve("Hey Jarvis, please do Open Spotify", WORKFLOWS)["id"] == "spotify"
     assert resolve("Hey Jarvis, can you do Say hello please", WORKFLOWS)["id"] == "hello"
     # Intent-based ask matching
     assert resolve("Hey Jarvis, check files in downloads", flows)["id"] == "dl"
@@ -96,3 +96,45 @@ def test_worker_missing_model_reports_setup_without_opening_mic(monkeypatch, cap
     result = json.loads(capsys.readouterr().out)
     assert result["kind"] == "error"
     assert "--download" in result["message"]
+
+
+@pytest.mark.parametrize("phrase", ["Open WhatsApp", "Hey Jarvis open whats app", "Please launch WhatsApp please", "start what's app"])
+def test_open_whatsapp_uses_fixed_protocol(phrase):
+    launches = []
+    result = dispatch(phrase, [], opener=launches.append)
+    assert result["kind"] == "app_opened"
+    assert launches == ["whatsapp:"]
+
+
+def test_app_launch_requires_wake_outside_mic_command_window():
+    launches = []
+    assert dispatch("open whatsapp", [], require_wake=True, opener=launches.append)["kind"] == "ignored"
+    assert launches == []
+    assert dispatch("open whatsapp", [], require_wake=True, awake=True, opener=launches.append)["kind"] == "app_opened"
+    assert launches == ["whatsapp:"]
+
+
+def test_app_command_does_not_allow_arbitrary_shell_or_send():
+    launches = []
+    for text in ("open powershell", "open whatsapp and send hello", "open whatsapp; calc", "open C:/evil.exe"):
+        assert dispatch(text, [], opener=launches.append)["kind"] == "unknown"
+    assert dispatch("open whatsapp", [], busy=True, opener=launches.append)["kind"] == "error"
+    assert launches == []
+    with pytest.raises(ValueError):
+        launch_app("powershell", launches.append)
+
+
+def test_explicit_workflow_prefix_keeps_review_required():
+    assert dispatch("do Open Spotify", WORKFLOWS, opener=lambda _: pytest.fail("Unexpected launch"))["kind"] == "workflow"
+
+
+def test_protocol_failure_is_reported():
+    def missing(_):
+        raise OSError("No protocol handler")
+    assert launch_app("whatsapp", missing)["code"] == "app_unavailable"
+
+
+def test_launch_permission_failure_is_distinct_from_missing_app():
+    def denied(_):
+        raise PermissionError("Access denied")
+    assert launch_app("whatsapp", denied)["code"] == "app_launch_denied"

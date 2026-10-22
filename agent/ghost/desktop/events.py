@@ -1,9 +1,13 @@
 """Session-scoped Win32 click/Enter/F8 events; no typed-key logging."""
 import ctypes
+import os
 import queue
 import threading
 import time
 from ctypes import wintypes
+
+# Test harnesses only: also record synthesized input, so automated end-to-end runs can act like a user.
+RECORD_INJECTED = os.environ.get("DIGITALSOUL_RECORD_INJECTED") == "1"
 
 
 class WinEvents:
@@ -64,7 +68,7 @@ class WinEvents:
         def mouse(code, message, data):
             if code >= 0 and message == 0x0201:  # WM_LBUTTONDOWN
                 event = ctypes.cast(data, ctypes.POINTER(Mouse)).contents
-                if not event.flags & 1:  # ignore injected mouse events
+                if RECORD_INJECTED or not event.flags & 1:  # ignore injected mouse events
                     enqueue("click", (event.point.x, event.point.y))
             return user.CallNextHookEx(None, code, message, data)
 
@@ -72,7 +76,7 @@ class WinEvents:
         def keyboard(code, message, data):
             if code >= 0 and message == 0x0100:  # WM_KEYDOWN
                 event = ctypes.cast(data, ctypes.POINTER(Key)).contents
-                if not event.flags & 0x10:
+                if RECORD_INJECTED or not event.flags & 0x10:
                     if event.vk == 0x77:
                         enqueue("stop")  # F8, anywhere, stops recording
                     elif event.vk == 0x0D:

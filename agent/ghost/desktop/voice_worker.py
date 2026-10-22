@@ -54,6 +54,7 @@ def main():
                 voiced = 0
                 if count < 3:
                     continue
+                emit({"kind": "processing", "message": "Transcribing your voice..."})
                 segments, _ = model.transcribe(utterance, language="en", beam_size=1,
                     vad_filter=True, condition_on_previous_text=False)
                 text = " ".join(s.text.strip() for s in segments

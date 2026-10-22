@@ -442,15 +442,30 @@ async function showDetail(id) {
   renderUnderstanding(detail.understanding);
   renderFlow(detail.flow);
   const isExcelWorkflow = detail.flow?.format === 'digitalsoul.excel-flow.v1' || detail.flow?.kind === 'excel' || (detail.used || []).some(a => /excel/i.test(a));
-  $('detail-warning').textContent = isExcelWorkflow
-    ? 'Excel spreadsheet routine recognized. Review the cells and values before updating your workbook.'
-    : (detail.flow
-      ? 'WhatsApp send recognized. Check the recipient and message before replaying; it sends a real message.'
-      : 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.');
-  $('review-run').disabled = (!detail.flow && !isExcelWorkflow) || state.recording || state.running;
-  $('review-run').hidden = (!detail.flow && !isExcelWorkflow);
-  $('replay-steps').hidden = !detail.steps.length;
-  $('replay-steps').disabled = state.recording || state.running;
+  if (detail.flow?.kind === 'shopify') {
+    $('detail-warning').textContent = 'A Shopify product routine was recognized. Review decoded and AI-generated fields before running with browser-use in Edge.';
+    $('review-run').hidden = false;
+    $('review-run').disabled = state.recording || state.running;
+    $('replay-steps').hidden = true;
+  } else if (isExcelWorkflow) {
+    $('detail-warning').textContent = 'Excel spreadsheet routine recognized. Review the cells and values before updating your workbook.';
+    $('review-run').hidden = false;
+    $('review-run').disabled = state.recording || state.running;
+    $('replay-steps').hidden = !detail.steps.length;
+    $('replay-steps').disabled = state.recording || state.running;
+  } else if (detail.flow) {
+    $('detail-warning').textContent = 'WhatsApp send recognized. Check the recipient and message before replaying; it sends a real message.';
+    $('review-run').disabled = state.recording || state.running;
+    $('review-run').hidden = false;
+    $('replay-steps').hidden = !detail.steps.length;
+    $('replay-steps').disabled = state.recording || state.running;
+  } else {
+    $('detail-warning').textContent = detail.replay_error || 'Replay repeats these steps in order, including any messages or posts. It stops at the first step it cannot find.';
+    $('review-run').hidden = true;
+    $('review-run').disabled = true;
+    $('replay-steps').hidden = !detail.steps.length;
+    $('replay-steps').disabled = state.recording || state.running;
+  }
   $('step-list').replaceChildren();
   let lastApp = null;
   for (const [index, step] of detail.steps.entries()) {
@@ -858,7 +873,7 @@ function voiceState(on, label) {
   if (on) voiceFeedback = '';
   $('voice-mic').setAttribute('aria-pressed', String(on));
   $('voice-mic').setAttribute('aria-label', on ? 'Stop local voice commands' : 'Start local voice commands');
-  $('voice-status').textContent = label || voiceFeedback || (on ? 'Listening locally · say Hey Jarvis' : 'Mic off · local faster-whisper');
+  $('voice-status').textContent = label || voiceFeedback || (on ? 'Listening locally · say Open WhatsApp' : 'Mic off · local faster-whisper');
   if (!state.recording && !state.running) {
     $('compact-label').textContent = voiceFeedback || (on ? (label ? 'Loading voice…' : 'Listening · say Hey Jarvis') : 'Boo! I remember your routines.');
   }
@@ -871,7 +886,12 @@ function compactVoice(message, label) {
   notice(message);
 }
 async function voiceResult(result) {
-  if (result.kind === 'workflow') {
+  if (result.kind === 'heard') {
+    $('voice-text').value = result.text;
+    $('voice-mic').title = `Heard: ${result.text}`;
+  } else if (result.kind === 'ignored') {
+    compactVoice('Say Hey Jarvis first, or click the mic off and on for a fresh command.', 'Say Hey Jarvis to wake');
+  } else if (result.kind === 'workflow') {
     await showDetail(result.id);
     compactVoice(`Found "${result.name}". Expand the notch to review and run.`, `Ready: ${result.name}`);
   } else if (result.message) {
@@ -1107,7 +1127,9 @@ $('review-run').addEventListener('click', () => {
   const detail = state.detail;
   const flow = detail?.flow;
   view('approve');
-  if (flow?.format === 'digitalsoul.excel-flow.v1' || flow?.kind === 'excel' || (detail?.used || []).some(a => /excel/i.test(a))) {
+  if (flow?.kind === 'shopify') {
+    openShopifyWorkflow(flow.product || { title: detail.name });
+  } else if (flow?.format === 'digitalsoul.excel-flow.v1' || flow?.kind === 'excel' || (detail?.used || []).some(a => /excel/i.test(a))) {
     openExcelWorkflow({
       workbook: flow?.workbook || detail.name,
       sheet: flow?.sheet || 'Sheet1',

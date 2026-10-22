@@ -30,6 +30,8 @@ if (-not $env:CARGO_HOME -and (Test-Path -LiteralPath $projectCache)) {
 if (-not $env:CARGO_TARGET_DIR) {
     $env:CARGO_TARGET_DIR = Join-Path $env:USERPROFILE '.notch-target'
 }
+# Stop any running notch instance so Cargo can overwrite the binary without Access Denied errors.
+Get-Process -Name 'digitalsoul-notch' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 $env:DIGITALSOUL_PROJECT_DIR = $projectRoot
 $cargoArgs = @('run', '--manifest-path', (Join-Path $projectRoot 'desktop\src-tauri\Cargo.toml'))
 if ($Offline) { $cargoArgs += '--offline' }

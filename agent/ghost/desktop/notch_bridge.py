@@ -13,7 +13,7 @@ from .catalog import Catalog
 from .jobs import Jobs
 from .learning_mode import LearningEngine
 from . import steps as step_replay
-from .voice import Listener, resolve
+from .voice import Listener, dispatch
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -143,9 +143,11 @@ def main():
                         result = {"workflows": catalog.list(), "jobs": jobs.list()}
                     elif method == "detail":
                         result = catalog.get(payload["id"])
+                        from .session import clean_steps
+                        result["steps"] = clean_steps(result["steps"])  # what you see is exactly what replays
                         result["steps_digest"] = step_replay.digest(result["steps"])
                     elif method == "voice_command":
-                        result = resolve(payload.get("text"), catalog.list())
+                        result = dispatch(payload.get("text"), catalog.list(), busy=bool(session or replay or step_run))
                     elif method == "voice_start":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for replay before enabling the microphone")
@@ -216,6 +218,8 @@ def main():
                             raise ValueError("Stop recording or wait for the active replay")
                         value = catalog.get(payload["id"])
                         # The approval names the exact steps the user reviewed; any change invalidates it.
+                        from .session import clean_steps
+                        value["steps"] = clean_steps(value["steps"])
                         if payload.get("approved_digest") != step_replay.digest(value["steps"]):
                             raise ValueError("These steps changed since you reviewed them; open the recording again")
                         step_replay.validate(value["steps"])
@@ -294,19 +298,24 @@ def main():
                     except queue.Empty:
                         break
                     if event.get("kind") == "transcript":
-                        command = resolve(event.get("text", ""), catalog.list(), require_wake=True,
-                                          awake=time.monotonic() < listener.awake_until)
+                        emit({"event": "voice", "kind": "heard", "text": event.get("text", "")})
+                        command = dispatch(event.get("text", ""), catalog.list(), require_wake=True,
+                                           awake=time.monotonic() < listener.awake_until,
+                                           busy=bool(session or replay or step_run))
                         if command["kind"] == "wake":
                             listener.awake_until = time.monotonic() + 12
                         elif command["kind"] == "workflow":
                             listener.awake_until = 0
                         emit({"event": "voice", **command})
-                        if command["kind"] in ("sleep", "workflow"):
+                        if command["kind"] in ("sleep", "workflow", "app_opened"):
                             listener.close()
                             listener = None
                             emit({"event": "voice", "kind": "stopped"})
                             break
                     else:
+                        if event.get("kind") == "ready":
+                            # The mic click authorizes the first command without a wake phrase.
+                            listener.awake_until = time.monotonic() + 30
                         emit({"event": "voice", **event})
                 if listener and ((listener.finished.is_set() and listener.events.empty()) or time.monotonic() - listener.started > 330):
                     listener.close()

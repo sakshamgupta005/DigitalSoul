@@ -1,4 +1,4 @@
-"""Local, opt-in Windows speech. Transcripts select workflows, never approve effects."""
+"""Local speech: select reviewed workflows or open explicitly supported applications."""
 import json
 import os
 import queue
@@ -7,6 +7,8 @@ import subprocess
 import threading
 import time
 import sys
+
+APPS = {"whatsapp": ("WhatsApp", "whatsapp:"), "spotify": ("Spotify", "spotify:")}
 
 
 def normalized(text):
@@ -40,9 +42,12 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     if require_wake and not wake and not awake:
         return {"kind": "ignored"}
     if command in ("", "wake up") and wake:
-        return {"kind": "wake", "message": "I'm listening. Say a saved workflow name."}
+        return {"kind": "wake", "message": "I'm listening. Say Open WhatsApp, Open Spotify, or a saved workflow name."}
     if command in ("stop listening", "go to sleep"):
         return {"kind": "sleep"}
+    app_match = re.fullmatch(r"(?:please )?(?:open|launch|start) (whatsapp|whats app|what s app|spotify)(?: please)?", command)
+    if app_match:
+        return {"kind": "open_app", "app": "spotify" if app_match[1] == "spotify" else "whatsapp"}
     candidates = {command}
     for prefix in ("do the workflow ", "run the workflow ", "do workflow ", "run workflow ", "do ", "run "):
         if command.startswith(prefix):
@@ -73,7 +78,6 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
         return {"kind": "ambiguous", "message": "Several workflows have that name. Choose one in Workflows."}
     if matches:
         return {"kind": "workflow", "id": matches[0]["id"], "name": matches[0]["name"]}
-
     # 2. Score candidate workflows by intent, substrings, and token overlap
     scores = []
     query_tokens = [t for t in core.split() if t not in STOP_WORDS]
@@ -128,7 +132,34 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
             return {"kind": "ambiguous", "message": "Several workflows match that ask. Choose one in Workflows."}
         return {"kind": "workflow", "id": top_items[0]["id"], "name": top_items[0]["name"]}
 
-    return {"kind": "unknown", "message": "No exact saved workflow matches. Say its name as shown in Workflows."}
+    return {"kind": "unknown", "message": "Say Open WhatsApp, Open Spotify, or the exact name of a saved workflow."}
+
+
+def launch_app(app, opener=None):
+    """Use a fixed registered app protocol, never a transcript as a path or shell command."""
+    if app not in APPS:
+        raise ValueError("This voice app command is not supported")
+    name, protocol = APPS[app]
+    if opener is None:
+        if os.name != "nt":
+            raise ValueError("Voice app launching currently requires Windows")
+        opener = os.startfile
+    try:
+        opener(protocol)
+    except PermissionError:
+        return {"kind": "error", "code": "app_launch_denied", "message": f"Windows denied opening {name}. Run DigitalSoul from your normal PowerShell instead of the restricted agent session."}
+    except OSError:
+        return {"kind": "error", "code": "app_unavailable", "message": f"Windows could not open {name}. Check that it is installed and its app protocol is registered."}
+    return {"kind": "app_opened", "app": app, "message": f"Opening {name}"}
+
+
+def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None):
+    command = resolve(text, workflows, require_wake=require_wake, awake=awake)
+    if command["kind"] == "open_app":
+        if busy:
+            return {"kind": "error", "message": "Stop recording or wait for replay before opening an app by voice."}
+        return launch_app(command["app"], opener)
+    return command
 
 
 class Listener:

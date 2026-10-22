@@ -222,3 +222,20 @@ def test_apps_only_passed_through_are_not_replayed():
     steps = [{"kind": "open_app", "path": ide}, {"kind": "open_app", "path": notepad},
              {"kind": "set_text", "path": notepad, "value": "hi"}, {"kind": "open_app", "path": ide}]
     assert [(s["kind"], s["path"]) for s in drop_empty_visits(steps)] == [("open_app", notepad), ("set_text", notepad)]
+
+
+def test_clean_steps_drops_one_off_noise_but_keeps_the_routine():
+    from agent.ghost.desktop.session import clean_steps
+    claude, brave = r"C:\Apps\claude.exe", r"C:\Apps\brave.exe"
+    recorded = [  # shape of a real recording: taskbar click, pane clicks, player clicks around two videos
+        {"kind": "open_app", "path": claude},
+        {"kind": "click", "path": claude, "label": "Brave - 1 running window pinned", "target": {"control_type": "Button", "automation_id": "Appid: Brave"}},
+        {"kind": "open_url", "path": brave, "url": "https://youtube.com/watch?v=a&t=40s"},
+        {"kind": "click", "path": brave, "label": "Primary pane", "target": {"control_type": "Group"}},
+        {"kind": "open_app", "path": claude},
+        {"kind": "open_url", "path": brave, "url": "https://youtube.com/watch?v=b"},
+        {"kind": "click", "path": brave, "label": "YouTube Video Player", "target": {"control_type": "Group"}},
+    ]
+    assert [(s["kind"], s.get("url")) for s in clean_steps(recorded)] == [
+        ("open_url", "https://youtube.com/watch?v=a&t=40s"), ("open_url", "https://youtube.com/watch?v=b")]
+    assert [s["kind"] for s in clean_steps([{"kind": "open_app", "path": claude}])] == ["open_app"]

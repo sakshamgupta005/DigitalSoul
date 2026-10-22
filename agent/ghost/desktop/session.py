@@ -93,9 +93,41 @@ def drop_empty_visits(steps):
     out = []
     for index, step in enumerate(steps):
         following = steps[index + 1] if index + 1 < len(steps) else None
-        if step["kind"] == "open_app" and (following is None or following["kind"] == "open_app"):
+        if step["kind"] == "open_app" and (following is None or following.get("path") != step.get("path")
+                                           or following["kind"] == "open_app"):
             continue
         out.append(step)
+    return out
+
+
+def clean_steps(steps):
+    """What is worth replaying. Applied when a recording is saved and again when it is shown or replayed,
+    so older recordings benefit too.
+    - Clicks on panes, groups and toolbars, or on the taskbar ('Appid: ...'), are one-off noise.
+    - In browsers the pages you ended up on are the routine: in-page clicks (play, pause, panes) are
+      dropped, and typing is kept only when it was submitted with Enter.
+    - Apps visited without doing anything are dropped."""
+    out = []
+    for index, step in enumerate(steps):
+        target = step.get("target") or {}
+        browser = PureWindowsPath(step.get("path", "")).name.lower() in BROWSER_EXES
+        following = steps[index + 1] if index + 1 < len(steps) else {}
+        if step["kind"] == "click" and (browser or target.get("control_type") not in CLICKABLE_KINDS
+                                        or str(target.get("automation_id", "")).startswith("Appid:")):
+            continue
+        if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter":
+            continue
+        out.append(step)
+    # Dropping noise can leave visits empty; repeat until stable.
+    while True:
+        trimmed = drop_empty_visits(out)
+        if trimmed == out:
+            break
+        out = trimmed
+    if not out:
+        # A routine that only opens an app ("open Notepad") keeps the app it ended in.
+        opened = [step for step in steps if step["kind"] == "open_app"]
+        out = opened[-1:]
     return out
 
 
@@ -377,6 +409,28 @@ class Session:
         elif options.get("whatsapp") or self.everything:
             # Any recording that touches WhatsApp also learns who was searched and what was typed.
             self.capture = Capture()
+        self.visual_memory = None
+        if options.get("enable_visual_memory", True):
+            try:
+                from agent.ghost.collector.visual_memory import VisualMemory
+                self.visual_memory = VisualMemory()
+            except Exception:
+                self.visual_memory = None
+        self.shopify_active = options.get("shopify", True)
+        self.shopify_detected = False
+        self.shopify_data = {
+            "title": "",
+            "description": "",
+            "price": "29.99",
+            "compare_at_price": "39.99",
+            "cost_per_item": "12.00",
+            "sku": "",
+            "inventory_quantity": 50,
+            "category": "Apparel & Accessories",
+            "tags": "featured, new-arrival",
+            "status": "Active",
+            "store_url": "https://admin.shopify.com/store/gzn0vr-qn/products/new",
+        }
         self.replay_error = None
         self.events = WinEvents(everything=self.everything)
         self.events.__enter__()
@@ -509,6 +563,29 @@ class Session:
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
+        if getattr(self, "visual_memory", None):
+            try:
+                app_name = step.get("app") or "Desktop"
+                window_title = getattr(self, "last_foreground", None) or app_name
+                target_name = step.get("label")
+                if not target_name and isinstance(step.get("target"), dict):
+                    target_name = step["target"].get("name")
+                mem_item = self.visual_memory.capture_and_remember(
+                    app=app_name,
+                    window_title=window_title,
+                    action_kind=step.get("kind", "action"),
+                    target_name=target_name,
+                    session_id=self.name,
+                    analyze_with_omniroute=True,
+                )
+                if mem_item.screenshot_path:
+                    step["screenshot_path"] = mem_item.screenshot_path
+                if mem_item.ocr_text:
+                    step["ocr_snippet"] = mem_item.ocr_text[:120].strip()
+                if mem_item.intent_summary:
+                    step["intent"] = mem_item.intent_summary
+            except Exception:
+                pass
         last = self.steps[-1] if self.steps else {}
         # Typing is polled, so one field's growing (or shrinking) text replaces its previous step. Fields
         # with the same locator but other labels (WhatsApp's search box and composer) stay separate.
@@ -606,7 +683,9 @@ class Session:
                                      "label": "Send", "target": snapshot["target"]})
                         continue
                     control = self._hit(window, event["point"])
-                    if not self.everything and control.element_info.process_id not in active_pids:
+                    # The taskbar, desktop or another app's window: not part of the app in front (Everything
+                    # mode's active_pids already include the app's child processes, e.g. WebView2).
+                    if control.element_info.process_id not in active_pids:
                         continue
                     # Climb to the nearest named control, but never past a page or window root:
                     # "Click <whole page>" cannot be replayed.
@@ -625,8 +704,8 @@ class Session:
                     # Fall back to the nearest named element, then the clicked element itself.
                     control = found or named or leaf
                     name, kind = control.element_info.name or "", control.element_info.control_type
-                    if kind in ROOT_KINDS or not (name or kind in CLICKABLE_KINDS or control.element_info.automation_id):
-                        continue  # a page root or anonymous container: nothing replayable was clicked
+                    if kind not in CLICKABLE_KINDS:
+                        continue  # panes, groups, toolbars, page roots: nothing replayable was clicked
                     label = clean_control_name(control, name, kind)
                     spec = locator(control, editable=kind == "Edit")
                     if label and label not in ("Text field", kind) and not spec.get("name"):
@@ -681,6 +760,26 @@ class Session:
                 if field and field != value_clean and len(field) <= 160:
                     step["field"] = field  # e.g. WhatsApp's "Type a message to <chat>" names the recipient
                 self.append(step)
+            if self.shopify_active and not is_whatsapp(path):
+                win_text = ""
+                try:
+                    win_text = (window.window_text() or "").lower()
+                except Exception:
+                    pass
+                name_low = self.name.lower()
+                fname = (focus.element_info.name or "").lower()
+                fid = (focus.element_info.automation_id or "").lower()
+                if ("shopify" in win_text or "products" in win_text or "shopify" in name_low
+                        or any("shopify" in str(s.get("value", "")).lower() or "shopify" in str(s.get("label", "")).lower() for s in self.steps)):
+                    self.shopify_detected = True
+                    if "price" in fname or "price" in fid or (value_clean.replace(".", "", 1).isdigit() and len(value_clean) <= 7):
+                        self.shopify_data["price"] = value_clean
+                    elif "sku" in fname or "sku" in fid:
+                        self.shopify_data["sku"] = value_clean
+                    elif "desc" in fname or "desc" in fid or len(value_clean) > 40:
+                        self.shopify_data["description"] = value_clean
+                    elif not self.shopify_data["title"] or "title" in fname or "title" in fid:
+                        self.shopify_data["title"] = value_clean
             if self.capture and not self.capture.done and is_whatsapp(path):
                 # The chat-header lookup and Send-button scan walk the whole window, so they run when
                 # the text changes (and the scan every 2 s while it rests), not on every 40 ms poll.
@@ -740,10 +839,17 @@ class Session:
             flow = derive_excel_flow(self.steps)
             if flow:
                 self.replay_error = None
+        if getattr(self, "shopify_active", False) and (getattr(self, "shopify_detected", False) or "shopify" in self.name.lower()) and not flow:
+            from ..browser.shopify import generate_product_fields
+            flow = {
+                "kind": "shopify",
+                "product": generate_product_fields(getattr(self, "shopify_data", {})),
+            }
+            self.replay_error = None
         used_whatsapp = any(is_whatsapp(step.get("path", "")) and step["kind"] != "open_app" for step in self.steps)
         if self.capture and used_whatsapp and not flow and not self.replay_error:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
         self._video_time()
-        self.steps = drop_empty_visits(compress_browsing(self.steps))
+        self.steps = clean_steps(compress_browsing(self.steps))
         return {"name": self.name, "apps": self.apps, "steps": self.steps, "flow": flow,
                 "duration": round(time.monotonic() - self.started, 1), "replay_error": self.replay_error}
