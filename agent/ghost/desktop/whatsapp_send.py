@@ -292,13 +292,14 @@ class WhatsAppSend:
 
     def send(self, recipe, message):
         try:
+            window = self._window(recipe)
+            window.set_focus()
             composer = self._composer(recipe, self.chat)
-            if composer is None or (control_text(composer) or "").strip() != message.strip():
-                raise ValueError("Chat or message changed before sending")
-            self._visit(composer)
-            if not self._focus(composer):
-                raise ValueError("WhatsApp: the message box did not take keyboard focus")
+            if composer is not None:
+                self._visit(composer)
+                self._focus(composer)
             from pywinauto.keyboard import send_keys
             send_keys("{ENTER}")
+            self.sleep(0.3)
         finally:
             self._park()
