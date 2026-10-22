@@ -124,6 +124,10 @@ async function showDetail(id) {
   $('detail-meta').textContent = `${detail.steps.length} recorded steps · ${timeLabel(detail.duration)} · ${new Date(detail.created_at).toLocaleString()}`;
   $('detail-warning').textContent = detail.flow ? 'A WhatsApp routine was recognized. Review its recipient and message before replay. Recorded sends may already have sent a real message.' : (detail.replay_error || 'These desktop steps are saved as evidence. An app adapter is needed before they can be replayed.');
   $('review-run').disabled = !detail.flow || state.recording || state.running;
+  // Recordings that are not a WhatsApp send routine replay step by step instead.
+  $('review-run').hidden = !detail.flow && detail.steps.length > 0;
+  $('replay-steps').hidden = !$('review-run').hidden;
+  $('replay-steps').disabled = state.recording || state.running;
   $('step-list').replaceChildren();
   for (const step of detail.steps) {
     const row = element('li');
@@ -186,6 +190,15 @@ $('review-run').addEventListener('click', () => {
   $('approve-send').checked = true;
 });
 $('cancel-run').addEventListener('click', () => view('detail'));
+$('replay-steps').addEventListener('click', () => action(async () => {
+  const detail = state.detail;
+  const apps = [...new Set(detail.steps.map((step) => step.app).filter(Boolean))].join(', ') || 'your desktop';
+  if (!window.confirm(`Replay all ${detail.steps.length} steps in ${apps}?
+
+DigitalSoul will click and type exactly as recorded, including sending messages again. Don't touch the mouse or keyboard while it runs. Press F8 to stop.`)) return;
+  await expanded(false);
+  await rpc('replay_steps', { id: detail.id, approved_digest: detail.steps_digest });
+}));
 $('run-mode').addEventListener('change', () => {
   const later = $('run-mode').value === 'later';
   $('schedule-label').hidden = !later;
@@ -246,7 +259,7 @@ async function boot() {
         await showDetail(payload.recording.id);
       } else if (payload.event === 'replay_started') {
         state.running = true;
-        $('compact-label').textContent = 'Replaying your workflow…';
+        $('compact-label').textContent = payload.steps ? 'Replaying · F8 to stop' : 'Replaying your workflow…';
         $('quit').disabled = true;
       } else if (payload.event === 'replay_finished') {
         state.running = false;
@@ -254,7 +267,8 @@ async function boot() {
         $('compact-label').textContent = 'Your work, remembered.';
         await refresh();
         await expanded(true);
-        view('activity');
+        if (payload.steps && state.detail) await showDetail(state.detail.id);
+        else view('activity');
         notice(payload.job?.detail || 'Replay ended. Check its status and WhatsApp before retrying.');
       } else if (payload.event === 'error') {
         await expanded(true);
