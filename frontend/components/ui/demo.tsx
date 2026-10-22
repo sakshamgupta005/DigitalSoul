@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { Pause, RotateCcw } from "lucide-react";
-import { FerrisWheelGallery } from "@/components/ui/ferris-wheel-gallery";
-import type { FerrisWheelItem } from "@/components/ui/ferris-wheel-gallery";
+import { FerrisWheelGallery } from "./ferris-wheel-gallery";
+import type { FerrisWheelItem } from "./ferris-wheel-gallery";
 
 const U = (id: string) => "https://images.unsplash.com/photo-" + id + "?q=80&w=1200&auto=format&fit=crop";
 
@@ -69,7 +69,7 @@ export default function FerrisWheelGalleryDemo({ autoplay = true }: { autoplay?:
           <div><p className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.24em] text-muted-foreground">A collection in motion</p><h1 className="text-2xl font-medium tracking-tight">Round &amp; round.</h1></div>
           <span className="mb-0.5 rounded-full border border-border px-2.5 py-1 text-[10px] tracking-wide text-muted-foreground">Sample collection</span>
         </header>
-        <FerrisWheelGallery key={run} items={FERRIS_WHEEL_DEMO_ITEMS} active={active} onActiveChange={(index) => { setPlaying(false); setActive(index); }} />
+        <FerrisWheelGallery key={run} items={FERRIS_WHEEL_DEMO_ITEMS} active={active} onActiveChange={(index: number) => { setPlaying(false); setActive(index); }} />
         <footer className="mt-2 flex min-h-8 items-center justify-between gap-3 text-[10px] text-muted-foreground">
           <span>Eight studies. A different point of view.</span>
           {autoplay && !reducedMotion && <button data-demo-control type="button" onClick={() => { if (playing) setPlaying(false); else { setActive(0); setRun((value) => value + 1); setPlaying(true); } }} className="flex min-h-8 items-center gap-1.5 rounded-md px-1 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">{playing ? <Pause aria-hidden="true" className="size-3" /> : <RotateCcw aria-hidden="true" className="size-3" />}{playing ? "Pause demo" : "Replay demo"}</button>}

@@ -2,100 +2,450 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>DigitalSoul Observer</title>
+  <title>DigitalSoul — Notch Companion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body {
-      width: 280px;
-      margin: 0;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: #0f172a;
-      color: #f8fafc;
+    :root {
+      --bg: #090a0d;
+      --card-bg: #101216;
+      --card-inner: #15181f;
+      --card-inner-hover: #191d26;
+      --input-bg: #090b0e;
+      --border-subtle: #1e222b;
+      --text: #ffffff;
+      --text-muted: #8b929e;
+      --text-dim: #606773;
+      --accent-blue: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-purple: #a855f7;
+      --accent-orange: #fb923c;
+      --font-main: 'Figtree', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
     }
-    .header {
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 440px;
+      background-color: var(--card-bg);
+      color: var(--text);
+      font-family: var(--font-main);
+      padding: 18px 20px 22px;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* Header */
+    .notch-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .header-left h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+
+    .header-left p {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-right {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
+      gap: 8px;
     }
-    .title {
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
+
+    .mic-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: #171a21;
+      border: 1px solid #242935;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
     }
-    .badge {
+
+    .mic-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+    .status-dot-green {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.85);
+    }
+
+    /* Tabs */
+    .tabs-row {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 3px 8px;
-      border-radius: 9999px;
-      font-size: 11px;
+      background: #0b0d11;
+      padding: 3px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 2px;
+      margin-bottom: 14px;
+    }
+
+    .tab-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
     }
-    .badge-active {
-      background: rgba(56, 189, 248, 0.15);
-      color: #38bdf8;
-      border: 1px solid rgba(56, 189, 248, 0.3);
+
+    .tab-item.active {
+      background: #1e222a;
+      color: #ffffff;
+      font-weight: 600;
     }
-    .dot {
+
+    .tab-badge {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent-blue);
+    }
+
+    /* Actions */
+    .actions-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .action-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+
+    .pill-add {
+      background: rgba(168, 85, 247, 0.12);
+      border-color: rgba(168, 85, 247, 0.35);
+      color: #d8b4fe;
+    }
+
+    .pill-excel {
+      background: #16181f;
+      border-color: #262a34;
+      color: #e2e8f0;
+    }
+
+    .pill-shopify {
+      background: #16181f;
+      border-color: #262a34;
+      color: var(--accent-orange);
+    }
+
+    .pill-recording {
+      background: #38bdf8;
+      border-color: #38bdf8;
+      color: #0b1120;
+      font-weight: 700;
+      margin-left: auto;
+    }
+
+    .rec-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #38bdf8;
-      animation: pulse 2s infinite;
+      background: #ef4444;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
+
+    /* Jarvis */
+    .jarvis-section { margin-bottom: 18px; }
+    .jarvis-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+    .jarvis-label { font-weight: 600; color: #cbd5e1; }
+    .jarvis-sub { color: var(--text-dim); }
+
+    .jarvis-input-box {
+      display: flex;
+      align-items: center;
+      background: var(--input-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 5px 6px 5px 12px;
+      gap: 6px;
     }
-    .info-card {
-      background: #1e293b;
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 12px;
-      line-height: 1.5;
-      color: #94a3b8;
-      margin-bottom: 12px;
-      border: 1px solid #334155;
-    }
-    .btn {
-      width: 100%;
-      padding: 8px;
-      border-radius: 6px;
+
+    .jarvis-input {
+      flex: 1;
+      background: transparent;
       border: none;
+      outline: none;
+      color: #ffffff;
+      font-family: inherit;
       font-size: 13px;
-      font-weight: 500;
+    }
+
+    .btn-find {
+      background: #171a22;
+      border: 1px solid #282d38;
+      color: #f1f5f9;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 6px;
       cursor: pointer;
-      background: #38bdf8;
-      color: #0f172a;
-      transition: background 0.15s ease;
     }
-    .btn:hover {
-      background: #7dd3fc;
+
+    .jarvis-caption {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      line-height: 1.4;
     }
-    .btn-secondary {
-      background: #334155;
-      color: #f8fafc;
-      margin-top: 8px;
+
+    /* Helper */
+    .ghost-avatar { font-size: 24px; margin-bottom: 2px; }
+    .helper-overline { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--accent-blue); }
+    .helper-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .helper-title-row h2 { font-size: 17px; font-weight: 700; color: #ffffff; }
+
+    .stay-pc-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #14161c;
+      border: 1px solid #232731;
+      font-size: 11px;
+      color: #94a3b8;
     }
-    .btn-secondary:hover {
-      background: #475569;
+
+    .stay-pc-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-green); }
+
+    .search-routine-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
     }
+
+    .search-routine-box svg { width: 14px; height: 14px; stroke: var(--text-dim); fill: none; stroke-width: 2; }
+    .search-routine-input { flex: 1; background: transparent; border: none; outline: none; font-size: 12.5px; color: #ffffff; }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+      margin-top: 12px;
+    }
+
+    .group-count {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #1e2430;
+      color: #94a3b8;
+    }
+
+    .routine-card {
+      background: var(--card-inner);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+
+    .routine-card:hover { background: var(--card-inner-hover); border-color: #2b313e; }
+
+    .routine-left { display: flex; align-items: center; gap: 10px; }
+    .routine-icon-box {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(16, 185, 129, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #10b981;
+    }
+    .routine-icon-box svg { width: 15px; height: 15px; fill: currentColor; }
+
+    .routine-title-row { display: flex; align-items: center; gap: 6px; }
+    .routine-title { font-size: 13.5px; font-weight: 600; color: #ffffff; }
+    .badge-ready { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: rgba(16, 185, 129, 0.18); color: #34d399; }
+    .badge-replayable { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: rgba(59, 130, 246, 0.18); color: #60a5fa; }
+    .target-chip-green { padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.12); color: #34d399; font-size: 10.5px; }
+    .target-chip-gray { padding: 2px 6px; border-radius: 4px; background: #1c212a; color: #94a3b8; font-size: 10.5px; }
+    .routine-param { font-size: 11px; color: var(--text-dim); }
+
+    .routine-stats { display: flex; flex-direction: column; align-items: flex-end; font-size: 10.5px; color: var(--text-dim); font-family: var(--font-mono); }
+    .stats-green-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); margin-bottom: 2px; }
+    .chevron-arrow { color: #475569; font-size: 16px; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="title">DigitalSoul</div>
-    <div class="badge badge-active">
-      <span class="dot"></span>
-      <span>Observing</span>
+
+  <!-- Header -->
+  <header class="notch-header">
+    <div class="header-left">
+      <h1>DigitalSoul</h1>
+      <p>Boo! I remember your routines.</p>
+    </div>
+    <div class="header-right">
+      <button type="button" class="mic-btn" aria-label="Toggle voice input">
+        <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+      </button>
+      <span class="status-dot-green"></span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs-row">
+    <button type="button" class="tab-item active">Workflows <span class="tab-badge">5</span></button>
+    <button type="button" class="tab-item">Learned <span class="tab-badge" style="background:#1e2430;color:#94a3b8;">0</span></button>
+    <button type="button" class="tab-item">Activity <span class="tab-badge" style="background:#1e2430;color:#94a3b8;">0</span></button>
+  </nav>
+
+  <!-- Quick Action Buttons -->
+  <div class="actions-row">
+    <button type="button" class="action-pill pill-add">✨ Add workflow</button>
+    <button type="button" class="action-pill pill-excel">📊 Excel</button>
+    <button type="button" class="action-pill pill-shopify">📦 Shopify</button>
+    <button type="button" class="action-pill pill-recording"><span class="rec-dot"></span> New recording</button>
+  </div>
+
+  <!-- Jarvis Input -->
+  <div class="jarvis-section">
+    <div class="jarvis-header">
+      <span class="jarvis-label">Jarvis</span>
+      <span class="jarvis-sub">to vansh arora</span>
+    </div>
+    <div class="jarvis-input-box">
+      <input type="text" class="jarvis-input" value="open chatgpt" />
+      <button type="button" class="btn-find">Find</button>
+    </div>
+    <p class="jarvis-caption">Speak with the mic, type, or dictate here. Review the saved steps before running.</p>
+  </div>
+
+  <!-- Helper -->
+  <div class="ghost-avatar">👻</div>
+  <div class="helper-overline">YOUR LITTLE HELPER</div>
+  <div class="helper-title-row">
+    <h2>What should I repeat for you?</h2>
+    <div class="stay-pc-badge"><span class="dot"></span> Stays on this PC</div>
+  </div>
+
+  <div class="search-routine-box">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="search-routine-input" placeholder="Ask or find a routine... (e.g. open downloads)" />
+  </div>
+
+  <!-- Workflows -->
+  <div>
+    <div class="group-header">
+      <span>WhatsApp sends</span>
+      <span class="group-count">1</span>
+    </div>
+    <div class="routine-card">
+      <div class="routine-left">
+        <div class="routine-icon-box">
+          <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+        </div>
+        <div>
+          <div class="routine-title-row">
+            <span class="routine-title">happy birthday</span>
+            <span class="badge-ready">Ready to send</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center; margin-top:3px;">
+            <span class="target-chip-green">→ Vansh Arora</span>
+            <span class="routine-param">"happy birthday"</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div class="routine-stats">
+          <span class="stats-green-dot"></span>
+          <span>5 steps</span>
+          <span>10s</span>
+          <span>9h ago</span>
+        </div>
+        <span class="chevron-arrow">›</span>
+      </div>
+    </div>
+
+    <div class="group-header">
+      <span>WhatsApp, no send</span>
+      <span class="group-count">2</span>
+    </div>
+    <div class="routine-card">
+      <div class="routine-left">
+        <div class="routine-icon-box">
+          <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+        </div>
+        <div>
+          <div class="routine-title-row">
+            <span class="routine-title">say hello</span>
+            <span class="badge-replayable">Replayable</span>
+          </div>
+          <div style="margin-top:3px;">
+            <span class="target-chip-gray">Desktop 1</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div class="routine-stats">
+          <span class="stats-green-dot"></span>
+          <span>5 steps</span>
+          <span>27s</span>
+          <span>6h ago</span>
+        </div>
+        <span class="chevron-arrow">›</span>
+      </div>
     </div>
   </div>
-  <div class="info-card">
-    Semantic action observer is actively monitoring consented internal workflows. Passwords & payment fields are redacted at source.
-  </div>
-  <button id="toggleBtn" class="btn">Pause Observation</button>
-  <button id="dashboardBtn" class="btn btn-secondary">Open Local Dashboard</button>
 
   <script src="popup.js"></script>
 </body>

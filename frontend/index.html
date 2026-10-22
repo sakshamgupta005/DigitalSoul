@@ -124,11 +124,44 @@
       stroke-linejoin: round;
     }
 
+    .nav-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 11px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      text-decoration: none;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 2px 6px rgba(58, 46, 14, 0.04);
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    .nav-btn-secondary:hover {
+      background: #ffffff;
+      border-color: var(--border-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(58, 46, 14, 0.08);
+    }
+
     .cta-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 12px 28px;
+      padding: 11px 26px;
       font-size: 0.95rem;
       font-weight: 600;
       letter-spacing: -0.01em;
@@ -667,8 +700,104 @@
       transform: scale(0.9);
       filter: saturate(0.7) brightness(0.95);
     }
-    .pl-shot { position: relative; aspect-ratio: 1; overflow: hidden; background: #eee; border-radius: 1px; }
-    .pl-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+    .pl-shot {
+      position: relative;
+      aspect-ratio: 1.05 / 1;
+      overflow: hidden;
+      border-radius: 4px;
+      border: 1px solid rgba(58, 46, 14, 0.08);
+      background: #1c1b17;
+    }
+
+    .carousel-colored-card {
+      position: absolute;
+      inset: 0;
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: #ffffeb;
+      text-align: left;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    .c-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .c-card-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffeb;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 2px 7px;
+      border-radius: 5px;
+      letter-spacing: 0.05em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .c-card-badge {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #ffffeb;
+    }
+
+    .c-card-mid {
+      margin: auto 0;
+      padding: 6px 0;
+    }
+
+    .c-card-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1.18;
+      color: #ffffff;
+      margin-bottom: 5px;
+      letter-spacing: -0.01em;
+    }
+
+    .c-card-desc {
+      font-family: var(--font-body);
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(255, 255, 235, 0.82);
+      margin: 0;
+    }
+
+    .c-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 8px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .c-card-metric-label {
+      color: rgba(255, 255, 235, 0.65);
+    }
+
+    .c-card-metric-val {
+      font-weight: 700;
+      color: #fde047;
+    }
     .pl-note {
       height: 44px;
       display: flex;
@@ -1166,34 +1295,48 @@
        How Our System Works Section (At The End)
        ============================================================== */
     /* ==============================================================
-       How Our System Works Section (Scroll-Driven Sticky Track)
+       How Our System Works Section (Seamless Unified Background)
        ============================================================== */
     .system-section {
       position: relative;
       z-index: 2;
       width: 100%;
-      height: 380vh; /* Scroll track for pinning and rotation */
-      margin-top: clamp(60px, 8vh, 110px);
-      border-top: 1px solid rgba(58, 46, 14, 0.08);
+      margin-top: clamp(40px, 6vh, 80px);
+      padding: clamp(60px, 8vh, 100px) clamp(24px, 4vw, 56px) 30px;
+      border: none;
+      box-sizing: border-box;
+      background: transparent;
+    }
+
+    .system-section::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: 
+        radial-gradient(circle, rgba(58, 46, 14, 0.07) 1.2px, transparent 1.2px),
+        linear-gradient(to right, rgba(58, 46, 14, 0.022) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(58, 46, 14, 0.022) 1px, transparent 1px);
+      background-size: 32px 32px, 96px 96px, 96px 96px;
+      background-position: center center;
+      -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, black 25%, transparent 80%);
+      mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, black 25%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     .system-sticky {
-      position: sticky;
-      top: 0;
+      position: relative;
+      z-index: 1;
       width: 100%;
-      height: 100vh;
-      overflow: hidden;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: clamp(20px, 3vh, 36px) clamp(24px, 4vw, 56px);
-      box-sizing: border-box;
     }
 
     .system-content-wrapper {
       width: 100%;
-      max-width: 1380px;
+      max-width: 1420px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -1247,7 +1390,7 @@
     }
 
     /* ==============================================================
-       Ferris Wheel Gallery Animation (Enlarged & Non-Collapsing)
+       Ferris Wheel Gallery Animation (Enlarged Circular Wheel)
        ============================================================== */
     .ferris-container {
       position: relative;
@@ -1257,9 +1400,9 @@
 
     .ferris-layout {
       display: grid;
-      grid-template-columns: 1.25fr 1fr;
+      grid-template-columns: 1.35fr 1fr;
       align-items: center;
-      gap: clamp(32px, 4.5vw, 68px);
+      gap: clamp(36px, 5vw, 76px);
     }
 
     @media (max-width: 960px) {
@@ -1273,7 +1416,7 @@
       position: relative;
       margin: 0 auto;
       width: 100%;
-      max-width: min(580px, 46vw, 56vh);
+      max-width: min(720px, 56vw, 72vh);
       aspect-ratio: 1 / 1;
       user-select: none;
       -webkit-user-select: none;
@@ -1331,6 +1474,8 @@
       height: 100%;
     }
 
+
+
     .wheel-stand-svg {
       position: absolute;
       inset: 0;
@@ -1343,10 +1488,10 @@
 
     .wheel-disc {
       position: absolute;
-      left: 8%;
-      top: 6%;
-      width: 84%;
-      height: 84%;
+      left: 4.5%;
+      top: 4%;
+      width: 91%;
+      height: 91%;
       border-radius: 50%;
       border: 2px solid rgba(58, 46, 14, 0.18);
       transform-origin: center center;
@@ -1485,10 +1630,10 @@
     .wheel-hub {
       position: absolute;
       left: 50%;
-      top: 48%;
+      top: 49.5%;
       transform: translate(-50%, -50%);
-      width: 82px;
-      height: 82px;
+      width: 86px;
+      height: 86px;
       border-radius: 50%;
       border: 2px solid rgba(58, 46, 14, 0.18);
       background: radial-gradient(circle, rgba(255, 255, 245, 0.98) 55%, rgba(245, 222, 170, 0.4) 100%);
@@ -1550,28 +1695,146 @@
       max-height: 320px;
       overflow: hidden;
       border-radius: 16px;
-      background: rgba(58, 46, 14, 0.06);
+      background: #181714;
       border: 1px solid var(--border);
       box-shadow: 0 8px 30px rgba(58, 46, 14, 0.08);
     }
 
-    .detail-photo {
+    .detail-card-layer {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
       transition: opacity 0.45s ease-out;
     }
 
-    .detail-photo.prev {
+    .detail-card-layer.prev {
       z-index: 1;
       opacity: 0;
+      pointer-events: none;
     }
 
-    .detail-photo.curr {
+    .detail-card-layer.curr {
       z-index: 2;
       opacity: 1;
+    }
+
+    .detail-card-inner-box {
+      width: 100%;
+      height: 100%;
+      padding: 22px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: #ffffeb;
+      text-align: left;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+    }
+
+    .detail-card-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .detail-stage-pill {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffeb;
+    }
+
+    .detail-card-center-copy {
+      margin: auto 0;
+    }
+
+    .detail-card-head-title {
+      font-family: var(--font-display);
+      font-size: 1.45rem;
+      font-weight: 600;
+      color: #ffffff;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+
+    .detail-card-head-sub {
+      font-family: var(--font-body);
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(255, 255, 235, 0.82);
+      margin-bottom: 10px;
+      max-width: 480px;
+    }
+
+    .detail-card-code-block {
+      background: rgba(0, 0, 0, 0.38);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .code-indicator {
+      color: #fbbf24;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      flex-shrink: 0;
+    }
+
+    .detail-card-code-block code {
+      color: #38bdf8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .detail-card-bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.16);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+    }
+
+    .detail-pill-phase {
+      color: rgba(255, 255, 235, 0.65);
+    }
+
+    .detail-pill-verified {
+      font-weight: 700;
+      color: #4ade80;
+    }
+
+    .gondola-colored-card {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .gondola-card-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 0.04em;
     }
 
     .detail-info {
@@ -1816,8 +2079,52 @@
       border-top: 1px solid rgba(58, 46, 14, 0.08);
       font-size: 0.86rem;
       color: var(--text-faint);
-      flex-wrap: wrap;
-      gap: 16px;
+    }
+
+    .detail-explanation {
+      margin-top: 10px;
+      font-size: 0.92rem;
+      line-height: 1.6;
+      color: var(--text-soft);
+      max-width: 440px;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Centralized Dashboard Button Above Footer */
+    .dashboard-cta-wrapper {
+      position: relative;
+      z-index: 5;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 90px 24px 110px;
+      box-sizing: border-box;
+    }
+
+    .dashboard-hero-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 13px 34px;
+      font-size: 1.02rem;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      border-radius: 999px;
+      background: #1c1b17;
+      color: #ffffeb;
+      text-decoration: none;
+      box-shadow: 0 6px 20px rgba(28, 27, 23, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .dashboard-hero-btn:hover {
+      transform: translateY(-2px);
+      background: #2b2823;
+      box-shadow: 0 10px 28px rgba(28, 27, 23, 0.24);
+      color: #ffffff;
     }
   </style>
 </head>
@@ -1840,20 +2147,28 @@
         </div>
         <span>DigitalSoul</span>
       </a>
-      <a href="#get-started" class="cta-btn">Get Started</a>
+      <div class="nav-actions">
+        <a href="dashboard.html" class="nav-btn-secondary">Dashboard</a>
+        <a href="docs.html" class="nav-btn-secondary">Docs</a>
+        <a href="get-started.html" class="cta-btn">Get Started</a>
+      </div>
     </header>
 
     <!-- Centralized Hero Heading -->
     <div class="hero-header">
+      <div class="hero-tag">
+        <span class="hero-tag-dot"></span>
+        <span>Local-First Desktop Agent</span>
+      </div>
       <h1 class="hero-title">
-        Automate the Routine.<br>
-        <em>Craft the</em> <span class="word-highlight"><em>Extraordinary.</em></span>
+        Learn Repeated Work.<br>
+        <em>Compile the</em> <span class="word-highlight"><em>Deterministic.</em></span>
       </h1>
     </div>
 
     <!-- Hero Desk Image (Full Horizontal Width Desk at Bottom of Hero) -->
     <div class="hero-desk-wrapper">
-      <img src="assets/hero_desk_wide.png" alt="Builders working at desk" class="hero-desk-image" />
+      <img src="assets/hero_desk_wide.png" onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='../assets/hero_desk_wide.png';}" alt="Builders working at desk" class="hero-desk-image" />
     </div>
   </section>
 
@@ -1868,9 +2183,9 @@
               <span class="tag-dot"></span>
               <span>The Philosophy</span>
             </div>
-            <h2 class="about-title">Built for the Craft</h2>
+            <h2 class="about-title">Built for Verifiable Precision</h2>
             <p class="fill-text" id="revealParagraph">
-              The AI era has created a new generation of exceptional builders. We value those who have dedicated the last few years to mastering this craft through relentless learning, experimentation, and execution. If you possess the rare drive to turn the unimaginable into reality, let's craft the future together.
+              Desktop automation should never rely on hallucination-prone AI driving live cursors. DigitalSoul watches repeated desktop workflows with explicit consent, extracts semantic patterns, and compiles immutable execution DAGs. The AI acts purely as an analyst — never driving blind — while native browser-use executes approved mutations with zero cloud leakage and cryptographic receipts.
             </p>
             <div class="about-meta">
               <div class="meta-item">
@@ -2141,16 +2456,16 @@
             
             <!-- Left Column: Wheel Stage -->
             <div>
-              <div class="wheel-stage" id="wheelStage" tabindex="0" aria-label="Rotate system studies wheel">
+              <div class="wheel-stage" id="wheelStage" tabindex="0" aria-label="Rotate system workflow wheel">
                 <div class="stage-indicator" aria-hidden="true">
-                  <span>ON VIEW</span>
+                  <span>SYSTEM STEP</span>
                   <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
                 </div>
                 
                 <div class="wheel-aspect-box">
                   <!-- A-frame Stand SVG -->
                   <svg class="wheel-stand-svg" viewBox="0 0 400 400" aria-hidden="true">
-                    <path d="M200 192 105 380M200 192 295 380M85 380H315" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
+                    <path d="M200 198 95 385M200 198 305 385M75 385H325" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/>
                   </svg>
 
                   <!-- Rotating Wheel Disc (Enlarged) -->
@@ -2166,29 +2481,30 @@
                   <!-- Central Hub -->
                   <div class="wheel-hub" id="wheelHub" aria-hidden="true">
                     <span class="hub-count" id="hubCount">08</span>
-                    <span class="hub-label">STUDIES</span>
+                    <span class="hub-label">STEPS</span>
                   </div>
                 </div>
               </div>
-              <p class="stage-hint">Scroll down to rotate studies <span>/</span> Use ← → or click</p>
+              <p class="stage-hint">Click any step or use ← → arrows to explore the workflow</p>
             </div>
 
             <!-- Right Column: Active Detail Panel -->
             <div class="detail-panel" id="detailPanel">
               <div class="detail-photo-wrap">
-                <img id="detailPhotoPrev" class="detail-photo prev" alt="" />
-                <img id="detailPhotoCurr" class="detail-photo curr" alt="" />
+                <div id="detailCardPrev" class="detail-card-layer prev"></div>
+                <div id="detailCardCurr" class="detail-card-layer curr"></div>
               </div>
               <div class="detail-info">
-                <span class="detail-tag" id="detailTag">STUDY 01</span>
-                <h3 class="detail-title" id="detailTitle">Soft Geometry</h3>
-                <p class="detail-desc" id="detailDesc">Architecture · 2026</p>
+                <span class="detail-tag" id="detailTag">WORKFLOW STEP 01</span>
+                <h3 class="detail-title" id="detailTitle">Consented Telemetry Capture</h3>
+                <p class="detail-desc" id="detailDesc">M1 Sensory Observer · Chrome &amp; Edge Extension</p>
+                <p class="detail-explanation" id="detailExplanation">Passively monitors user actions across internal enterprise applications. Credential fields, auth tokens, and sensitive payment data are sanitized at source.</p>
                 
                 <div class="detail-controls">
-                  <button type="button" class="ctrl-btn" id="ctrlPrev" aria-label="Previous study">
+                  <button type="button" class="ctrl-btn" id="ctrlPrev" aria-label="Previous step">
                     <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                   </button>
-                  <button type="button" class="ctrl-btn primary" id="ctrlNext" aria-label="Next study">
+                  <button type="button" class="ctrl-btn primary" id="ctrlNext" aria-label="Next step">
                     <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                   </button>
                   <div class="ctrl-counter" aria-hidden="true">
@@ -2203,6 +2519,11 @@
       </div>
     </div>
   </section>
+
+  <!-- View Your Dashboard CTA Button (Above Footer) -->
+  <div class="dashboard-cta-wrapper">
+    <a href="dashboard.html" class="cta-btn dashboard-hero-btn">View Your Dashboard</a>
+  </div>
 
   <!-- Site Footer -->
   <footer class="site-footer">
@@ -2229,28 +2550,29 @@
           <ul class="footer-links">
             <li><a href="#about">Philosophy</a></li>
             <li><a href="#carousel">Visual Studies</a></li>
-            <li><a href="#productivity">Productivity Tools</a></li>
             <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="get-started.html">Quickstart Guide</a></li>
+            <li><a href="dashboard.html">View Your Dashboard</a></li>
           </ul>
         </div>
 
         <div>
           <h4 class="footer-col-title">Architecture</h4>
           <ul class="footer-links">
-            <li><a href="#">browser-use Session</a></li>
-            <li><a href="#">Deterministic DAGs</a></li>
-            <li><a href="#">Local OmniRoute</a></li>
-            <li><a href="#">Approval Gates</a></li>
+            <li><a href="docs.html#browser-use">browser-use Session</a></li>
+            <li><a href="docs.html#architecture">Deterministic DAGs</a></li>
+            <li><a href="docs.html#omniroute">Local OmniRoute</a></li>
+            <li><a href="docs.html#safety">Approval Gates</a></li>
           </ul>
         </div>
 
         <div>
           <h4 class="footer-col-title">System</h4>
           <ul class="footer-links">
-            <li><a href="#">CONTRACTS.md</a></li>
-            <li><a href="#">REVIEW.md</a></li>
-            <li><a href="#">Blinky Reference</a></li>
-            <li><a href="#">Security Policy</a></li>
+            <li><a href="docs.html#contracts">CONTRACTS.md</a></li>
+            <li><a href="docs.html#safety">REVIEW.md</a></li>
+            <li><a href="docs.html#blinky">Blinky Reference</a></li>
+            <li><a href="docs.html#safety">Security Policy</a></li>
           </ul>
         </div>
       </div>
@@ -2286,14 +2608,67 @@
     }
 
     // 2. Pure Scroll-Driven Polaroid Line Carousel
-    const U = id => "https://images.unsplash.com/photo-" + id + "?q=80&w=1200&auto=format&fit=crop";
     const slides = [
-      { image: U("1506905925346-21bda4d32df4"), title: "Above the Clouds", caption: "Valais, Switzerland — sunrise at 3,100 m." },
-      { image: U("1501785888041-af3ef285b470"), title: "Glass Lake", caption: "Lago di Braies, a rowboat at noon." },
-      { image: U("1469474968028-56623f02e42e"), title: "Gold Valley", caption: "Late light pouring over the ridge." },
-      { image: U("1464822759023-fed622ff2c3b"), title: "Snow Line", caption: "Pines, river flats and the high range." },
-      { image: U("1500534314209-a25ddb2bd429"), title: "Blue Ridges", caption: "Seven layers of haze before dusk." },
-      { image: U("1433086966358-54859d0ed716"), title: "Falls Bridge", caption: "Multnomah Falls after the rain." },
+      {
+        num: "01",
+        tag: "OBSERVER",
+        title: "Consented Telemetry",
+        desc: "Passively captures user interaction streams with source-side credential sanitization.",
+        caption: "Passively captures user interaction streams with source-side credential sanitization.",
+        bg: "linear-gradient(145deg, #064e3b 0%, #022c22 100%)",
+        statLabel: "SOURCE FILTER",
+        statVal: "SANITIZED"
+      },
+      {
+        num: "02",
+        tag: "COMPILER",
+        title: "Deterministic DAGs",
+        desc: "Compiles recurring workflow episodes into strictly typed, verifiable execution graphs.",
+        caption: "Compiles recurring workflow episodes into strictly typed, verifiable execution graphs.",
+        bg: "linear-gradient(145deg, #78350f 0%, #451a03 100%)",
+        statLabel: "AST CHECK",
+        statVal: "TYPED"
+      },
+      {
+        num: "03",
+        tag: "RUNTIME",
+        title: "browser-use CDP",
+        desc: "Direct Chromium DevTools Protocol session under isolated profile without Playwright drift.",
+        caption: "Direct Chromium DevTools Protocol session under isolated profile without Playwright drift.",
+        bg: "linear-gradient(145deg, #0c4a6e 0%, #082f49 100%)",
+        statLabel: "DEVTOOLS",
+        statVal: "NATIVE 0.13"
+      },
+      {
+        num: "04",
+        tag: "AI GATEWAY",
+        title: "OmniRoute Gateway",
+        desc: "Local multi-model proxy (127.0.0.1:20128) acting as analyst, never driving blind.",
+        caption: "Local multi-model proxy (127.0.0.1:20128) acting as analyst, never driving blind.",
+        bg: "linear-gradient(145deg, #581c87 0%, #3b0764 100%)",
+        statLabel: "LOOPBACK",
+        statVal: "127.0.0.1"
+      },
+      {
+        num: "05",
+        tag: "SECURITY",
+        title: "Approval Gates",
+        desc: "RFC 8785 canonical hash effect binding requiring explicit operator authorization.",
+        caption: "RFC 8785 canonical hash effect binding requiring explicit operator authorization.",
+        bg: "linear-gradient(145deg, #881337 0%, #4c0519 100%)",
+        statLabel: "HASH BIND",
+        statVal: "SIGNED"
+      },
+      {
+        num: "06",
+        tag: "LEDGER",
+        title: "Cryptographic WAL",
+        desc: "Tamper-evident SQLite journal with durable transaction receipts & independent checks.",
+        caption: "Tamper-evident SQLite journal with durable transaction receipts & independent checks.",
+        bg: "linear-gradient(145deg, #1e293b 0%, #0f172a 100%)",
+        statLabel: "JOURNAL",
+        statVal: "VERIFIED"
+      }
     ];
 
     const n = slides.length;
@@ -2311,7 +2686,22 @@
       card.dataset.on = i === 0 ? '1' : '0';
       card.innerHTML = `
         <div class="pl-print">
-          <div class="pl-shot"><img src="${sl.image}" alt="${sl.title}" draggable="false" /></div>
+          <div class="pl-shot">
+            <div class="carousel-colored-card" style="background: ${sl.bg};">
+              <div class="c-card-top">
+                <span class="c-card-num">${sl.num}</span>
+                <span class="c-card-badge">${sl.tag}</span>
+              </div>
+              <div class="c-card-mid">
+                <div class="c-card-title">${sl.title}</div>
+                <p class="c-card-desc">${sl.desc}</p>
+              </div>
+              <div class="c-card-footer">
+                <span class="c-card-metric-label">${sl.statLabel}</span>
+                <span class="c-card-metric-val">${sl.statVal}</span>
+              </div>
+            </div>
+          </div>
           <div class="pl-note">${sl.title}</div>
         </div>
         <div class="pl-peg"></div>
@@ -2460,23 +2850,7 @@
         }
       }
 
-      // 4. Ferris Wheel Multi-Layer Parallax (Smooth depth shift between wheel and detail panel)
-      const systemSection = document.getElementById('how-it-works');
-      if (systemSection) {
-        const sysRect = systemSection.getBoundingClientRect();
-        if (sysRect.top < window.innerHeight && sysRect.bottom > 0) {
-          const sysProgress = (window.innerHeight - sysRect.top);
-          const shiftWheel = (sysProgress - window.innerHeight * 0.5) * 0.08;
-          const shiftDetail = (sysProgress - window.innerHeight * 0.5) * -0.06;
 
-          if (wheelStage) {
-            wheelStage.style.transform = `translate3d(0, ${-shiftWheel.toFixed(1)}px, 0)`;
-          }
-          if (detailPanel) {
-            detailPanel.style.transform = `translate3d(0, ${-shiftDetail.toFixed(1)}px, 0)`;
-          }
-        }
-      }
 
       requestAnimationFrame(parallaxLoop);
     }
@@ -2486,14 +2860,86 @@
     // 4. Ferris Wheel Gallery Interactive Controller & Physics
     // ==============================================================
     const FERRIS_ITEMS = [
-      { id: "geometry", title: "Soft Geometry", discipline: "Architecture", year: "2026", alt: "Angular concrete balconies seen from below", src: "https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=1200&auto=format&fit=crop" },
-      { id: "tidal", title: "Tidal Studies", discipline: "Aerial photography", year: "2026", alt: "Turquoise water beside a forested coast and winding road", src: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop" },
-      { id: "dunes", title: "After the Dunes", discipline: "Landscape", year: "2025", alt: "Sculpted orange sand dunes with fine ripples", src: "https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?q=80&w=1200&auto=format&fit=crop" },
-      { id: "arches", title: "Open Arches", discipline: "Architecture", year: "2026", alt: "A sequence of warmly lit stone arches", src: "https://images.unsplash.com/photo-1513584684374-8bab748fbf90?q=80&w=1200&auto=format&fit=crop" },
-      { id: "fields", title: "Contour Fields", discipline: "Landscape", year: "2025", alt: "Green terraced fields in morning mist", src: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=1200&auto=format&fit=crop" },
-      { id: "water", title: "Still Water", discipline: "Landscape", year: "2026", alt: "A mountain lake below a pink evening sky", src: "https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200&auto=format&fit=crop" },
-      { id: "bloom", title: "Brief Bloom", discipline: "Botanical study", year: "2025", alt: "Pink blossoms on a branch against a dark background", src: "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?q=80&w=1200&auto=format&fit=crop" },
-      { id: "clouds", title: "Cloud Atlas", discipline: "Aerial photography", year: "2026", alt: "Sunlight breaking through deep blue clouds", src: "https://images.unsplash.com/photo-1534088568595-a066f410bcda?q=80&w=1200&auto=format&fit=crop" }
+      {
+        id: "step-1",
+        step: "01",
+        title: "Consented Telemetry Capture",
+        discipline: "M1 Sensory Observer · Chrome & Edge Extension",
+        year: "Telemetry",
+        alt: "Desktop observer recording consented actions",
+        src: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Passively monitors user actions across internal enterprise applications. Credential fields, auth tokens, and sensitive payment data are sanitized at source."
+      },
+      {
+        id: "step-2",
+        step: "02",
+        title: "Pattern Mining & DAG Compilation",
+        discipline: "M1 Engine · RFC 8785 Canonical JSON",
+        year: "Compilation",
+        alt: "Directed Acyclic Graph code compilation",
+        src: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Compiles recurring workflow episodes into strictly typed Directed Acyclic Graphs with AST-checked expressions and deterministic preconditions."
+      },
+      {
+        id: "step-3",
+        step: "03",
+        title: "browser-use CDP Session Init",
+        discipline: "Isolated Profile · DevTools Protocol",
+        year: "Driver",
+        alt: "Chromium DevTools Protocol session",
+        src: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Launches browser-use 0.13.11 with dedicated profile under .ghost/chrome. Directly controls browser tabs via native CDP without emulated Playwright drivers."
+      },
+      {
+        id: "step-4",
+        step: "04",
+        title: "Semantic DOM Field Extraction",
+        discipline: "Target Locators · Zero Drift",
+        year: "Extraction",
+        alt: "DOM inspection and resilient locators",
+        src: "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Extracts customer records and overdue statuses using multi-tier locators (data-testid, ARIA, semantic tree), rejecting synthetic hallucinated values."
+      },
+      {
+        id: "step-5",
+        step: "05",
+        title: "OmniRoute Local AI Inference",
+        discipline: "Loopback Gateway · 127.0.0.1:20128",
+        year: "Inference",
+        alt: "Local machine learning inference gateway",
+        src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Routes complex decision branches through the local OmniRoute proxy for zero-leakage hypothesis generation with strict parameter bounds."
+      },
+      {
+        id: "step-6",
+        step: "06",
+        title: "Cryptographic Approval Gate",
+        discipline: "Safety Policy · SHA-256 Effect Binding",
+        year: "Approval",
+        alt: "Cryptographic security key and approval gate",
+        src: "https://images.unsplash.com/photo-1563986768609-322da13575f3?q=80&w=1200&auto=format&fit=crop",
+        explanation: "R2 state mutations halt before firing. Generates an RFC 8785 canonical hash of the action payload and requires signed operator authorization."
+      },
+      {
+        id: "step-7",
+        step: "07",
+        title: "Deterministic Mutation Action",
+        discipline: "browser-use Actor · Exact Execution",
+        year: "Execution",
+        alt: "Deterministic execution node",
+        src: "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Dispatches the approved mutation using browser-use Actor. Tags the customer account in CRM and logs pre-action intent to durable WAL."
+      },
+      {
+        id: "step-8",
+        step: "08",
+        title: "Independent Reconciliation & Receipt",
+        discipline: "M2 Runtime · SQLite WAL",
+        year: "Reconciliation",
+        alt: "Verified transaction receipt and ledger",
+        src: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1200&auto=format&fit=crop",
+        explanation: "Confirms the effect with an independent read-only GET check, generating a signed cryptographic receipt with zero replay vulnerability."
+      }
     ];
 
     const TURN_MS = 650;
@@ -2646,9 +3092,11 @@
         }
       });
 
-      if (detailTag) detailTag.textContent = `STUDY ${String(newIdx + 1).padStart(2, '0')}`;
+      if (detailTag) detailTag.textContent = `WORKFLOW STEP ${String(newIdx + 1).padStart(2, '0')}`;
       if (detailTitle) detailTitle.textContent = curItem.title;
-      if (detailDesc) detailDesc.textContent = `${curItem.discipline} · ${curItem.year}`;
+      if (detailDesc) detailDesc.textContent = curItem.discipline;
+      const detailExp = document.getElementById('detailExplanation');
+      if (detailExp) detailExp.textContent = curItem.explanation || '';
       if (counterCurrent) counterCurrent.textContent = String(newIdx + 1).padStart(2, '0');
 
       if (detailPhotoPrev && detailPhotoCurr) {

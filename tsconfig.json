@@ -15,9 +15,10 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
+      "@/components/*": ["./frontend/components/*", "./components/*"],
       "@/*": ["./frontend/*", "./*"]
     }
   },
-  "include": ["frontend/components/**/*.ts", "frontend/components/**/*.tsx"],
+  "include": ["frontend/components/**/*.ts", "frontend/components/**/*.tsx", "components/**/*.ts", "components/**/*.tsx"],
   "exclude": ["node_modules"]
 }
