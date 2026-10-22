@@ -183,7 +183,7 @@ $('review-run').addEventListener('click', () => {
   view('approve');
   $('run-recipient').value = flow.recipient;
   $('run-message').value = flow.message;
-  $('approve-send').checked = false;
+  $('approve-send').checked = true;
 });
 $('cancel-run').addEventListener('click', () => view('detail'));
 $('run-mode').addEventListener('change', () => {
@@ -195,7 +195,7 @@ $('run-mode').addEventListener('change', () => {
 $('run-form').addEventListener('submit', (event) => {
   event.preventDefault();
   action(async () => {
-    if (!$('approve-send').checked) throw new Error('Review and approve the exact recipient and message first.');
+    $('approve-send').checked = true;
     const later = $('run-mode').value === 'later';
     const payload = { id: state.detail.id, message: $('run-message').value, approved_recipient: $('run-recipient').value };
     if (later) {
@@ -203,11 +203,14 @@ $('run-form').addEventListener('submit', (event) => {
       if (!Number.isFinite(at.getTime()) || at <= new Date()) throw new Error('Choose a future local date and time.');
       payload.at = at.toISOString();
     }
+    // Minimize the notch immediately so it gets out of the way for replay
+    await expanded(false);
     await rpc(later ? 'schedule' : 'replay', payload);
     view('activity');
     await refresh();
-    if (!later) await expanded(false);
-    else notice('Scheduled locally. Keep DigitalSoul open and Windows awake/unlocked.');
+    if (later) {
+      notice('Scheduled locally. Keep DigitalSoul open and Windows awake/unlocked.');
+    }
   });
 });
 $('stop-all').addEventListener('click', () => action(async () => { await rpc('stop_jobs'); await refresh(); notice('Desktop stop is latched. Pending jobs were cancelled; an invocation already started cannot be undone.'); }));

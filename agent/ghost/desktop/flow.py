@@ -53,8 +53,9 @@ def find(window, spec):
                and (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])
                and (not name_spec or 
                     (item.element_info.name or "").strip().lower() == name_spec or
-                    (item.element_info.name or "").strip().lower().startswith(name_spec + " "))
-               and _ancestors_match(ancestry(item), spec.get("ancestors", []))]
+                    (item.element_info.name or "").strip().lower().startswith(name_spec + " ") or
+                    (((item.element_info.name or "").strip().lower().splitlines()[0].strip() if (item.element_info.name or "").strip() else "") == name_spec))
+               and (not spec.get("ancestors") or _ancestors_match(ancestry(item), spec["ancestors"]))]
     unique = []
     seen = set()
     for m in matches:
@@ -75,11 +76,13 @@ def header(window, title):
     candidates = []
     seen = set()
     target_clean = title.strip().lower()
+    pattern = re.compile(f"^{re.escape(target_clean)}.*", re.IGNORECASE | re.DOTALL)
     for ctype in ("Button", "Text"):
-        for item in window.descendants(control_type=ctype):
+        for item in window.descendants(control_type=ctype, title_re=pattern):
             name = (item.element_info.name or "").strip()
             name_clean = name.lower()
-            if not (name_clean == target_clean or name_clean.startswith(target_clean + " ") or name_clean.splitlines()[0] == target_clean):
+            first_line = name_clean.splitlines()[0] if name_clean else ""
+            if not (name_clean == target_clean or name_clean.startswith(target_clean + " ") or first_line == target_clean):
                 continue
             if not item.is_visible():
                 continue
@@ -136,11 +139,29 @@ class Native:
         hwnd = self.user.GetForegroundWindow()
         pid = wintypes.DWORD()
         self.user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if not pid.value:
-            raise ValueError("No foreground desktop window")
-        current = executable(pid.value)
-        if not is_whatsapp(current) or (path and current != path):
-            raise ValueError("WhatsApp must be foreground on an unlocked desktop")
+        current = executable(pid.value) if pid.value else None
+        if not current or not is_whatsapp(current) or (path and current != path):
+            try:
+                top = self.desktop.window(handle=hwnd).top_level_parent()
+                top_pid = top.element_info.process_id
+                top_exe = executable(top_pid)
+                if is_whatsapp(top_exe) and (not path or top_exe == path):
+                    return top, top_pid, top_exe
+            except Exception:
+                pass
+            for w in self.desktop.windows():
+                try:
+                    w_pid = w.element_info.process_id
+                    w_exe = executable(w_pid)
+                    if is_whatsapp(w_exe) and (not path or w_exe == path):
+                        self.user.ShowWindow(w.handle, 9)
+                        self.user.SwitchToThisWindow(w.handle, True)
+                        self.user.SetForegroundWindow(w.handle)
+                        time.sleep(0.3)
+                        return w, w_pid, w_exe
+                except Exception:
+                    continue
+            raise ValueError(f"WhatsApp must be foreground on an unlocked desktop (hwnd={hwnd}, current={current!r}, path={path!r})")
         return self.desktop.window(handle=hwnd).wrapper_object(), pid.value, current
 
     def focused(self):
@@ -179,8 +200,13 @@ class Native:
         if len(matches) > 1:
             raise ValueError("Multiple WhatsApp windows found; close extras before replay")
         if matches:
-            matches[0].restore()
-            matches[0].set_focus()
+            hwnd = matches[0].handle
+            try:
+                self.user.ShowWindow(hwnd, 9)
+                self.user.SwitchToThisWindow(hwnd, True)
+                self.user.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
             return
         app_id = flow.get("app_id")
         if app_id:
@@ -209,10 +235,15 @@ class FlowAdapter:
 
     def _window(self, flow):
         self._allow()
-        return self.native.active(flow["executable"])[0]
+        try:
+            return self.native.active(flow["executable"])[0]
+        except ValueError:
+            self.native.open(flow)
+            time.sleep(0.3)
+            return self.native.active(flow["executable"])[0]
 
-    def _wait(self, callback):
-        deadline = time.monotonic() + 8
+    def _wait(self, callback, timeout=15):
+        deadline = time.monotonic() + timeout
         while True:
             self._allow()
             try:
@@ -245,12 +276,36 @@ class FlowAdapter:
                     target.set_edit_text(value)
                 except Exception:
                     pass
-                val = target.get_value() or ""
-                if val.strip() != value.strip():
-                    target.set_focus()
-                    target.type_keys("^a{BACKSPACE}", set_foreground=False)
+                for _ in range(3):
+                    val = (target.get_value() or "").strip()
+                    if val == value.strip():
+                        break
                     escaped = re.sub(r'([+^%~{}()])', r'{\1}', value)
-                    target.type_keys(escaped, with_spaces=True, set_foreground=False)
+                    if hasattr(target, "element_info"):
+                        try:
+                            target.set_focus()
+                        except Exception:
+                            try:
+                                target.click_input()
+                            except Exception:
+                                pass
+                        time.sleep(0.3)
+                        try:
+                            import pywinauto.keyboard
+                            pywinauto.keyboard.send_keys("^a{BACKSPACE}")
+                            time.sleep(0.1)
+                            pywinauto.keyboard.send_keys(escaped, with_spaces=True)
+                        except Exception:
+                            target.type_keys("^a{BACKSPACE}", set_foreground=False)
+                            time.sleep(0.1)
+                            target.type_keys(escaped, with_spaces=True, set_foreground=False)
+                    else:
+                        try:
+                            target.set_edit_text(value)
+                        except Exception:
+                            pass
+                        target.type_keys(escaped, with_spaces=True, set_foreground=False)
+                    time.sleep(0.4)
                 self._wait(lambda: self._value_matches(flow, action["target"], value))
         self.ready(flow, message)
 
@@ -258,7 +313,7 @@ class FlowAdapter:
         target = find(self._window(flow), spec)
         val = target.get_value() or ""
         if val != value and val.strip() != value.strip():
-            raise ValueError("Recorded field value has changed")
+            raise ValueError(f"Recorded field value has changed: got {val!r}, expected {value!r}")
         return target
 
     def ready(self, flow, message):
@@ -270,9 +325,24 @@ class FlowAdapter:
         if flow["send"]["kind"] == "button":
             self.native.click(flow, flow["send"]["target"])
         else:
-            composer.set_focus()
-            self.ready(flow, message)
-            composer.type_keys("{ENTER}", set_foreground=False)
+            if hasattr(composer, "element_info"):
+                try:
+                    composer.set_focus()
+                except Exception:
+                    try:
+                        composer.click_input()
+                    except Exception:
+                        pass
+                time.sleep(0.3)
+                self.ready(flow, message)
+                try:
+                    import pywinauto.keyboard
+                    pywinauto.keyboard.send_keys("{ENTER}")
+                except Exception:
+                    composer.type_keys("{ENTER}", set_foreground=False)
+            else:
+                self.ready(flow, message)
+                composer.type_keys("{ENTER}", set_foreground=False)
 
 
 class Capture:
