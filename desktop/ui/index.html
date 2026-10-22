@@ -15,7 +15,7 @@
     </header>
     <div id="panel" class="panel" hidden>
       <nav class="tabs" aria-label="DigitalSoul views">
-        <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Learned <span id="pattern-count">0</span></button><button data-tab="profiles">Profiles <span id="profile-count">3</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
+        <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Skills & Learned <span id="pattern-count">0</span></button><button data-tab="profiles">Profiles <span id="profile-count">3</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
         <div class="tab-actions"><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-gform" class="new-button gform-button" title="Auto-fill Google Forms with remembered info">📝 Google Form</button></div>
       </nav>
       <form id="voice-form" class="voice-command"><label for="voice-text">Jarvis <small id="voice-status" role="status">Mic off · local faster-whisper</small></label><div><input id="voice-text" maxlength="512" placeholder="Hey Jarvis, do workflow name" aria-label="Workflow command"><button class="secondary" type="submit">Find</button></div><p>Speak with the mic, type, or dictate here. Review the saved steps before running.</p></form>
@@ -34,6 +34,27 @@
       <section id="patterns" class="view" hidden>
         <div class="section-heading"><div><span class="eyebrow purple">Pattern Intelligence</span><h1>Skills & habits I learned from you.</h1></div><div class="heading-actions"><button id="hermes-sync-btn" class="secondary mini-btn" title="Sync skills from NousResearch/hermes-agent">⚡ Hermes Skills</button><button id="import-skill-btn" class="secondary mini-btn" title="Import Microsoft or Hermes SKILL.md specification">📥 Import SKILL.md</button></div></div>
         <p class="section-intro">As you do repeated work across multiple recordings, I detect patterns, extract variable input slots (names, files, search terms, cells), and evolve them into reusable automated skills.</p>
+
+        <!-- Remembered User Facts & Workflow Memory Card -->
+        <div class="user-memory-card" id="user-memory-card">
+          <div class="user-memory-header">
+            <div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span class="eyebrow cyan">Autonomous Learning & Memory</span>
+                <span class="memory-live-pulse" title="Continuously learns from every workflow you do">● Live Learning</span>
+              </div>
+              <h2 style="font-size:15px;margin:2px 0 4px;color:var(--text)">What I Remember About You & Your Workflows</h2>
+              <p class="section-subtext" style="margin:0;font-size:11.5px;color:var(--text-3)">DigitalSoul automatically saves facts, preferred applications, and values from what you do so it can use them every time you create or run other tasks.</p>
+            </div>
+            <button id="add-memory-btn" class="primary mini-btn" title="Teach DigitalSoul a new fact or preference about you">+ Add Memory</button>
+          </div>
+          <div id="user-memory-grid" class="user-memory-grid"></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px">
+          <h2 style="font-size:15px;margin:0;color:var(--text)">Automated Skills Learned From You</h2>
+          <span id="skills-stat-badge" class="badge-subtle">0 Skills Available</span>
+        </div>
 
         <div id="pattern-list" class="pattern-list"></div>
         <div id="pattern-empty" class="empty"><div class="empty-symbol" aria-hidden="true">🧠</div><h2>No repeated patterns discovered yet!</h2><p>Perform a routine 2 or more times. I will automatically align the steps, generalize inputs, and create a reinforced skill you can run anytime.</p></div>

@@ -230,7 +230,10 @@ def launch_app(app, opener=None):
 def dispatch(text, workflows, *, busy=False, require_wake=False, awake=False, opener=None, catalog=None, learning=None):
     command = resolve(text, workflows, require_wake=require_wake, awake=awake)
     if command["kind"] == "unknown" and learning is not None:
-        patterns = learning.list_patterns()
+        try:
+            patterns = learning.list_patterns(include_demonstrations=True) if hasattr(learning, "list_patterns") else []
+        except TypeError:
+            patterns = learning.list_patterns()
         learned = resolve(text, patterns, require_wake=require_wake, awake=awake)
         if learned["kind"] == "workflow":
             return {**learned, "kind": "learned_workflow"}

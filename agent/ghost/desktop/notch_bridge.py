@@ -143,8 +143,12 @@ def main():
             value = catalog.save(finished.finish())
             try:
                 learn_res = learning_engine.record_episode(value.get("steps", []), name=value.get("name"), flow=value.get("flow"))
-                if learn_res.get("action") in ("discovered", "reinforced"):
-                    emit({"event": "pattern_learned", "result": learn_res})
+                emit({
+                    "event": "pattern_learned",
+                    "result": learn_res,
+                    "user_memory": learning_engine.get_user_memory(),
+                    "patterns_count": len(learning_engine.list_patterns(include_demonstrations=True)),
+                })
                 emit({"event": "profile_updated", "profile": learning_engine.get_active_profile()})
             except Exception:
                 pass
@@ -172,10 +176,12 @@ def main():
                             "start", "replay", "schedule", "replay_steps", "voice_start", "shopify_run", "learning_execute", "workflow_synthesize"):
                         raise ValueError("A Shopify run is active; wait for it or cancel it first")
                     if method == "hello":
+                        patterns = learning_engine.list_patterns(include_demonstrations=True)
                         result = {"platform": sys.platform, "recording": bool(session), "running": replay_id or bool(step_run),
                                   "data": str(data), "version": "0.1.0", "accent": accent_color(),
-                                  "patterns_count": len(learning_engine.list_patterns()),
-                                  "profiles_count": len(learning_engine.list_profiles())}
+                                  "patterns_count": len(patterns),
+                                  "profiles_count": len(learning_engine.list_profiles()),
+                                  "user_memory_count": len(learning_engine.get_user_memory())}
                     elif method == "list":
                         result = {"workflows": catalog.list(), "jobs": jobs.list()}
                     elif method == "detail":
@@ -334,7 +340,12 @@ def main():
                     elif method == "shopify_cancel":
                         result = {"cancelled": shopify_future.cancel() if shopify_future is not None else False}
                     elif method == "learning_patterns":
-                        result = {"patterns": [dict(p, approved_digest=step_replay.digest({"steps": p["skeleton"], "parameters": p["parameters"]})) for p in learning_engine.list_patterns()]}
+                        patterns = learning_engine.list_patterns(include_demonstrations=True)
+                        result = {
+                            "patterns": [dict(p, approved_digest=step_replay.digest({"steps": p["skeleton"], "parameters": p["parameters"]})) for p in patterns],
+                            "user_memory": learning_engine.get_user_memory(),
+                            "recent_routines": learning_engine.list_recent_routines(),
+                        }
                     elif method == "learning_detail":
                         result = learning_engine.get_pattern(payload["id"])
                         if result:
@@ -353,7 +364,11 @@ def main():
                         result = {"started": True, "steps_count": len(steps)}
                     elif method == "learning_delete":
                         learning_engine.delete_pattern(payload["id"])
-                        result = {"deleted": True}
+                        patterns = learning_engine.list_patterns(include_demonstrations=True)
+                        result = {
+                            "deleted": True,
+                            "patterns": [dict(p, approved_digest=step_replay.digest({"steps": p["skeleton"], "parameters": p["parameters"]})) for p in patterns]
+                        }
                     elif method == "gform_inspect":
                         from ..browser.gform_actor import GFormActor
                         result = GFormActor.inspect_url(payload.get("url", ""))
@@ -373,10 +388,21 @@ def main():
                             asyncio.run(actor.close())
                     elif method == "gform_memory_get":
                         from ..browser.gform_memory import GFormMemory
-                        result = {"profile": GFormMemory().profile}
+                        # Sync with learning engine user memory
+                        gmem = GFormMemory().profile
+                        for k, v in learning_engine.get_user_memory().items():
+                            if k not in gmem and v.get("value"):
+                                gmem[k] = v["value"]
+                        result = {"profile": gmem, "user_memory": learning_engine.get_user_memory()}
                     elif method == "gform_memory_save":
                         from ..browser.gform_memory import GFormMemory
-                        result = {"profile": GFormMemory().save(payload.get("profile", {}))}
+                        profile_updates = payload.get("profile") or payload.get("updates") or {}
+                        if isinstance(profile_updates, dict):
+                            for k, v in profile_updates.items():
+                                if v is not None:
+                                    learning_engine.save_user_fact(k, v, source="user_saved")
+                        saved_prof = GFormMemory().save(profile_updates)
+                        result = {"profile": saved_prof, "user_memory": learning_engine.get_user_memory()}
                     elif method == "export_skill":
                         result = {"skill_markdown": learning_engine.export_skill(payload["id"])}
                     elif method == "import_skill":

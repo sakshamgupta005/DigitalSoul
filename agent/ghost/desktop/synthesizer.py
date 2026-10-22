@@ -63,10 +63,16 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
         sku_match = re.search(r'\bsku\s*[:=]?\s*([A-Za-z0-9_-]+)', raw, re.I)
         sku = sku_match.group(1).upper() if sku_match else None
 
+        store_url = "https://admin.shopify.com/store/gzn0vr-qn/products"
+        if learning is not None and hasattr(learning, "get_user_fact"):
+            rem_url = learning.get_user_fact("shopify_store_url")
+            if rem_url:
+                store_url = rem_url
+
         partial: Dict[str, Any] = {
             "title": title.strip().title(),
             "price": price,
-            "store_url": "https://admin.shopify.com/store/gzn0vr-qn/products",
+            "store_url": store_url,
         }
         if sku:
             partial["sku"] = sku
@@ -79,14 +85,19 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
             "name": f"Shopify · {product['title']}",
             "product": product,
             "summary": f"Add '{product['title']}' (${product['price']}) to Shopify store via browser-use",
-            "message": f"✨ Synthesized Shopify product '{product['title']}'! Review fields below.",
+            "message": f"✨ Synthesized Shopify product '{product['title']}' using your store preferences! Review fields below.",
         }
 
     # 2. Excel workflow
     if any(k in lowered for k in ("excel", "spreadsheet", "sheet", "cells", "rows", "columns", "budget", "expenses")):
         from .excel import generate_excel_data
         topic_match = re.search(r'(?:for|of|topic|about|named|called)\s+["\']?([^"\'\n.,]+)', raw, re.I)
-        topic = topic_match.group(1).strip().title() if topic_match else "Monthly Expenses"
+        default_topic = "Monthly Expenses"
+        if learning is not None and hasattr(learning, "get_user_fact"):
+            rem_topic = learning.get_user_fact("frequent_search_term")
+            if rem_topic:
+                default_topic = f"{rem_topic.title()} Log"
+        topic = topic_match.group(1).strip().title() if topic_match else default_topic
         excel_payload = {
             "topic": topic,
             "prompt": raw,
@@ -105,7 +116,12 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
     # 3. Google Form workflow
     if any(k in lowered for k in ("google form", "google forms", "gform", "fill form", "fill out form", "survey", "enrolment form", "registration form", "docs.google.com/forms")):
         url_match = re.search(r'https?://docs\.google\.com/forms/[^\s]+', raw)
-        form_url = url_match.group(0) if url_match else "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
+        default_form_url = "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
+        if learning is not None and hasattr(learning, "get_user_fact"):
+            rem_form = learning.get_user_fact("recent_gform_url")
+            if rem_form:
+                default_form_url = rem_form
+        form_url = url_match.group(0) if url_match else default_form_url
         return {
             "ok": True,
             "kind": "gform",
@@ -127,8 +143,13 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
             rec_cand = re.search(r'(?:message|text)\s+([A-Za-z0-9_]+)', raw, re.I)
             recipient = rec_cand.group(1).strip().title() if rec_cand else "Contact"
 
-        if recipient.lower() in ("a", "the", "someone", "whatsapp", "message", "someone"):
-            recipient = "Alex"
+        if recipient.lower() in ("a", "the", "someone", "whatsapp", "message", "someone", "contact"):
+            default_rec = "Alex"
+            if learning is not None and hasattr(learning, "get_user_fact"):
+                rem_rec = learning.get_user_fact("default_whatsapp_recipient")
+                if rem_rec:
+                    default_rec = rem_rec
+            recipient = default_rec
 
         # Extract message body
         msg_match = re.search(r'(?:saying|that|message|with text|text)\s*[:=]?\s*["\']?([^"\']+)["\']?$', raw, re.I)
@@ -189,6 +210,50 @@ def synthesize_workflow(prompt: str, catalog: Optional[Any] = None, learning: Op
             "summary": f"Send WhatsApp message to {recipient}: \"{message}\"",
             "message_text": f"✨ Synthesized WhatsApp message for {recipient}! Review and approve below.",
         }
+
+    # 5. Check if instruction matches any learned skills from what the user demonstrated
+    if learning is not None and hasattr(learning, "list_patterns"):
+        try:
+            learned_patterns = learning.list_patterns(include_demonstrations=True)
+            for pat in learned_patterns:
+                pat_name_norm = pat["name"].lower()
+                pat_intent_norm = pat.get("intent", "").lower()
+                # Check for direct phrase match or token overlap
+                if pat_name_norm in lowered or pat_intent_norm in lowered or any(word in lowered for word in pat_name_norm.split() if len(word) > 3):
+                    # Extract any variable overrides from user prompt
+                    quoted_vals = re.findall(r'["\']([^"\']+)["\']', raw)
+                    overrides = {}
+                    if quoted_vals and pat.get("parameters"):
+                        for idx, p in enumerate(pat["parameters"]):
+                            if idx < len(quoted_vals):
+                                overrides[p["name"]] = quoted_vals[idx]
+
+                    adapted_steps = learning.adapt_pattern_steps(pat["id"], overrides)
+                    saved_id = None
+                    saved_wf = None
+                    if catalog is not None:
+                        saved = catalog.save({
+                            "name": f"Skill · {pat['name']}",
+                            "steps": adapted_steps,
+                            "apps": list(dict.fromkeys(s.get("app", "") for s in adapted_steps)),
+                            "source_skill": pat["id"]
+                        })
+                        saved_id = saved["id"]
+                        saved_wf = saved
+
+                    return {
+                        "ok": True,
+                        "kind": "learned_skill",
+                        "id": saved_id or pat["id"],
+                        "name": f"Skill · {pat['name']}",
+                        "steps": adapted_steps,
+                        "parameters": pat.get("parameters", []),
+                        "workflow": saved_wf,
+                        "summary": f"Execute learned skill '{pat['name']}' ({len(adapted_steps)} steps)",
+                        "message": f"✨ Adapted learned skill '{pat['name']}' from what you demonstrated! Review steps below.",
+                    }
+        except Exception:
+            pass
 
     # Unfamiliar tasks must be grounded in demonstrations, not fabricated locators.
     from .hermes_planner import propose

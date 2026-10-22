@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], profiles: [], activeProfile: null, profileWorkflow: null, jobs: [], detail: null, pending: false };
+const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], profiles: [], activeProfile: null, profileWorkflow: null, jobs: [], detail: null, pending: false, user_memory: {}, recent_routines: [] };
 const tauri = window.__TAURI__;
 const timeLabel = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 const dateLabel = (date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -335,6 +335,9 @@ function renderJobs() {
 
 function renderPatterns() {
   bump('pattern-count', state.patterns.length);
+  if ($('skills-stat-badge')) {
+    $('skills-stat-badge').textContent = `${state.patterns.length} Skill${state.patterns.length === 1 ? '' : 's'} Available`;
+  }
   $('pattern-empty').hidden = state.patterns.length > 0;
   const list = $('pattern-list');
   list.replaceChildren();
@@ -343,9 +346,10 @@ function renderPatterns() {
   for (const pat of state.patterns) {
     const card = element('article', 'pattern-card');
     const header = element('div', 'pattern-header');
+    const badgeText = pat.is_demonstration ? '🧠 Learned Skill' : `🧠 Reinforced × ${pat.support}`;
     header.append(
       element('strong', 'pattern-title', pat.name),
-      element('span', 'pattern-badge', `🧠 Reinforced × ${pat.support}`),
+      element('span', 'pattern-badge', badgeText),
       element('span', 'pattern-consistency', `${Math.round(pat.alignment * 100)}% consistency`)
     );
 
@@ -394,6 +398,76 @@ function renderPatterns() {
   }
 }
 
+function renderUserMemory() {
+  const grid = $('user-memory-grid');
+  if (!grid) return;
+  grid.replaceChildren();
+
+  const entries = Object.values(state.user_memory || {});
+  if (!entries.length) {
+    const empty = element('div', 'user-memory-item');
+    empty.style.gridColumn = '1 / -1';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '14px';
+    empty.style.color = 'var(--text-3)';
+    empty.append(element('p', '', '🧠 DigitalSoul is monitoring. Facts, preferences, and contacts you use in workflows will appear here automatically.'));
+    grid.append(empty);
+    return;
+  }
+
+  const catIcons = {
+    identity: '👤',
+    commerce: '🛍️',
+    messaging: '💬',
+    spreadsheet: '📊',
+    workflow_habit: '⚡',
+  };
+
+  for (const fact of entries) {
+    const card = element('div', 'user-memory-item');
+    const top = element('div', 'memory-item-top');
+    const icon = catIcons[fact.category] || '💡';
+
+    const lbl = element('span', 'memory-item-label', `${icon} ${fact.label || fact.key}`);
+
+    const actions = element('div', 'memory-item-actions');
+    const editBtn = element('button', 'memory-mini-btn', '✏️');
+    editBtn.title = `Edit "${fact.label || fact.key}"`;
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      action(async () => {
+        const newVal = promptDialog(`Edit remembered value for "${fact.label || fact.key}":`, fact.value);
+        if (newVal === null || newVal.trim() === '') return;
+        await rpc('gform_memory_save', { profile: { [fact.key]: newVal.trim() } });
+        await refresh();
+        notice(`Updated "${fact.label || fact.key}" in your memory!`, 'success');
+      });
+    });
+
+    const delBtn = element('button', 'memory-mini-btn del', '✕');
+    delBtn.title = `Forget "${fact.label || fact.key}"`;
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      action(async () => {
+        if (!confirmDialog(`Forget remembered fact "${fact.label || fact.key}"?`)) return;
+        await rpc('gform_memory_save', { profile: { [fact.key]: '' } });
+        await refresh();
+        notice(`Removed "${fact.label || fact.key}" from memory.`);
+      });
+    });
+
+    actions.append(editBtn, delBtn);
+    top.append(lbl, actions);
+
+    const val = element('div', 'memory-item-val', fact.value);
+    const badge = element('div', 'memory-item-badge');
+    const srcText = fact.source && fact.source.startsWith('learned:') ? 'Auto-learned' : (fact.usage_count > 1 ? `Used × ${fact.usage_count}` : 'Verified');
+    badge.append(element('span', '', `● ${srcText}`));
+
+    card.append(top, val, badge);
+    grid.append(card);
+  }
+}
 
 function openPatternWorkflow(pat) {
   view('approve');
@@ -418,8 +492,20 @@ function openPatternWorkflow(pat) {
       label.append(element('span', '', `${p.label || p.name} ({{${p.name}}})`));
       const input = element('input');
       input.name = p.name;
-      input.value = p.default || '';
-      input.placeholder = `e.g. ${p.default || 'Enter value'}`;
+      // Pre-fill from remembered user memory if available
+      let prefilled = p.default || '';
+      if (!prefilled || prefilled.startsWith('{{')) {
+        const pNorm = p.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        for (const [mKey, mData] of Object.entries(state.user_memory || {})) {
+          const mNorm = mKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (pNorm.includes(mNorm) || mNorm.includes(pNorm) || (p.label && p.label.toLowerCase().includes(mKey.toLowerCase()))) {
+            prefilled = mData.value;
+            break;
+          }
+        }
+      }
+      input.value = prefilled;
+      input.placeholder = `e.g. ${prefilled || 'Enter value'}`;
       label.append(input);
       container.append(label);
     }
@@ -676,6 +762,8 @@ async function refresh() {
   try {
     const patResult = await rpc('learning_patterns');
     state.patterns = patResult.patterns || [];
+    state.user_memory = patResult.user_memory || {};
+    state.recent_routines = patResult.recent_routines || [];
   } catch {}
   try {
     const profResult = await rpc('profile_list');
@@ -686,6 +774,7 @@ async function refresh() {
   renderWorkflows();
   renderPatterns();
   renderProfiles();
+  renderUserMemory();
   renderJobs();
 }
 
@@ -2180,11 +2269,11 @@ async function boot() {
         await expanded(true);
         await showDetail(payload.recording.id);
         cheer();
-        notice(`Got it! I learned ${payload.recording.steps.length} steps.`, 'success');
       } else if (payload.event === 'pattern_learned') {
+        if (payload.user_memory) state.user_memory = payload.user_memory;
         await refresh();
         cheer();
-        notice(`🧠 Pattern Intelligence: ${payload.result.detail}`, 'success');
+        notice(`🧠 Pattern Intelligence: ${payload.result?.detail || 'Learned new skills and workflow facts!'}`, 'success');
       } else if (payload.event === 'replay_started') {
         state.running = true;
         $('notch').classList.add('replaying');
@@ -2236,6 +2325,16 @@ async function boot() {
     const res = await rpc('import_skill', { skill_markdown: md.trim() });
     await refresh();
     notice(`Imported skill "${res.name}" with ${res.step_count} verified steps.`, 'success');
+  }));
+  $('add-memory-btn')?.addEventListener('click', () => action(async () => {
+    const keyName = promptDialog("Enter fact or preference name (e.g. Full Name, Shopify Store URL, Manager Name, Shipping Address):");
+    if (!keyName || !keyName.trim()) return;
+    const val = promptDialog(`Enter value for "${keyName.trim()}":`);
+    if (!val || !val.trim()) return;
+    const cleanKey = keyName.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    await rpc('gform_memory_save', { profile: { [cleanKey]: val.trim() } });
+    await refresh();
+    notice(`Saved "${keyName.trim()}" to your memory! DigitalSoul will use it across workflows.`, 'success');
   }));
   $('test-hud-btn')?.addEventListener('click', () => action(async () => {
     notice('Live Ghost Pilot HUD demo engaged! Watch the ghost flight overlay.', 'success');

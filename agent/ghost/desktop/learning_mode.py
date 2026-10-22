@@ -121,6 +121,7 @@ class LearningEngine:
         self.db.execute("PRAGMA journal_mode=WAL")
         self._init_db()
         self.profiles = ProfileManager(self.db)
+        self._init_default_user_memory()
 
     def _init_db(self):
         with self.db:
@@ -149,6 +150,186 @@ class LearningEngine:
                     updated_at TEXT NOT NULL
                 )
             """)
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS user_memory (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    label TEXT,
+                    category TEXT NOT NULL DEFAULT 'preference',
+                    source TEXT NOT NULL DEFAULT 'observed',
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    usage_count INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            self.db.execute("""
+                CREATE TABLE IF NOT EXISTS user_routines (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    app TEXT,
+                    step_count INTEGER NOT NULL DEFAULT 0,
+                    last_executed_at TEXT NOT NULL
+                )
+            """)
+
+    def _init_default_user_memory(self):
+        """Seed initial facts from persistent profile or environment if user_memory is empty."""
+        cur = self.db.execute("SELECT COUNT(*) FROM user_memory")
+        if cur.fetchone()[0] > 0:
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        defaults = [
+            ("user_name", "Eshan Sharma", "Full Name", "identity", "profile_default", 1.0),
+            ("email", "eshansharma@example.com", "Email Address", "identity", "profile_default", 1.0),
+            ("organization", "GDG", "Organization", "identity", "profile_default", 0.95),
+            ("shopify_store_url", "https://admin.shopify.com/store/gzn0vr-qn/products", "Shopify Store URL", "commerce", "system_default", 0.95),
+            ("default_whatsapp_recipient", "Alex", "Primary WhatsApp Contact", "messaging", "system_default", 0.90),
+            ("preferred_browser", "msedge.exe", "Preferred Browser", "workflow_habit", "system_default", 0.95),
+            ("signature", "- Sent by Digital Twin", "Signature Sign-Off", "messaging", "system_default", 0.95),
+        ]
+        with self.db:
+            for key, val, label, cat, src, conf in defaults:
+                self.db.execute("""
+                    INSERT OR IGNORE INTO user_memory VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (key, val, label, cat, src, conf, now, now))
+
+    def get_user_memory(self) -> Dict[str, Dict[str, Any]]:
+        """Retrieve all remembered facts and knowledge about the user."""
+        rows = self.db.execute("""
+            SELECT key, value, label, category, source, confidence, usage_count, updated_at
+            FROM user_memory ORDER BY category, usage_count DESC, updated_at DESC
+        """).fetchall()
+        out = {}
+        for r in rows:
+            out[r[0]] = {
+                "key": r[0],
+                "value": r[1],
+                "label": r[2] or r[0].replace("_", " ").title(),
+                "category": r[3],
+                "source": r[4],
+                "confidence": r[5],
+                "usage_count": r[6],
+                "updated_at": r[7],
+            }
+        return out
+
+    def get_user_fact(self, key: str, default: Any = None) -> Any:
+        """Lookup a specific remembered fact about the user."""
+        row = self.db.execute("SELECT value FROM user_memory WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def save_user_fact(
+        self,
+        key: str,
+        value: Any,
+        label: Optional[str] = None,
+        category: str = "preference",
+        source: str = "user_input"
+    ) -> Dict[str, Any]:
+        """Upsert a remembered fact or preference about the user."""
+        now = datetime.now(timezone.utc).isoformat()
+        val_str = str(value).strip()
+        lbl = label or key.replace("_", " ").title()
+        with self.db:
+            self.db.execute("""
+                INSERT INTO user_memory (key, value, label, category, source, confidence, usage_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1.0, 1, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    label = COALESCE(excluded.label, user_memory.label),
+                    usage_count = user_memory.usage_count + 1,
+                    updated_at = excluded.updated_at
+            """, (key, val_str, lbl, category, source, now, now))
+        return {
+            "key": key,
+            "value": val_str,
+            "label": lbl,
+            "category": category,
+            "source": source,
+            "updated_at": now
+        }
+
+    def delete_user_fact(self, key: str) -> bool:
+        """Delete a remembered user fact."""
+        with self.db:
+            self.db.execute("DELETE FROM user_memory WHERE key = ?", (key,))
+        return True
+
+    def learn_user_facts_from_steps(
+        self,
+        steps: List[Dict[str, Any]],
+        name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Automatically learn and update user facts, habits, and workflows from observed steps."""
+        learned = []
+        now = datetime.now(timezone.utc).isoformat()
+        apps_used = []
+
+        for s in steps:
+            kind = s.get("kind") or "action"
+            label = (s.get("label") or "").strip().lower()
+            val = str(s.get("value") or "").strip()
+            app = s.get("app") or ""
+            if app:
+                apps_used.append(app)
+
+            # Analyze text entry
+            if kind == "set_text" and val:
+                # 1. Email address
+                if re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b", val):
+                    learned.append(self.save_user_fact("email", val, "Email Address", "identity", f"learned:{name or 'workflow'}"))
+                # 2. Phone number
+                elif re.search(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", val) and len(val) >= 7:
+                    learned.append(self.save_user_fact("phone", val, "Phone Number", "identity", f"learned:{name or 'workflow'}"))
+                # 3. User name / full name
+                elif any(k in label for k in ("your name", "full name", "first name", "applicant name")):
+                    learned.append(self.save_user_fact("user_name", val, "Full Name", "identity", f"learned:{name or 'workflow'}"))
+                # 4. Organization / institution
+                elif any(k in label for k in ("organization", "organisation", "company", "college", "university")):
+                    learned.append(self.save_user_fact("organization", val, "Organization", "identity", f"learned:{name or 'workflow'}"))
+                # 5. Search queries / topic focus
+                elif any(k in label for k in ("search", "find", "filter")) and len(val) >= 3:
+                    learned.append(self.save_user_fact("frequent_search_term", val, "Recent Search Topic", "workflow_habit", f"learned:{name or 'workflow'}"))
+                # 6. Messaging recipients
+                elif any(k in label for k in ("recipient", "send to", "contact", "chat title")) and len(val) >= 2:
+                    learned.append(self.save_user_fact("default_whatsapp_recipient", val, "Frequent Contact", "messaging", f"learned:{name or 'workflow'}"))
+
+            # Analyze URL navigation
+            elif kind == "open_url":
+                url = s.get("url") or ""
+                if "admin.shopify.com" in url or "myshopify.com" in url:
+                    learned.append(self.save_user_fact("shopify_store_url", url, "Shopify Store URL", "commerce", f"learned:{name or 'workflow'}"))
+                elif "docs.google.com/forms" in url:
+                    learned.append(self.save_user_fact("recent_gform_url", url, "Google Form URL", "workflow_habit", f"learned:{name or 'workflow'}"))
+
+        # Track app preference
+        if apps_used:
+            fav = max(set(apps_used), key=apps_used.count)
+            if "edge" in fav.lower() or "chrome" in fav.lower() or "brave" in fav.lower():
+                learned.append(self.save_user_fact("preferred_browser", fav, "Preferred Browser", "workflow_habit", "observed_usage"))
+
+        # Record routine knowledge
+        if name:
+            routine_id = f"rout_{uuid.uuid4().hex[:8]}"
+            primary_app = apps_used[0] if apps_used else "System"
+            with self.db:
+                self.db.execute("""
+                    INSERT INTO user_routines (id, name, app, step_count, last_executed_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET last_executed_at = excluded.last_executed_at
+                """, (routine_id, name, primary_app, len(steps), now))
+
+        return learned
+
+    def list_recent_routines(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """List recently observed routines and tasks performed by the user."""
+        rows = self.db.execute("""
+            SELECT id, name, app, step_count, last_executed_at
+            FROM user_routines ORDER BY last_executed_at DESC LIMIT ?
+        """, (limit,)).fetchall()
+        return [{"id": r[0], "name": r[1], "app": r[2], "step_count": r[3], "last_executed_at": r[4]} for r in rows]
 
     def record_episode(
         self,
@@ -191,6 +372,12 @@ class LearningEngine:
         profile_learned = None
         try:
             profile_learned = self.profiles.learn_from_demonstration(steps, name=name)
+        except Exception:
+            pass
+
+        # Automatic User Memory Learning: Extract facts, identity, contacts, and workflow knowledge
+        try:
+            self.learn_user_facts_from_steps(steps, name=name)
         except Exception:
             pass
 
@@ -369,7 +556,7 @@ class LearningEngine:
             "detail": f"Learned pattern '{name}' from 2 matching demonstrations ({int(similarity * 100)}% consistency)."
         }
 
-    def list_patterns(self) -> List[Dict[str, Any]]:
+    def list_patterns(self, include_demonstrations: bool = False) -> List[Dict[str, Any]]:
         """List all discovered patterns and skills learned from repeated demonstrations."""
         rows = self.db.execute("""
             SELECT id, name, intent, support, alignment, skeleton_json, parameters_json, evidence_episodes_json, created_at, updated_at
@@ -391,6 +578,70 @@ class LearningEngine:
                 "updated_at": r[9],
                 "step_count": len(json.loads(r[5]))
             })
+
+        if include_demonstrations:
+            existing_evidence = set()
+            for p in patterns:
+                for ep_id in p.get("evidence_episodes", []):
+                    existing_evidence.add(ep_id)
+
+            ep_rows = self.db.execute("""
+                SELECT id, name, steps_json, tokens_json, summary_json, created_at
+                FROM episodes ORDER BY created_at DESC
+            """).fetchall()
+
+            for er in ep_rows:
+                ep_id = er[0]
+                if ep_id in existing_evidence:
+                    continue
+                ep_name = er[1]
+                ep_steps = json.loads(er[2])
+                ep_summary = json.loads(er[4]) if er[4] else {}
+
+                params = []
+                for s_idx, s in enumerate(ep_steps):
+                    kind = s.get("kind")
+                    val = s.get("value")
+                    label = s.get("label") or f"Step {s_idx + 1}"
+                    if kind == "set_text" and val:
+                        p_name = re.sub(r"[^a-zA-Z0-9_]", "_", label.lower().strip())
+                        if not p_name or p_name in ("input", "field", "text"):
+                            p_name = f"text_{s_idx + 1}"
+                        params.append({
+                            "step_index": s_idx,
+                            "name": p_name,
+                            "kind": "text",
+                            "label": label,
+                            "default": val,
+                            "observed_values": [val],
+                            "is_variable": True,
+                        })
+                    elif kind == "open_url" and s.get("url"):
+                        params.append({
+                            "step_index": s_idx,
+                            "name": f"url_{s_idx + 1}",
+                            "kind": "url",
+                            "label": "Target URL",
+                            "default": s["url"],
+                            "observed_values": [s["url"]],
+                            "is_variable": True,
+                        })
+
+                patterns.append({
+                    "id": ep_id,
+                    "name": ep_name or ep_summary.get("intent") or "Learned Routine",
+                    "intent": ep_summary.get("intent") or f"Learned from workflow '{ep_name}'",
+                    "support": 1,
+                    "alignment": 1.0,
+                    "skeleton": ep_steps,
+                    "parameters": params,
+                    "evidence_episodes": [ep_id],
+                    "created_at": er[5],
+                    "updated_at": er[5],
+                    "step_count": len(ep_steps),
+                    "is_demonstration": True,
+                })
+
         return patterns
 
     def get_pattern(self, pattern_id: str) -> Optional[Dict[str, Any]]:
@@ -398,21 +649,71 @@ class LearningEngine:
             SELECT id, name, intent, support, alignment, skeleton_json, parameters_json, evidence_episodes_json, created_at, updated_at
             FROM learned_patterns WHERE id = ?
         """, (pattern_id,)).fetchone()
-        if not row:
-            return None
-        return {
-            "id": row[0],
-            "name": row[1],
-            "intent": row[2],
-            "support": row[3],
-            "alignment": row[4],
-            "skeleton": json.loads(row[5]),
-            "parameters": json.loads(row[6]),
-            "evidence_episodes": json.loads(row[7]),
-            "created_at": row[8],
-            "updated_at": row[9],
-            "step_count": len(json.loads(row[5]))
-        }
+        if row:
+            return {
+                "id": row[0],
+                "name": row[1],
+                "intent": row[2],
+                "support": row[3],
+                "alignment": row[4],
+                "skeleton": json.loads(row[5]),
+                "parameters": json.loads(row[6]),
+                "evidence_episodes": json.loads(row[7]),
+                "created_at": row[8],
+                "updated_at": row[9],
+                "step_count": len(json.loads(row[5]))
+            }
+
+        # Check if this is an episode id
+        ep_row = self.db.execute("""
+            SELECT id, name, steps_json, summary_json, created_at FROM episodes WHERE id = ?
+        """, (pattern_id,)).fetchone()
+        if ep_row:
+            ep_steps = json.loads(ep_row[2])
+            ep_summary = json.loads(ep_row[3]) if ep_row[3] else {}
+            params = []
+            for s_idx, s in enumerate(ep_steps):
+                kind = s.get("kind")
+                val = s.get("value")
+                label = s.get("label") or f"Step {s_idx + 1}"
+                if kind == "set_text" and val:
+                    p_name = re.sub(r"[^a-zA-Z0-9_]", "_", label.lower().strip())
+                    if not p_name or p_name in ("input", "field", "text"):
+                        p_name = f"text_{s_idx + 1}"
+                    params.append({
+                        "step_index": s_idx,
+                        "name": p_name,
+                        "kind": "text",
+                        "label": label,
+                        "default": val,
+                        "observed_values": [val],
+                        "is_variable": True,
+                    })
+                elif kind == "open_url" and s.get("url"):
+                    params.append({
+                        "step_index": s_idx,
+                        "name": f"url_{s_idx + 1}",
+                        "kind": "url",
+                        "label": "Target URL",
+                        "default": s["url"],
+                        "observed_values": [s["url"]],
+                        "is_variable": True,
+                    })
+            return {
+                "id": ep_row[0],
+                "name": ep_row[1],
+                "intent": ep_summary.get("intent") or ep_row[1],
+                "support": 1,
+                "alignment": 1.0,
+                "skeleton": ep_steps,
+                "parameters": params,
+                "evidence_episodes": [ep_row[0]],
+                "created_at": ep_row[4],
+                "updated_at": ep_row[4],
+                "step_count": len(ep_steps),
+                "is_demonstration": True,
+            }
+        return None
 
     def adapt_pattern_steps(self, pattern_id: str, overrides: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Inject customized parameter values into the pattern's skeleton steps for execution."""
@@ -516,6 +817,7 @@ class LearningEngine:
     def delete_pattern(self, pattern_id: str):
         with self.db:
             self.db.execute("DELETE FROM learned_patterns WHERE id = ?", (pattern_id,))
+            self.db.execute("DELETE FROM episodes WHERE id = ?", (pattern_id,))
 
     def record_outcome(self, source_ids, ok):
         # Worker completion is not independent verification of a business outcome.
