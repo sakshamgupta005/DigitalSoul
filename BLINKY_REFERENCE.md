@@ -1,5 +1,12 @@
 # Blinky technical reference for DigitalSoul
 
+WhatsApp desktop prototype (2026-10-22): re-inspected local
+`windows/python/uia.py` before adding `agent/ghost/desktop/whatsapp.py`.
+Adapted fresh process-scoped UIA resolution and unique control matching; no Blinky
+code was imported. Teaching stores selected controls rather than global key logs
+or message history. The native write adapter is experimental and has not been
+verified against an installed WhatsApp UI; see `docs/WHATSAPP_DESKTOP.md`.
+
 Recorded on 2026-10-22 at the user's request. Our previous product is located at `https://github.com/KingSahil/blinky`if you cant find the files in my local folders just open the repo. It is a closely related desktop assistant and should inform DigitalSoul implementation decisions.
 
 These notes come from reading local architecture/security documents and selected source files. Blinky was not built, executed or security-tested during this review. Source paths below are relative to that checkout; source behavior should be rechecked before reuse.

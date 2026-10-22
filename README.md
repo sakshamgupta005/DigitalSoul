@@ -63,3 +63,8 @@ Copy `.env.example` to `.env` and set `OMNIROUTE_API_KEY` and `OMNIROUTE_MODEL` 
 ```
 
 The probe separates gateway HTTP connectivity, model-list authentication, model inference, installed browser-use version, and a real CDP/Actor connection. In this sandbox, OmniRoute reports startup ready but Python HTTP requests fail with Windows socket permission error 10013; browser startup is blocked in `socketpair()`. A separate browser-tool dashboard attempt timed out too. No live model completion or browser connection is claimed. See [the migration and connection evidence](docs/ADR_0001_browser_use.md).
+## WhatsApp Desktop prototype
+
+Guided UIA teaching and one-shot scheduling are documented in
+[the WhatsApp Desktop guide](docs/WHATSAPP_DESKTOP.md). This experimental worker
+has separate startup/stop commands; live desktop compatibility is not yet verified.
