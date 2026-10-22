@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
-const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], profiles: [], activeProfile: null, profileWorkflow: null, jobs: [], detail: null, pending: false, user_memory: {}, recent_routines: [] };
+const state = { expanded: false, connected: false, recording: false, running: false, workflows: [], patterns: [], jobs: [], detail: null, pending: false, user_memory: {}, recent_routines: [] };
 const tauri = window.__TAURI__;
 const timeLabel = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 const dateLabel = (date) => new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -74,8 +74,8 @@ async function expanded(value) {
 }
 
 function view(name) {
-  for (const id of ['library', 'patterns', 'profiles', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
-  const tab = ['activity', 'patterns', 'profiles'].includes(name) ? name : 'library';
+  for (const id of ['library', 'patterns', 'activity', 'detail', 'create', 'approve', 'add-workflow-view']) if ($(id)) $(id).hidden = id !== name;
+  const tab = ['activity', 'patterns'].includes(name) ? name : 'library';
   document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
   movePill();
   $('panel').dataset.view = name;
@@ -531,230 +531,6 @@ function openPatternWorkflow(pat) {
   };
 }
 
-// Profiles. Each twin gets its own soft hue and a little ghost so they are easy to tell apart.
-// Static, trusted markup; profile names, roles and emoji only ever go in as text.
-const PROFILE_GHOST = '<svg viewBox="0 0 32 32" aria-hidden="true"><path class="pg-body" d="M16 3.5C10 3.5 6 7.9 6 13.8V26.6Q8 28.2 10 26.6T14 26.6T18 26.6T22 26.6T26 26.6V13.8C26 7.9 22 3.5 16 3.5Z"/><ellipse class="pg-eye" cx="12.4" cy="14" rx="1.7" ry="2.2"/><ellipse class="pg-eye" cx="19.6" cy="14" rx="1.7" ry="2.2"/><path class="pg-mouth" d="M14.6 18.2q1.4 1.3 2.8 0"/></svg>';
-const profileHue = (id = '') => Math.round(([...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 997, 7) * 137.508) % 360);
-const tintProfile = (node, profile) => node.style.setProperty('--p-hue', String(profileHue(profile.id)));
-const RULE_KINDS = { keyboard: ['Keyboard', 'warn'], pacing: ['Pacing', 'info'], app_choice: ['Apps', 'chrome'], formatting: ['Writing', 'whatsapp'], workflow: ['Workflow', 'ok'] };
-const appTone = (app) => (/msedge/i.test(app) ? 'info' : /^code/i.test(app) ? 'accent' : appToken(app));
-
-function ghostAvatar(profile, className = 'profile-ghost') {
-  const holder = element('span', className);
-  holder.setAttribute('aria-hidden', 'true');
-  holder.innerHTML = PROFILE_GHOST;
-  holder.append(element('span', 'profile-badge', profile.avatar || ''));
-  tintProfile(holder, profile);
-  return holder;
-}
-
-function topApps(profile) {
-  const entries = Object.entries(profile.app_affinity || {}).filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
-  const total = entries.reduce((sum, [, weight]) => sum + weight, 0) || 1;
-  return entries.map(([app, weight]) => ({ app, name: appName(app), tone: appTone(app), share: Math.round((weight / total) * 100) }));
-}
-
-function renderProfiles() {
-  bump('profile-count', state.profiles.length);
-  const selector = $('profile-selector');
-  selector.replaceChildren();
-  for (const p of state.profiles) {
-    const opt = element('option', '', `${p.avatar || ''} ${p.name}`.trim());
-    opt.value = p.id;
-    opt.selected = state.activeProfile?.id === p.id;
-    selector.append(opt);
-  }
-  selector.hidden = state.profiles.length < 2;
-
-  const ap = state.activeProfile;
-  $('profiles-body').hidden = !ap;
-  $('profiles-empty').hidden = Boolean(ap);
-  if (!ap) {
-    const ghost = $('profiles-empty').querySelector('.profile-ghost');
-    if (!ghost.firstChild) ghost.innerHTML = PROFILE_GHOST;
-    $('profiles-empty-title').textContent = state.profilesError ? 'I couldn’t load your profiles' : 'No profiles yet';
-    $('profiles-empty-text').textContent = state.profilesError ? `${state.profilesError} Press Refresh below to try again.` : 'Create a profile and I will learn its habits from every routine you record.';
-    return;
-  }
-
-  const hero = $('active-profile-card');
-  tintProfile(hero, ap);
-  const heroGhost = $('prof-hero-ghost');
-  heroGhost.querySelector('svg')?.remove();
-  heroGhost.insertAdjacentHTML('afterbegin', PROFILE_GHOST);
-  $('prof-hero-avatar').textContent = ap.avatar || '';
-  $('prof-hero-name').textContent = ap.name;
-  $('prof-hero-role').textContent = ap.role || 'Digital twin';
-  hero.querySelector('.learning-pulse-badge').hidden = !ap.continuous_learning;
-  const score = Math.max(0, Math.min(100, Math.round(ap.efficiency_score || 0)));
-  $('prof-hero-score').textContent = `${score}%`;
-  $('prof-score-ring').style.setProperty('--score', String(score));
-  $('prof-score-ring').setAttribute('aria-label', `${score}% efficient`);
-  const m = ap.metrics || {};
-  $('prof-stat-idle').textContent = shortDuration(m.idle_seconds_pruned || 0);
-  $('prof-stat-typos').textContent = String(m.typos_eliminated || 0);
-  $('prof-stat-clicks').textContent = String(m.redundant_clicks_pruned || 0);
-  $('prof-stat-shortcuts').textContent = String(m.shortcuts_promoted || 0);
-
-  const apps = topApps(ap);
-  const bar = $('prof-app-bar');
-  const legend = $('prof-app-legend');
-  bar.replaceChildren();
-  legend.replaceChildren();
-  for (const app of apps) {
-    const part = element('i');
-    part.style.setProperty('--app', `var(--${app.tone})`);
-    part.style.setProperty('--share', String(app.share));
-    bar.append(part);
-    const key = element('span', 'app-key');
-    key.style.setProperty('--app', `var(--${app.tone})`);
-    key.append(element('i'), element('span', '', app.name), element('b', '', `${app.share}%`));
-    legend.append(key);
-  }
-  if (!apps.length) legend.append(element('span', 'muted', 'No favourite apps yet. Record a routine to teach me.'));
-  $('prof-meta').textContent = [
-    m.tasks_executed ? `${m.tasks_executed} tasks` : '',
-    m.sessions_observed ? `${m.sessions_observed} sessions` : '',
-    ap.updated_at ? `updated ${ago(ap.updated_at)}` : '',
-  ].filter(Boolean).join(' · ');
-  $('prof-sig').textContent = ap.signature ? `Signs messages “${ap.signature.replace(/^[-\s]+/, '')}”` : '';
-
-  const rules = ap.rules || [];
-  $('profile-rules-count').textContent = String(rules.length);
-  const grid = $('profile-rules-grid');
-  grid.replaceChildren();
-  if (!rules.length) grid.append(element('p', 'hint', 'No habits yet. Record a routine or two and I will pick up how you like things done.'));
-  for (const [index, rule] of rules.entries()) {
-    const [kind, tone] = RULE_KINDS[rule.category] || ['Habit', 'accent'];
-    const card = element('article', 'rule-card');
-    card.style.setProperty('--kind', `var(--${tone})`);
-    card.style.setProperty('--i', String(index));
-    const sure = Math.round((rule.confidence || 0) * 100);
-    const head = element('div', 'rule-card-header');
-    head.append(element('span', 'rule-cat', kind), element('span', 'rule-pill', `${sure}% sure`));
-    const meter = element('span', 'rule-meter');
-    meter.style.setProperty('--conf', String(sure));
-    card.append(head, element('strong', 'rule-name', rule.name), element('p', 'rule-desc', rule.description || ''), meter);
-    if (rule.efficiency_gain) card.append(element('small', 'rule-gain', rule.efficiency_gain));
-    grid.append(card);
-  }
-
-  const roster = $('profiles-roster');
-  roster.replaceChildren();
-  for (const [index, p] of state.profiles.entries()) {
-    const active = p.id === ap.id;
-    const card = element('article', `persona-card${active ? ' active' : ''}`);
-    tintProfile(card, p);
-    card.style.setProperty('--i', String(index));
-    const top = element('div', 'persona-top');
-    const names = element('div', 'persona-names');
-    names.append(element('strong', '', p.name), element('small', '', p.role || 'Digital twin'));
-    top.append(ghostAvatar(p), names, element('span', 'persona-score', `${Math.round(p.efficiency_score || 0)}%`));
-    const facts = element('div', 'persona-facts');
-    const habitCount = (p.rules || []).length;
-    facts.append(appDots(Object.keys(p.app_affinity || {})), element('span', '', `${habitCount} habit${habitCount === 1 ? '' : 's'}`));
-    if (p.metrics?.tasks_executed) facts.append(element('span', '', `${p.metrics.tasks_executed} tasks`));
-    if (p.updated_at) facts.append(element('span', '', ago(p.updated_at)));
-    const actions = element('div', 'persona-actions');
-    if (active) actions.append(element('span', 'active-tag', 'Active'));
-    else {
-      const use = element('button', 'secondary mini-btn', 'Make active');
-      use.type = 'button';
-      use.addEventListener('click', () => action(() => switchProfile(p.id)));
-      actions.append(use);
-    }
-    if (p.id !== 'profile_default') {
-      const remove = element('button', 'text-button danger-text mini-btn', 'Delete');
-      remove.type = 'button';
-      remove.setAttribute('aria-label', `Delete profile ${p.name}`);
-      remove.addEventListener('click', () => action(async () => {
-        if (!confirmDialog(`Delete the profile “${p.name}”? Its learned habits go with it.`)) return;
-        await rpc('profile_delete', { id: p.id });
-        await refresh();
-        notice('Profile deleted.');
-      }));
-      actions.append(remove);
-    }
-    card.append(top, facts, actions);
-    roster.append(card);
-  }
-  const add = element('button', 'persona-card persona-new');
-  add.type = 'button';
-  add.append(element('span', 'persona-plus', '+'), element('span', '', 'New profile'));
-  add.addEventListener('click', () => openNewProfile(true));
-  roster.append(add);
-}
-
-async function switchProfile(id) {
-  const updated = await rpc('profile_set_active', { id });
-  state.activeProfile = updated;
-  await refresh();
-  notice(`Now planning as ${updated?.name || 'that profile'}.`, 'success');
-}
-
-function openNewProfile(open) {
-  $('new-profile-modal').hidden = !open;
-  $('new-profile-btn').setAttribute('aria-expanded', String(open));
-  if (!open) return;
-  $('new-profile-form').reset();
-  $('new-profile-modal').scrollIntoView({ block: 'nearest' });
-  $('new-prof-name').focus();
-}
-
-$('new-profile-btn').addEventListener('click', () => openNewProfile($('new-profile-modal').hidden));
-$('profiles-empty-create').addEventListener('click', () => openNewProfile(true));
-$('cancel-new-prof-btn').addEventListener('click', () => openNewProfile(false));
-$('new-profile-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  action(async () => {
-    const created = await rpc('profile_create', {
-      name: $('new-prof-name').value.trim(),
-      role: $('new-prof-role').value.trim(),
-      avatar: $('new-prof-avatar').value.trim() || '👤',
-      ...($('new-prof-sig').value.trim() ? { signature: $('new-prof-sig').value.trim() } : {}),
-    });
-    openNewProfile(false);
-    await refresh();
-    notice(`Created ${created?.name || 'the profile'}. Make it active to plan tasks its way.`, 'success');
-  });
-});
-$('profile-selector').addEventListener('change', (event) => action(() => switchProfile(event.target.value)));
-$('prof-ask-btn').addEventListener('click', () => {
-  $('profile-exec-prompt').scrollIntoView({ block: 'center' });
-  $('profile-exec-prompt').focus();
-});
-$('prof-teach-btn').addEventListener('click', () => newRecording());
-document.querySelectorAll('.profile-chips .chip-suggestion').forEach((chip) => chip.addEventListener('click', () => {
-  $('profile-exec-prompt').value = chip.dataset.prompt || '';
-  $('profile-exec-prompt').focus();
-}));
-$('profile-exec-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  const prompt = $('profile-exec-prompt').value.trim();
-  if (!prompt) return;
-  action(async () => {
-    const button = $('profile-exec-submit-btn');
-    button.disabled = true;
-    button.textContent = 'Planning…';
-    try {
-      const result = await rpc('profile_execute', { prompt, profile_id: state.activeProfile?.id });
-      state.profileWorkflow = result?.workflow || null;
-      $('exec-res-title').textContent = state.profileWorkflow?.name || prompt;
-      const habits = $('exec-res-habits');
-      habits.replaceChildren(...(result?.habits_applied || []).map((habit) => element('li', '', habit)));
-      if (!habits.children.length) habits.append(element('li', '', 'No special habits needed for this one.'));
-      $('profile-run-workflow-btn').disabled = !state.profileWorkflow;
-      $('profile-exec-result').hidden = false;
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Plan it my way';
-    }
-  });
-});
-$('profile-run-workflow-btn').addEventListener('click', () => {
-  if (state.profileWorkflow) action(() => handleSynthesizedWorkflow(state.profileWorkflow));
-});
-
 async function refresh() {
   const result = await rpc('list');
   state.workflows = result.workflows;
@@ -765,15 +541,8 @@ async function refresh() {
     state.user_memory = patResult.user_memory || {};
     state.recent_routines = patResult.recent_routines || [];
   } catch {}
-  try {
-    const profResult = await rpc('profile_list');
-    state.profiles = profResult.profiles || [];
-    state.activeProfile = profResult.active_profile || state.profiles.find(p => p.is_active) || state.profiles[0];
-    state.profilesError = '';
-  } catch (error) { state.profilesError = String(error?.message || error); }
   renderWorkflows();
   renderPatterns();
-  renderProfiles();
   renderUserMemory();
   renderJobs();
 }
@@ -1505,7 +1274,9 @@ async function inspectGForm(url) {
         const inp = element('input');
         inp.name = item.title;
         inp.placeholder = item.options ? `e.g. ${item.options.slice(0, 2).join(' or ')}` : 'Enter answer (will be remembered)';
-        inp.value = item.suggested_value || (item.options ? item.options[0] : '');
+        // Never invent an answer for a new field. The person must provide it
+        // once; a successfully filled value is then remembered locally.
+        inp.value = item.suggested_value || '';
         inp.dataset.title = item.title;
         card.append(lbl, inp);
         newCont.append(card);

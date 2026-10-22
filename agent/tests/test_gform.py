@@ -20,29 +20,29 @@ var FB_PUBLIC_LOAD_DATA_ = [null, [null, [
 
 
 def test_gform_memory_defaults_and_matching(tmp_path):
-    mem_file = tmp_path / "test_profile.json"
+    mem_file = tmp_path / "test_user_memory.md"
     mem = GFormMemory(mem_file)
-    assert mem.profile["name"] == DEFAULT_PROFILE["name"]
+    # Memory starts empty to avoid fake defaults
+    assert mem.profile == {}
+
+    # Seed genuine fact learned from the user
+    mem.save({"name": "Sahil", "gender": "Male"})
+    assert mem.profile["name"] == "Sahil"
 
     # Match name
     key, val, conf = mem.match_question("What is your Full Name?")
     assert key == "name"
-    assert val == DEFAULT_PROFILE["name"]
+    assert val == "Sahil"
     assert conf >= 0.75
-
-    # Match positive agreement
-    key, val, conf = mem.match_question("I have read and accept the terms", ["Yes, I accept the terms", "No, decline"])
-    assert key == "agreement"
-    assert val == "Yes, I accept the terms"
-    assert conf >= 0.9
 
     # Save new field
     mem.save({"favorite_color": "Blue"})
     assert mem.profile["favorite_color"] == "Blue"
 
-    # Reload memory
+    # Reload memory from disk
     reloaded = GFormMemory(mem_file)
     assert reloaded.profile["favorite_color"] == "Blue"
+    assert reloaded.profile["name"] == "Sahil"
 
 
 def test_extract_form_structure():
@@ -56,9 +56,11 @@ def test_extract_form_structure():
 
 
 def test_form_mapping_known_vs_new(tmp_path):
-    mem = GFormMemory(tmp_path / "profile.json")
+    mem_file = tmp_path / "user_memory.md"
+    mem = GFormMemory(mem_file)
+    mem.save({"name": "Sahil", "gender": "Male"})
     title, questions = extract_form_structure(SAMPLE_HTML)
-    
+
     known = []
     new = []
     for q in questions:
@@ -68,5 +70,17 @@ def test_form_mapping_known_vs_new(tmp_path):
         else:
             new.append(q["title"])
 
-    assert len(known) >= 2  # Name, Gender, Agreement
+    assert len(known) == 2  # Name, Gender
     assert "Favorite Color" in new  # Unanswered new field
+
+
+def test_google_cloud_enrolment_form_inspection(tmp_path):
+    url = "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
+    mem = GFormMemory(tmp_path / "user_memory.md")
+    mem.save({"name": "Sahil"})
+    res = GFormActor.inspect_url(url, memory=mem)
+    assert res["title"] != ""
+    assert res["total_questions"] > 0
+    assert len(res["known_fields"]) >= 1
+    assert any(f["matched_key"] == "name" for f in res["known_fields"])
+

@@ -81,10 +81,19 @@ def resolve(text, workflows, *, require_wake=False, awake=False):
     )
     if not add_match:
         direct_add = re.match(
-            r"^(?:please\s+)?(?:add|create|new|make|automate|fill)\s+(?:a\s+)?(shopify|excel|whatsapp|gform|google\s*form|routine)\b\s*(.*)$",
+            r"^(?:please\s+)?(?:add|create|new|make|automate|fill)\s+(?:a\s+|an\s+|the\s+|this\s+)?(shopify|excel|whatsapp|gform|google\s*form|form|routine)\b\s*(.*)$",
             command,
             re.I
         )
+        if not direct_add:
+            # Also catch phrases like 'open the docs file and fill this form' or 'open docs form'
+            form_add = re.match(
+                r"^(?:please\s+)?open\s+(?:a\s+|an\s+|the\s+|this\s+)?(gform|google\s*form|form|docs\s*file)\b\s*(.*)$",
+                command,
+                re.I
+            )
+            if form_add:
+                direct_add = form_add
         if direct_add:
             add_match = direct_add
 
