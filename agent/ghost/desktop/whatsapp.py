@@ -57,6 +57,15 @@ def resolve(window, spec):
     return matches[0]
 
 
+WHATSAPP_EXES = {"whatsapp.exe", "whatsapp.root.exe"}
+
+
+def is_whatsapp(path_or_name):
+    if not path_or_name:
+        return False
+    return PureWindowsPath(str(path_or_name)).name.lower() in WHATSAPP_EXES
+
+
 def validate_recipe(recipe):
     if recipe.get("format") == "digitalsoul.whatsapp-flow.v1":
         from .flow import validate
@@ -66,8 +75,8 @@ def validate_recipe(recipe):
     if not recipe.get("recipient") or not recipe.get("identity_verified"):
         raise ValueError("Recipient was not verified during teaching")
     path = PureWindowsPath(recipe["executable"])
-    if path.name.lower() != "whatsapp.exe" or not path.is_absolute():
-        raise ValueError("Only an explicitly taught WhatsApp.exe is supported")
+    if not is_whatsapp(path) or not path.is_absolute():
+        raise ValueError("Only an explicitly taught WhatsApp executable is supported")
     controls = recipe["controls"]
     if controls["header"]["name"] != recipe["recipient"]:
         raise ValueError("Header must exactly identify the reviewed contact")
@@ -155,7 +164,7 @@ def teach(recipient):
                 break
             control = control.parent()
         path = executable(control.element_info.process_id)
-        if Path(path).name.lower() != "whatsapp.exe":
+        if not is_whatsapp(path):
             raise ValueError("Point only at the WhatsApp desktop app")
         if "executable" in recipe and recipe["executable"] != path:
             raise ValueError("All controls must belong to the same WhatsApp installation")
