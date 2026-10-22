@@ -131,6 +131,20 @@ class Session:
             path = executable(pid.value)
             self.observed_paths[pid.value] = path
         exe = PureWindowsPath(path).name.lower()
+        if not (self.everything or exe in self.allowed):
+            try:
+                top = self.native.desktop.window(handle=hwnd).top_level_parent()
+                top_pid = top.element_info.process_id
+                top_path = self.observed_paths.get(top_pid) or executable(top_pid)
+                self.observed_paths[top_pid] = top_path
+                top_exe = PureWindowsPath(top_path).name.lower()
+                if self.everything or top_exe in self.allowed:
+                    hwnd = top.handle
+                    pid = wintypes.DWORD(top_pid)
+                    path = top_path
+                    exe = top_exe
+            except Exception:
+                pass
         if exe in NEVER_RECORD or not (self.everything or exe in self.allowed):
             return None
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
@@ -189,7 +203,7 @@ class Session:
                             try:
                                 focus = self.native.focused()
                                 if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
-                                    val = (focus.get_value() or "").strip()
+                                    val = (field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES) or "").strip()
                                     if val and (not self.capture.auto or self.capture.selected) and val != self.capture.flow["search"].strip():
                                         ident = self._identity(window)
                                         spec_edit = locator(focus, editable=True)
@@ -207,7 +221,7 @@ class Session:
                         try:
                             focus = self.native.focused()
                             if focus.element_info.process_id in active_pids and focus.element_info.control_type == "Edit":
-                                val = (focus.get_value() or "").strip()
+                                val = (field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES) or "").strip()
                                 if val and (not self.capture.auto or self.capture.selected) and val != self.capture.flow["search"].strip():
                                     ident = self._identity(window)
                                     spec_edit = locator(focus, editable=True)
@@ -250,7 +264,7 @@ class Session:
                 return None
             if focus.element_info.element.CurrentIsPassword:
                 return None
-            value = field_text(focus, PureWindowsPath(path).name.lower() in BROWSER_EXES)
+            value = field_text(focus, is_whatsapp(path) or PureWindowsPath(path).name.lower() in BROWSER_EXES)
             if not isinstance(value, str) or len(value) > 4096:
                 return None
             value_clean = value.strip()
