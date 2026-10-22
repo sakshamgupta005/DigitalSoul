@@ -46,28 +46,75 @@ def _ancestors_match(actual, expected):
     return True
 
 
+def _name_matches(actual_name, expected_name):
+    """Flexible name comparison that handles WhatsApp's 'Name, phone, time' format."""
+    if not expected_name:
+        return True
+    if not actual_name:
+        return False
+    actual_clean = (actual_name or "").strip().lower()
+    expected_clean = (expected_name or "").strip().lower()
+    if not expected_clean:
+        return True
+    # Exact match
+    if actual_clean == expected_clean:
+        return True
+    # chat_name() strips unread counters and splits on comma/newline — handles "(2) Vansh Arora, +91..."
+    parsed = re.sub(r"^\(\d+\)\s*", "", actual_clean)
+    parsed = re.split(r"[,\n]", parsed, maxsplit=1)[0].strip()
+    if parsed == expected_clean or parsed.startswith(expected_clean):
+        return True
+    # Space-separated suffix (e.g. "Vansh Arora 10:45 PM")
+    if actual_clean.startswith(expected_clean + " ") or actual_clean.startswith(expected_clean + ","):
+        return True
+    # First line of multi-line name
+    first_line = actual_clean.splitlines()[0].strip() if actual_clean else ""
+    if first_line == expected_clean or first_line.startswith(expected_clean):
+        return True
+    return False
+
+
 def find(window, spec):
-    query = {"control_type": spec["control_type"]}
-    name_spec = spec.get("name", "").strip().lower()
-    matches = [item for item in window.descendants(**query)
-               if item.is_visible() and item.is_enabled()
-               and (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])
-               and (not name_spec or 
-                    (item.element_info.name or "").strip().lower() == name_spec or
-                    (item.element_info.name or "").strip().lower().startswith(name_spec + " ") or
-                    (((item.element_info.name or "").strip().lower().splitlines()[0].strip() if (item.element_info.name or "").strip() else "") == name_spec))
-               and (not spec.get("ancestors") or _ancestors_match(ancestry(item), spec["ancestors"]))]
-    unique = []
-    seen = set()
-    for m in matches:
-        try:
-            rid = tuple(m.element_info.runtime_id)
-        except Exception:
-            rid = m.element_info.handle
-        if rid in seen:
-            continue
-        seen.add(rid)
-        unique.append(m)
+    name_spec = spec.get("name", "").strip()
+    control_types_to_try = [spec["control_type"]]
+    # WhatsApp Desktop search results can be Button or Custom instead of ListItem/DataItem.
+    # If the recorded type found nothing, broaden the search across related types.
+    _FALLBACK_MAP = {
+        "Button":   ("ListItem", "DataItem", "Custom"),
+        "ListItem": ("Button", "DataItem", "Custom"),
+        "DataItem": ("Button", "ListItem", "Custom"),
+        "Custom":   ("Button", "ListItem", "DataItem"),
+    }
+
+    def _collect(control_type):
+        query = {"control_type": control_type}
+        return [item for item in window.descendants(**query)
+                if item.is_visible() and item.is_enabled()
+                and (not spec.get("automation_id") or item.element_info.automation_id == spec["automation_id"])
+                and (not name_spec or _name_matches(item.element_info.name, name_spec))
+                and (not spec.get("ancestors") or _ancestors_match(ancestry(item), spec["ancestors"]))]
+
+    def _dedupe(matches):
+        unique, seen = [], set()
+        for m in matches:
+            try:
+                rid = tuple(m.element_info.runtime_id)
+            except Exception:
+                rid = m.element_info.handle
+            if rid in seen:
+                continue
+            seen.add(rid)
+            unique.append(m)
+        return unique
+
+    unique = _dedupe(_collect(spec["control_type"]))
+    if not unique and name_spec and spec["control_type"] in _FALLBACK_MAP:
+        # Broaden: search result rows in WhatsApp UWP are sometimes a different control type
+        # than what was recorded. Try related types before giving up.
+        for fallback_type in _FALLBACK_MAP[spec["control_type"]]:
+            unique = _dedupe(_collect(fallback_type))
+            if unique:
+                break
     if not unique:
         raise ValueError("Recorded UIA target changed or is ambiguous; record again")
     return unique[0]
@@ -383,22 +430,26 @@ class FlowAdapter:
         return target
 
     def _result(self, flow):
-        wanted = flow["recipient"].strip().lower()
+        wanted = flow["recipient"].strip()
         window = self._window(flow)
         rows, seen = [], set()
-        for kind in ("DataItem", "ListItem"):
+        # WhatsApp Desktop search results may be Button, Custom, ListItem, or DataItem
+        # depending on the WhatsApp version. Search all of them.
+        for kind in ("Button", "Custom", "ListItem", "DataItem"):
             for row in window.descendants(control_type=kind):
-                name = chat_name(row.element_info.name).lower()
-                if not name.startswith(wanted):
+                if not row.is_visible():
+                    continue
+                raw_name = row.element_info.name or ""
+                if not _name_matches(raw_name, wanted):
                     continue
                 try:
                     key = tuple(row.element_info.runtime_id)
                 except Exception:
                     key = id(row)
-                if key not in seen and row.is_visible():
+                if key not in seen:
                     seen.add(key)
                     rows.append(row)
-        exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted]
+        exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted.lower()]
         for group in (exact, rows):
             if len(group) == 1:
                 return group[0]

@@ -182,12 +182,17 @@ class WhatsAppSend:
         return boxes[0] if boxes else None
 
     def _result(self, recipe, wanted):
-        from .flow import chat_name
+        from .flow import chat_name, _name_matches
         from .steps import unique
         window = self._window(recipe)
-        rows = [row for row in unique([row for kind in ("DataItem", "ListItem") for row in window.descendants(control_type=kind)
-                                       if chat_name(row.element_info.name).lower().startswith(wanted.lower())])
-                if row.is_visible()]
+        # WhatsApp Desktop search results can be Button/Custom instead of DataItem/ListItem
+        # depending on the app version. Search all relevant control types.
+        all_rows = []
+        for kind in ("Button", "Custom", "DataItem", "ListItem"):
+            all_rows.extend(window.descendants(control_type=kind))
+        rows = [row for row in unique(
+                    [row for row in all_rows if _name_matches(row.element_info.name, wanted)]
+                ) if row.is_visible()]
         exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted.lower()]
         for group in (exact, rows):
             if len(group) == 1:
@@ -250,6 +255,7 @@ class WhatsAppSend:
             self._visit(row)
             self._press(row)
             self.chat = chat_name(row.element_info.name)
+            self._edit_cache = None  # WhatsApp redraws its DOM after opening a chat; force a fresh walk
         # Proof of identity: the composer must be addressed to this chat before anything is typed.
         composer = self._wait(lambda: self._composer(recipe, self.chat), f"the message box for {self.chat!r}")
         if (control_text(composer) or "").strip():
