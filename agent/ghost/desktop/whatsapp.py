@@ -125,7 +125,8 @@ class WhatsApp:
     def check(self, recipe):
         window = self.window(recipe)
         composer = resolve(window, recipe["controls"]["composer"])
-        if composer.get_value():
+        val = composer.get_value()
+        if val and val.strip():
             raise ValueError("Clear the existing draft first")
         return True
 
@@ -137,13 +138,24 @@ class WhatsApp:
         self.check(recipe)
         composer = resolve(self.window(recipe), recipe["controls"]["composer"])
         # Literal ValuePattern assignment: braces and + are not keyboard commands.
-        composer.set_edit_text(message)
+        try:
+            composer.set_edit_text(message)
+        except Exception:
+            pass
+        val = composer.get_value() or ""
+        if val.strip() != message.strip():
+            composer.set_focus()
+            composer.type_keys("^a{BACKSPACE}", set_foreground=False)
+            import re
+            escaped = re.sub(r'([+^%~{}()])', r'{\1}', message)
+            composer.type_keys(escaped, with_spaces=True, set_foreground=False)
         self._ready(recipe, message)
 
     def _ready(self, recipe, message):
         window = self.window(recipe)  # fresh header and process identity after filling
         composer = resolve(window, recipe["controls"]["composer"])
-        if composer.get_value() != message:
+        val = composer.get_value() or ""
+        if val != message and val.strip() != message.strip():
             raise ValueError("Composer differs from the approved message")
         return resolve(window, recipe["controls"]["send"])
 
