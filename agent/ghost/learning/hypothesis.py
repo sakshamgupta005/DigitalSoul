@@ -96,10 +96,72 @@ def enhance_candidate_with_llm(
     if not key:
         return generate_heuristic_hypotheses(candidate, observations)
 
-    # In production with API key, format redacted prompt
+    # In production with API key, format redacted prompt and invoke Claude 3.5 Sonnet
     # If the call fails or key is invalid, smoothly fallback to heuristic hypotheses
     try:
-        # Structured LLM invocation would go here
+        import httpx
+
+        # Prepare redacted summary of candidate steps (no PII or credentials)
+        step_summaries = []
+        for s in candidate.steps:
+            step_summaries.append({
+                "step_id": s.step_id,
+                "kind": s.kind,
+                "verb": s.verb,
+                "app": s.app,
+                "locators": [loc.model_dump() for loc in (s.locators or [])] if s.locators else [],
+            })
+
+        system_prompt = (
+            "You are an expert workflow intelligence agent for DigitalSoul. "
+            "Analyze the following mined sequence of repetitive UI steps. "
+            "Propose a concise, professional workflow name, a 1-sentence description, and parameter slots. "
+            "Respond ONLY with valid JSON in this exact structure:\n"
+            "{\n"
+            '  "name": "string",\n'
+            '  "description": "string",\n'
+            '  "parameters": [{"name": "string", "type": "string"}]\n'
+            "}"
+        )
+
+        headers = {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        body = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 512,
+            "system": system_prompt,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Mined candidate with support {candidate.support} and alignment {candidate.alignment}:\n{json.dumps(step_summaries, indent=2)}",
+                }
+            ],
+        }
+
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post("https://api.anthropic.com/v1/messages", headers=headers, json=body)
+            if resp.status_code == 200:
+                data = resp.json()
+                content_text = data["content"][0]["text"]
+                json_start = content_text.find("{")
+                json_end = content_text.rfind("}") + 1
+                if json_start != -1 and json_end > json_start:
+                    parsed = json.loads(content_text[json_start:json_end])
+                    new_name = parsed.get("name", candidate.name)
+                    new_desc = parsed.get("description", candidate.description)
+                    new_params = parsed.get("parameters", candidate.parameters)
+                    base = generate_heuristic_hypotheses(candidate, observations)
+                    return base.model_copy(
+                        update={
+                            "name": new_name,
+                            "description": new_desc,
+                            "parameters": new_params if new_params else base.parameters,
+                        }
+                    )
+
         return generate_heuristic_hypotheses(candidate, observations)
     except Exception:
         return generate_heuristic_hypotheses(candidate, observations)

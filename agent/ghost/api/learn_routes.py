@@ -1,25 +1,21 @@
 """FastAPI routes for Developer 1 (M1 — Learning & Intelligence).
 
-Implements all M1 REST endpoints specified in CONTRACTS.md & REVIEW.md:
-- POST /api/v1/events/batch
-- GET/PUT /api/v1/settings/observation
-- GET /api/v1/candidates
-- POST /api/v1/candidates/{id}/dismiss
-- POST /api/v1/candidates/{id}/promote
-- GET /api/v1/workflows
-- GET/PUT /api/v1/workflows/{id}
-- POST /api/v1/workflows/{id}/validate
+Implements durable SQLite persistence, WebSocket real-time streaming,
+observation controls, candidate discovery, and the Mistake Guard feed.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Request, Response, status
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Set
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
 from contracts import RawEvent, Workflow
+from agent.ghost.db.database import Database
 from agent.ghost.learning.models import NormalizedAction, Episode, WorkflowCandidate
 from agent.ghost.learning.normalizer import normalize_batch
 from agent.ghost.learning.segmenter import segment_into_episodes
@@ -28,27 +24,65 @@ from agent.ghost.learning.loop_folder import fold_loops
 from agent.ghost.learning.hypothesis import enhance_candidate_with_llm
 from agent.ghost.learning.compiler import compile_workflow
 from agent.ghost.learning.recommendations import generate_recommendation_card
+from agent.ghost.learning.guard_feed import MistakeGuardFeed, GuardWarning
 
 
 router = APIRouter(prefix="/api/v1", tags=["learning"])
+db = Database()
+guard = MistakeGuardFeed()
 
 
 # ============================================================================
-# In-Memory State Store for M1
+# WebSocket Connection & Stream Manager
 # ============================================================================
 
-class LearningState:
+class StreamManager:
+    """Manages active WebSocket subscribers and emits versioned event envelopes."""
+
     def __init__(self):
-        self.observing: bool = True
-        self.allowlist: List[str] = ["acme-portal", "acme-crm", "portal.acme.local", "crm.acme.local"]
-        self.paused_until: Optional[str] = None
-        self.raw_events_by_id: Dict[str, RawEvent] = {}
-        self.episodes: List[Episode] = []
-        self.candidates_by_id: Dict[str, WorkflowCandidate] = {}
-        self.workflows_by_id: Dict[str, Workflow] = {}
+        self.active_connections: Set[WebSocket] = set()
+        self.valid_tickets: Dict[str, datetime] = {}
+        self.sequence: int = 1
+
+    def create_ticket(self) -> str:
+        ticket = str(uuid.uuid4())
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=30)
+        self.valid_tickets[ticket] = expiry
+        return ticket
+
+    def consume_ticket(self, ticket: str) -> bool:
+        if not ticket or ticket not in self.valid_tickets:
+            return False
+        expiry = self.valid_tickets.pop(ticket)
+        return datetime.now(timezone.utc) <= expiry
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.add(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.discard(websocket)
+
+    async def broadcast(self, event_type: str, data: Dict[str, Any]):
+        envelope = {
+            "event_id": str(uuid.uuid4()),
+            "sequence": self.sequence,
+            "type": event_type,
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "data": data,
+        }
+        self.sequence += 1
+        dead = []
+        for ws in self.active_connections:
+            try:
+                await ws.send_text(json.dumps(envelope))
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
 
 
-state = LearningState()
+stream_manager = StreamManager()
 
 
 # ============================================================================
@@ -80,14 +114,23 @@ class ValidationRequest(BaseModel):
     remote_allowed: bool = False
 
 
+class TicketResponse(BaseModel):
+    ticket: str
+    expires_at: str
+
+
+class GuardCheckRequest(BaseModel):
+    event: RawEvent
+    active_workflow_id: Optional[str] = None
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
 
 @router.post("/events/batch", response_model=BatchIngestResponse, status_code=status.HTTP_200_OK)
 async def ingest_events_batch(request: Request) -> BatchIngestResponse:
-    """Ingest a batch of up to 200 sanitized RawEvents from extension or desktop collector."""
-    # Check max payload size (1 MiB)
+    """Ingest a batch of up to 200 sanitized RawEvents and persist them durably."""
     body_bytes = await request.body()
     if len(body_bytes) > 1024 * 1024:
         raise HTTPException(
@@ -100,7 +143,6 @@ async def ingest_events_batch(request: Request) -> BatchIngestResponse:
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Malformed JSON: {e}")
 
-    # Can be a list of events directly or an object with 'events' field
     events_raw = data if isinstance(data, list) else data.get("events", [])
     if not isinstance(events_raw, list) or len(events_raw) == 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Batch must contain at least 1 event")
@@ -117,67 +159,77 @@ async def ingest_events_batch(request: Request) -> BatchIngestResponse:
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Event validation failed: {e}")
 
-        # Deduplication check
-        if event.event_id in state.raw_events_by_id:
-            existing = state.raw_events_by_id[event.event_id]
-            if existing.model_dump() == event.model_dump():
-                duplicate_count += 1
-                continue
+        # Durable insertion with deduplication & conflict detection
+        try:
+            is_new = db.insert_raw_event(event)
+            if is_new:
+                ingested_count += 1
+                new_events.append(event)
             else:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Conflicting content for existing event_id: {event.event_id}",
-                )
+                duplicate_count += 1
+        except ValueError as err:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(err))
 
-        state.raw_events_by_id[event.event_id] = event
-        new_events.append(event)
-        ingested_count += 1
-
-    # Normalize newly ingested events into actions & segment into episodes
+    # Process newly ingested events into episodes and candidates
     if new_events:
         actions = normalize_batch(new_events)
-        new_episodes = segment_into_episodes(actions, allowed_apps=state.allowlist)
-        state.episodes.extend(new_episodes)
+        obs_settings = db.get_setting("observation_settings", {})
+        allowed = obs_settings.get("allowlist", ["acme-portal", "acme-crm"])
+        new_episodes = segment_into_episodes(actions, allowed_apps=allowed)
 
-        # Trigger sequence mining when we have accumulated episodes
-        if len(state.episodes) >= 3:
-            candidates = mine_workflow_candidates(state.episodes)
-            for c in candidates:
-                # Apply loop folding
-                folded_steps = fold_loops(c.steps)
-                c_folded = c.model_copy(update={"steps": folded_steps})
-                # Apply hypothesis generator
-                enhanced = enhance_candidate_with_llm(c_folded)
-                state.candidates_by_id[enhanced.candidate_id] = enhanced
+        if new_episodes:
+            db.save_episodes(new_episodes)
+            all_episodes = db.get_all_episodes()
+
+            # Sequence mining
+            if len(all_episodes) >= 3:
+                candidates = mine_workflow_candidates(all_episodes)
+                for c in candidates:
+                    folded_steps = fold_loops(c.steps)
+                    c_folded = c.model_copy(update={"steps": folded_steps})
+                    enhanced = enhance_candidate_with_llm(c_folded)
+                    db.save_candidate(enhanced)
+
+                    # Broadcast candidate discovered over WebSocket
+                    await stream_manager.broadcast("candidate.created", {
+                        "candidate_id": enhanced.candidate_id,
+                        "name": enhanced.name,
+                        "support": enhanced.support,
+                        "alignment": enhanced.alignment,
+                    })
 
     return BatchIngestResponse(ingested=ingested_count, duplicates=duplicate_count)
 
 
 @router.get("/settings/observation", response_model=ObservationSettings)
 def get_observation_settings() -> ObservationSettings:
-    """Read observation toggle, allowlist, and pause status."""
-    return ObservationSettings(
-        observing=state.observing,
-        allowlist=state.allowlist,
-        paused_until=state.paused_until,
-    )
+    """Read observation toggle, allowlist, and pause status from SQLite."""
+    default = {
+        "observing": True,
+        "allowlist": ["acme-portal", "acme-crm", "portal.acme.local", "crm.acme.local"],
+        "paused_until": None,
+    }
+    saved = db.get_setting("observation_settings", default)
+    return ObservationSettings(**saved)
 
 
 @router.put("/settings/observation", response_model=ObservationSettings)
-def update_observation_settings(settings: ObservationSettings) -> ObservationSettings:
+async def update_observation_settings(settings: ObservationSettings) -> ObservationSettings:
     """Update observation settings or pause observation."""
-    state.observing = settings.observing
-    state.allowlist = settings.allowlist
-    state.paused_until = settings.paused_until
-    return get_observation_settings()
+    data = settings.model_dump()
+    db.set_setting("observation_settings", data)
+    await stream_manager.broadcast("observation.status", data)
+    return settings
 
 
 @router.get("/candidates", response_model=List[CandidateResponse])
 def list_candidates() -> List[CandidateResponse]:
     """List mined candidates along with computed recommendation cards."""
+    all_episodes = db.get_all_episodes()
+    candidates = db.get_all_candidates()
     results: List[CandidateResponse] = []
-    for cand in state.candidates_by_id.values():
-        rec = generate_recommendation_card(cand, state.episodes)
+    for cand in candidates:
+        rec = generate_recommendation_card(cand, all_episodes)
         results.append(CandidateResponse(candidate=cand, recommendation=rec))
     return results
 
@@ -185,58 +237,58 @@ def list_candidates() -> List[CandidateResponse]:
 @router.post("/candidates/{candidate_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
 def dismiss_candidate(candidate_id: str):
     """Dismiss a candidate recommendation permanently."""
-    if candidate_id not in state.candidates_by_id:
+    success = db.dismiss_candidate(candidate_id)
+    if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
-    state.candidates_by_id[candidate_id] = state.candidates_by_id[candidate_id].model_copy(
-        update={"dismissed": True}
-    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/candidates/{candidate_id}/promote", response_model=Workflow)
 def promote_candidate(candidate_id: str) -> Workflow:
     """Promote a discovered candidate to a draft workflow."""
-    if candidate_id not in state.candidates_by_id:
+    candidates = {c.candidate_id: c for c in db.get_all_candidates()}
+    if candidate_id not in candidates:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found")
-    cand = state.candidates_by_id[candidate_id]
+    cand = candidates[candidate_id]
     wf = compile_workflow(cand, version=1)
-    state.workflows_by_id[wf.workflow_id] = wf
+    db.save_workflow(wf)
     return wf
 
 
 @router.get("/workflows", response_model=List[Workflow])
 def list_workflows() -> List[Workflow]:
-    """List all workflows."""
-    return list(state.workflows_by_id.values())
+    """List all saved workflows."""
+    return db.get_all_workflows()
 
 
 @router.get("/workflows/{workflow_id}", response_model=Workflow)
 def get_workflow(workflow_id: str) -> Workflow:
     """Get workflow by ID."""
-    if workflow_id not in state.workflows_by_id:
+    wf = db.get_workflow(workflow_id)
+    if not wf:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
-    return state.workflows_by_id[workflow_id]
+    return wf
 
 
 @router.put("/workflows/{workflow_id}", response_model=Workflow)
 def update_workflow(workflow_id: str, updated: Workflow) -> Workflow:
     """Update workflow definition."""
-    if workflow_id not in state.workflows_by_id:
+    existing = db.get_workflow(workflow_id)
+    if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
-    state.workflows_by_id[workflow_id] = updated
+    db.save_workflow(updated)
     return updated
 
 
 @router.post("/workflows/{workflow_id}/validate", response_model=Workflow)
 def validate_workflow(workflow_id: str, payload: ValidationRequest) -> Workflow:
     """User validates and approves draft workflow -> compiles execution plan, bumps version."""
-    if workflow_id not in state.workflows_by_id:
+    existing = db.get_workflow(workflow_id)
+    if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workflow not found")
 
-    existing = state.workflows_by_id[workflow_id]
     new_version = existing.version + 1
 
-    # Bump version and mark as validated
     validated_wf = existing.model_copy(
         update={
             "version": new_version,
@@ -246,5 +298,44 @@ def validate_workflow(workflow_id: str, payload: ValidationRequest) -> Workflow:
             "remote_allowed": payload.remote_allowed,
         }
     )
-    state.workflows_by_id[workflow_id] = validated_wf
+    db.save_workflow(validated_wf)
     return validated_wf
+
+
+# ============================================================================
+# Mistake Guard & Live Stream Endpoints
+# ============================================================================
+
+@router.post("/guard/check", response_model=Optional[GuardWarning])
+def check_mistake_guard(req: GuardCheckRequest) -> Optional[GuardWarning]:
+    """Evaluate a live event against mistake patterns (wrong record, destructive action)."""
+    active_wf = db.get_workflow(req.active_workflow_id) if req.active_workflow_id else None
+    return guard.inspect_event(req.event, active_wf)
+
+
+@router.post("/stream/tickets", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
+def issue_stream_ticket(response: Response) -> TicketResponse:
+    """Issue a single-use 30-second ticket for WebSocket upgrade."""
+    response.headers["Cache-Control"] = "no-store"
+    ticket = stream_manager.create_ticket()
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat() + "Z"
+    return TicketResponse(ticket=ticket, expires_at=expires_at)
+
+
+@router.websocket("/stream")
+async def websocket_stream(websocket: WebSocket, ticket: Optional[str] = None):
+    """Real-time event stream for live dashboard and companion updates."""
+    # Enforce single-use ticket as mandated by CONTRACTS.md
+    if not ticket or not stream_manager.consume_ticket(ticket):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await stream_manager.connect(websocket)
+    try:
+        while True:
+            # Keep-alive heartbeat listener
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        stream_manager.disconnect(websocket)
+    except Exception:
+        stream_manager.disconnect(websocket)
