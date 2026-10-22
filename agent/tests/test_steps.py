@@ -111,6 +111,18 @@ def test_web_field_without_id_uses_the_focused_field_and_types():
     assert desktop.typed == ["^a{BACKSPACE}hi {(}there{)}"]
 
 
+def test_typing_into_a_document_never_moves_the_mouse():
+    moved = []
+
+    class Editor(Control):
+        def click_input(self):
+            moved.append(self)
+
+    desktop = FakeDesktop(Window([Editor("Document")]))  # Notepad's text area
+    runner(desktop).set_text({"kind": "set_text", "path": APP, "target": spec("Document"), "value": "7 + 8 = 15"})
+    assert moved == [] and desktop.typed == ["^a{BACKSPACE}7 {+} 8 = 15"]
+
+
 def test_ambiguous_or_missing_control_stops_instead_of_guessing():
     desktop = FakeDesktop(Window([Control("Button", "OK"), Control("Button", "OK")]))
     with pytest.raises(ValueError, match="Could not find"):
@@ -202,6 +214,7 @@ def test_explorer_windows_filters_shell_tray_and_desktop():
     explorer_win = Control("Window", name="Downloads")
     explorer_win.element_info.class_name = "CabinetWClass"
     explorer_win.element_info.process_id = 100
+    taskbar.handle = explorer_win.handle = None
 
     d = Desktop.__new__(Desktop)
     class FakeUia:

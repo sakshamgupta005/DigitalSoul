@@ -390,3 +390,12 @@ def test_youtube_search_collapses_to_direct_video_link():
     assert len(folded) == 1
     assert folded[0]["kind"] == "open_url"
     assert folded[0]["url"] == "https://www.youtube.com/watch?v=jfKfPfyJRdk"
+
+
+def test_understand_steps_names_store_calculator_plainly():
+    from agent.ghost.desktop.catalog import understand_steps
+    calc = r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_8wekyb3d8bbwe\CalculatorApp.exe"
+    u = understand_steps([{"kind": "open_app", "app": "CalculatorApp.exe", "path": calc, "title": "Calculator"},
+                          {"kind": "click", "app": "CalculatorApp.exe", "path": calc, "label": "Seven",
+                           "target": {"control_type": "Button", "automation_id": "num7Button", "name": "Seven"}}])
+    assert "Calculatorapp" not in json.dumps(u) and "Calculator" in u["intent"]

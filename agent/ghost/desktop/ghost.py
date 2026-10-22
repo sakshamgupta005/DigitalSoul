@@ -161,11 +161,7 @@ def act(control, send_keys=None):
                 return "Keyboard"
         except Exception:
             pass
-    try:
-        control.click_input()
-        return "ClickInput"
-    except Exception:
-        pass
+    # No click_input() fallback: the user's pointer must never move during a replay.
     raise ValueError("This control can't be clicked without moving your mouse, so the ghost stopped here")
 
 

@@ -15,7 +15,7 @@ import time
 from pathlib import PureWindowsPath
 
 from .flow import Native, ancestry
-from .whatsapp import executable, libraries
+from .whatsapp import executable, hosted_pid, libraries
 
 STEP_KINDS = ("open_app", "open_url", "click", "set_text", "press_enter")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
@@ -100,7 +100,7 @@ class Desktop:
                     continue
                 if is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") in SHELL_CLASSES:
                     continue
-                exe_path = executable(window.element_info.process_id)
+                exe_path = executable(hosted_pid(window.handle, window.element_info.process_id))
                 if exe_path == path or (exe_path and PureWindowsPath(exe_path).name.lower() == target_name):
                     found.append(window)
             except Exception:
@@ -113,7 +113,7 @@ class Desktop:
             return None, None
         window = self.desktop.window(handle=hwnd).wrapper_object()
         try:
-            return window, executable(window.element_info.process_id)
+            return window, executable(hosted_pid(hwnd, window.element_info.process_id))
         except Exception:
             return window, None
 
@@ -314,11 +314,7 @@ class StepRunner:
             return
         self._glide(target)
         try:
-            target.set_focus()
-        except Exception:
-            pass
-        try:
-            target.click_input()
+            target.set_focus()  # never click_input: the user's pointer must not move
         except Exception:
             pass
         try:

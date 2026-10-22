@@ -206,10 +206,7 @@ class WhatsAppSend:
             if control.has_keyboard_focus():
                 return True
             self.sleep(0.1)
-        try:
-            control.click_input()
-        except Exception:
-            pass
+        # No click_input() fallback: the user's pointer must never move during a replay.
         for _ in range(4):
             if control.has_keyboard_focus():
                 return True

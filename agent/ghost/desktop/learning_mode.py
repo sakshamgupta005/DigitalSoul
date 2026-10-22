@@ -148,8 +148,10 @@ class LearningEngine:
 
     def record_episode(self, steps: List[Dict[str, Any]], name: Optional[str] = None, flow: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Record an observed workflow episode, extract tokens, and match against patterns or past episodes."""
+        from .session import clean_steps
+        steps = clean_steps(steps)
         if not steps:
-            return {"action": "ignored", "detail": "Empty step list"}
+            return {"action": "ignored", "detail": "Empty or non-substantive step list"}
 
         ep_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()

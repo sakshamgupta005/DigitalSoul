@@ -12,7 +12,7 @@ from pathlib import PureWindowsPath
 
 from .events import WinEvents
 from .flow import Capture, Native, ancestry, header, locator, validate
-from .whatsapp import executable, WHATSAPP_EXES, is_whatsapp
+from .whatsapp import executable, hosted_pid, WHATSAPP_EXES, is_whatsapp
 
 # Chromium browsers spread one window across child processes.
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
@@ -78,6 +78,27 @@ def with_time(url, seconds):
     return f"{url}{'&' if '?' in url else '?'}t={int(seconds)}s"
 
 
+# A results page (Google, Bing, Brave Search, DuckDuckGo, YouTube search): a way to a page, not a destination.
+SEARCH_PAGE = re.compile(r"https?://[^/?#]+/(search|results)?\?([^#]*&)?(q|query|search_query)=", re.I)
+
+
+def is_search(url):
+    return bool(SEARCH_PAGE.match(url or ""))
+
+
+def site(url):
+    return re.sub(r"^(www|m)\.", "", re.sub(r"^https?://", "", url or "").split("/")[0].split("?")[0].lower())
+
+
+def page_title(window_title):
+    """A browser window's title without the browser name: 'Alan Turing - Wikipedia - Brave' ->
+    'Alan Turing - Wikipedia'. Empty for a window that shows no page title (a new tab)."""
+    title = re.sub(r"^\(\d+\)\s*", "", (window_title or "").strip())  # unread counters such as YouTube's "(3) "
+    title = re.sub(r"(\s+and \d+ more pages?)?(\s+-\s+[^-]+)?\s+-\s+Microsoft​?\s*Edge$", "", title)
+    title = re.sub(r"\s+-\s+(Brave|Google Chrome|Chromium)$", "", title).strip()
+    return "" if title.lower() in ("", "brave", "google chrome", "new tab", "chromium") else title
+
+
 def is_video(url):
     return bool(re.match(r"https?://(www\.|m\.)?(youtube\.com/(watch|shorts/)|youtu\.be/)", url or ""))
 
@@ -85,6 +106,140 @@ def is_video(url):
 # A page left within this many seconds was only passed through (e.g. YouTube home on the way to a
 # video); pages you stayed on, like a video you watched before the next one, keep their own step.
 PASS_THROUGH_SECONDS = 8
+
+
+DISMISS_WORDS = {
+    "close", "close tab", "close window", "cancel", "dismiss", "exit", "back",
+    "not now", "later", "no thanks", "don't save", "dont save", "discard", "ignore", "skip", "x"
+}
+
+BLANK_URLS = {
+    "about:blank", "chrome://newtab", "chrome://newtab/", "brave://newtab", "brave://newtab/",
+    "edge://newtab", "edge://newtab/", "about:newtab"
+}
+
+
+def is_dismiss_or_close(step):
+    """Detects clicks that close, cancel, dismiss or exit without producing an outcome."""
+    if step.get("kind") != "click":
+        return False
+    label = (step.get("label") or "").strip().lower()
+    target = step.get("target") or {}
+    auto_id = str(target.get("automation_id") or "").lower()
+    name = str(target.get("name") or "").lower()
+    if label in DISMISS_WORDS or label.startswith("close tab") or label.startswith("close window"):
+        return True
+    if auto_id in ("closebutton", "closetabbutton", "close", "btnclose", "cancelbutton"):
+        return True
+    if name in DISMISS_WORDS or name.startswith("close tab") or name.startswith("close window"):
+        return True
+    return False
+
+
+def is_blank_url(url):
+    return (url or "").strip().rstrip("/").lower() in BLANK_URLS
+
+
+def is_substantive_step(step):
+    """Determine whether a step achieved a concrete action or state change."""
+    kind = step.get("kind")
+    if kind == "set_text":
+        return bool((step.get("value") or "").strip())
+    if kind == "press_enter":
+        return True
+    if kind == "open_url":
+        return not is_blank_url(step.get("url"))
+    if kind == "click":
+        if is_dismiss_or_close(step):
+            return False
+        label = (step.get("label") or "").strip().lower()
+        if label in ("send", "submit", "save", "ok", "confirm", "next", "apply", "create",
+                     "delete", "post", "run", "play", "add", "import", "export", "download",
+                     "upload", "continue", "finish", "done", "open"):
+            return True
+        target = step.get("target") or {}
+        c_type = target.get("control_type")
+        path = step.get("path") or step.get("app") or ""
+        # Chat items require typing/sending to produce substance
+        if is_whatsapp(path):
+            return False
+        # Pressing a button does something (Calculator's 7, + and = are the whole routine).
+        if c_type in ("ListItem", "DataItem", "TreeItem", "Button", "SplitButton", "MenuItem", "CheckBox", "RadioButton"):
+            return True
+        if label and not c_type:
+            return True
+    return False
+
+
+def drop_non_substantive_steps(steps):
+    """Filter out no-ops, aborted chat selections, dismissals from the start, and fruitless app visits."""
+    if not steps:
+        return []
+
+    # 1. Group steps into contiguous visits per application
+    visits = []
+    current_visit = []
+    current_app = None
+    for step in steps:
+        app = PureWindowsPath(step.get("path") or step.get("app") or "").name.lower()
+        if step.get("kind") == "open_app" or (current_app is not None and app != current_app):
+            if current_visit:
+                visits.append(current_visit)
+            current_visit = [step]
+            current_app = app
+        else:
+            current_visit.append(step)
+            if current_app is None:
+                current_app = app
+    if current_visit:
+        visits.append(current_visit)
+
+    substantive_visits = []
+    for visit in visits:
+        # A. Ignore close/dismiss clicks from the very start of a visit before any substantive action
+        cleaned = []
+        saw_substantive = False
+        for s in visit:
+            if not saw_substantive and is_dismiss_or_close(s):
+                continue
+            if is_substantive_step(s):
+                saw_substantive = True
+            cleaned.append(s)
+
+        # B. Drop blank / new tab pages that had no interaction
+        no_blanks = []
+        for i, s in enumerate(cleaned):
+            if s.get("kind") == "open_url" and is_blank_url(s.get("url")):
+                following = cleaned[i + 1:]
+                if any(f.get("kind") == "open_url" for f in following) or not any(is_substantive_step(f) for f in following):
+                    continue
+            no_blanks.append(s)
+
+        # C. Drop dead-end chat / item clicks (superseded by another item selection before any action)
+        no_dead_ends = []
+        for i, s in enumerate(no_blanks):
+            c_type = (s.get("target") or {}).get("control_type")
+            is_item = s.get("kind") == "click" and c_type in ("ListItem", "DataItem", "TreeItem")
+            if is_item:
+                superseded = False
+                for follow in no_blanks[i + 1:]:
+                    if is_substantive_step(follow):
+                        break
+                    follow_ctype = (follow.get("target") or {}).get("control_type")
+                    if follow.get("kind") == "click" and follow_ctype in ("ListItem", "DataItem", "TreeItem"):
+                        superseded = True
+                        break
+                if superseded:
+                    continue
+            no_dead_ends.append(s)
+
+        # D. Check if this visit produced any substantive outcome
+        has_substance = any(is_substantive_step(s) for s in no_dead_ends)
+        if has_substance:
+            substantive_visits.append(no_dead_ends)
+
+    out = [s for visit in substantive_visits for s in visit]
+    return out
 
 
 def drop_empty_visits(steps):
@@ -106,18 +261,25 @@ def clean_steps(steps):
     - Clicks on panes, groups and toolbars, or on the taskbar ('Appid: ...'), are one-off noise.
     - In browsers the pages you ended up on are the routine: in-page clicks (play, pause, panes) are
       dropped, and typing is kept only when it was submitted with Enter.
+    - Dead-end chat/item clicks, startup dismissals, and empty app visits that achieved nothing of substance are ignored.
     - Apps visited without doing anything are dropped."""
     out = []
     for index, step in enumerate(steps):
         target = step.get("target") or {}
         browser = PureWindowsPath(step.get("path", "")).name.lower() in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
-        if step["kind"] == "click" and (browser or target.get("control_type") not in CLICKABLE_KINDS
+        if step["kind"] == "click" and (browser or (target.get("control_type") and target.get("control_type") not in CLICKABLE_KINDS)
                                         or str(target.get("automation_id", "")).startswith("Appid:")):
             continue
         if step["kind"] == "set_text" and browser and following.get("kind") != "press_enter":
             continue
         out.append(step)
+
+    # Prune non-substantive steps (aborted chat selections, startup dismissals, empty visits)
+    substantive = drop_non_substantive_steps(out)
+    if substantive:
+        out = substantive
+
     # Dropping noise can leave visits empty; repeat until stable.
     while True:
         trimmed = drop_empty_visits(out)
@@ -144,13 +306,18 @@ def compress_browsing(steps):
             at = step.get("at", 0)
             url = step.get("url", "")
             video = is_video(url)
+            typed = any(out[i]["kind"] == "set_text" and "address" in (out[i].get("field") or "").lower()
+                        and PureWindowsPath(out[i].get("path", "")).name.lower() == b_name for i in droppable)
             drop = {i for i in droppable if PureWindowsPath(out[i].get("path", "")).name.lower() == b_name and (
                 video or out[i]["kind"] == "open_app" or at - out[i].get("at", at) <= FOLD_SECONDS)}
             out = [s for i, s in enumerate(out) if i not in drop]
             droppable = []
             if out and out[-1]["kind"] == "open_url" and PureWindowsPath(out[-1].get("path", "")).name.lower() == b_name:
                 prev_url = out[-1].get("url", "")
-                if (video and not is_video(prev_url)) or at - out[-1].get("at", at) <= PASS_THROUGH_SECONDS:
+                # A page you left by typing in the address bar was somewhere you went, however briefly;
+                # results pages, and a site's own pages on the way to its video, were only a way there.
+                if (is_search(prev_url) or (video and not is_video(prev_url) and site(prev_url) == site(url))
+                        or (not typed and at - out[-1].get("at", at) <= PASS_THROUGH_SECONDS)):
                     out.pop()  # passed straight through that page: open only where it ended up
         elif browser and kind in ("open_app", "set_text", "press_enter", "click"):
             droppable.append(len(out))
@@ -219,6 +386,7 @@ class BrowserWatch(threading.Thread):
         self.target = None  # (hwnd, path) of the foreground browser window, or None
         self.pages = queue.Queue()
         self.seek = {}
+        self.titles = {}  # url -> page title, refreshed while the page is shown so it is the settled one
         self.closed = threading.Event()
 
     def run(self):
@@ -269,6 +437,8 @@ class BrowserWatch(threading.Thread):
                     if bar is None:
                         continue
                     url_val = None
+                    # While the bar has focus it shows what is being typed, with inline autocomplete
+                    # ("https://www." completes to a history entry): not a page. Read it once focus leaves.
                     if not bar.has_keyboard_focus():
                         try:
                             url_val = bar.get_value() if hasattr(bar, "get_value") else None
@@ -276,23 +446,18 @@ class BrowserWatch(threading.Thread):
                             url_val = None
                         if not url_val:
                             url_val = field_text(bar, browser=True)
-                    else:
-                        candidate = None
-                        try:
-                            candidate = bar.get_value() if hasattr(bar, "get_value") else None
-                        except Exception:
-                            candidate = None
-                        if not candidate:
-                            candidate = field_text(bar, browser=True)
-                        if candidate and (is_video(candidate) or web_address(candidate)):
-                            url_val = candidate
                     url = web_address(url_val)
                     if path and url and url != shown.get(hwnd):
                         shown[hwnd] = url
                         self.pages.put((hwnd, path, url))
+                    if path and url:
+                        # The title can lag the address by a moment; later reads overwrite it.
+                        title = page_title(top_window(hwnd)[0])
+                        if title:
+                            self.titles[url] = title
                     if is_video(url):
                         video = (hwnd, url)
-                        if hwnd not in sliders:
+                        if sliders.get(hwnd) is None:
                             try:
                                 window = desktop.window(handle=hwnd).wrapper_object()
                                 sliders[hwnd] = next((s for s in window.descendants(control_type="Slider")
@@ -515,6 +680,8 @@ class Session:
             except queue.Empty:
                 break
         for step in self.steps:
+            if step["kind"] == "open_url" and self.watch.titles.get(step["url"]):
+                step["title"] = self.watch.titles[step["url"]]
             seconds = self.watch.seek.get(step.get("url")) if step["kind"] == "open_url" else None
             if seconds and is_video(step["url"]):
                 step["url"] = with_time(step["url"], seconds)
@@ -529,6 +696,7 @@ class Session:
         user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if not pid.value:
             return None
+        pid = wintypes.DWORD(hosted_pid(hwnd, pid.value))  # a Store app, not its frame host
         path = self.observed_paths.get(pid.value)
         if path is None:
             path = executable(pid.value)

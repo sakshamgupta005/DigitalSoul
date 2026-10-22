@@ -20,6 +20,8 @@ def clock(seconds):
 
 def understand_steps(steps, flow=None, name=None):
     """Derive semantic goal, variable parameters, and contextual step explanations from observed actions."""
+    from .session import clean_steps
+    steps = clean_steps(steps)
     if flow and (flow.get("format") == "digitalsoul.excel-flow.v1" or flow.get("kind") == "excel"):
         wb = flow.get("workbook", "Workbook")
         sheet = flow.get("sheet", "Sheet1")
@@ -70,7 +72,8 @@ def understand_steps(steps, flow=None, name=None):
     for step in steps:
         kind = step.get("kind")
         raw_app = step.get("app") or "App"
-        app = "File Explorer" if raw_app.lower() == "explorer.exe" else raw_app.replace(".exe", "").capitalize()
+        app = {"explorer.exe": "File Explorer", "calculatorapp.exe": "Calculator"}.get(
+            raw_app.lower(), raw_app.replace(".exe", "").capitalize())
         if app not in apps_touched:
             apps_touched.append(app)
         title = (step.get("title") or "").strip()
@@ -116,7 +119,8 @@ def understand_steps(steps, flow=None, name=None):
 
         elif kind == "open_url":
             resume = step.get("resume")
-            explanations.append(f"Opened {label or step.get('url')}" + (f" at {clock(resume)}" if resume else ""))
+            page = f"“{title}”" if title else (label or step.get("url"))
+            explanations.append(f"Opened {page}" + (f" at {clock(resume)}" if resume else ""))
             parameters.append({"name": "url", "value": step.get("url"), "type": "url", "source": "browser"})
 
         elif kind == "press_enter":
@@ -175,7 +179,7 @@ def summarize(value, limit=3):
     for step in value.get("steps", []):
         if step["kind"] == "open_url" and step.get("url"):
             resume = step.get("resume")
-            text = short(step.get("label") or step["url"], 30) + (f" @ {clock(resume)}" if resume else "")
+            text = short(step.get("title") or step.get("label") or step["url"], 30) + (f" @ {clock(resume)}" if resume else "")
             item = {"kind": "url", "text": text}
         elif step["kind"] == "set_text" and step.get("value"):
             item = {"kind": "typed", "text": short(step["value"])}

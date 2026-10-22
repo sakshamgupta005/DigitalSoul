@@ -118,19 +118,32 @@ function setRecording(value) {
   $('new-recording').disabled = value || state.running;
 }
 
-const APP_NAMES = { 'whatsapp.exe': 'WhatsApp', 'whatsapp.root.exe': 'WhatsApp', 'brave.exe': 'Brave', 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'excel.exe': 'Excel', 'winword.exe': 'Word', 'powerpnt.exe': 'PowerPoint', 'explorer.exe': 'File Explorer', 'file explorer': 'File Explorer', '*': 'Everything' };
+const APP_NAMES = { 'whatsapp.exe': 'WhatsApp', 'whatsapp.root.exe': 'WhatsApp', 'brave.exe': 'Brave', 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'excel.exe': 'Excel', 'winword.exe': 'Word', 'powerpnt.exe': 'PowerPoint', 'explorer.exe': 'File Explorer', 'calculatorapp.exe': 'Calculator', 'file explorer': 'File Explorer', '*': 'Everything' };
 function appName(app) {
   if (!app) return 'Desktop';
   const name = APP_NAMES[app.toLowerCase()] || app.replace(/\.exe$/i, '');
   return name[0].toUpperCase() + name.slice(1);
 }
 
+function pageHost(step) {
+  try { return new URL(step.url).host.replace(/^www\./, ''); } catch { return ''; }
+}
+
+// "e2e-notes.txt - Notepad" -> "e2e-notes.txt": the document an app window showed, without the app name.
+function documentName(step) {
+  const name = appName(step.app);
+  const title = (step.title || '').replace(/^\*/, '').trim();
+  const doc = title.toLowerCase().endsWith(` - ${name.toLowerCase()}`) ? title.slice(0, -(name.length + 3)).trim() : title;
+  return doc.toLowerCase() === name.toLowerCase() ? '' : doc;
+}
+
 function stepLabel(step) {
-  if (step.kind === 'open_url') return `Open ${step.label || 'a page'}`;
-  if (step.kind === 'open_app') {
-    const name = appName(step.app);
-    return step.title ? `Open ${name} (${step.title})` : `Open ${name}`;
+  if (step.kind === 'open_url') {
+    if (!step.title) return `Opened ${step.label || 'a page'}`;
+    const host = pageHost(step);
+    return `Opened “${step.title}”${host ? ` · ${host}` : ''}${step.resume ? ` from ${timeLabel(step.resume)}` : ''}`;
   }
+  if (step.kind === 'open_app') return `Open ${appName(step.app)}`;
   return ({ click: `Click ${step.label || step.target?.name || 'control'}`, set_text: 'Enter text', press_enter: 'Press Enter' })[step.kind] || step.kind;
 }
 
@@ -491,12 +504,14 @@ async function showDetail(id) {
     } else if (step.kind === 'set_text') {
       body.append(element('span', 'verb', 'Typed'), element('q', 'typed', step.value));
     } else if (step.kind === 'open_url') {
-      body.append(element('span', 'verb', 'Opened'), element('span', 'link-pill', step.label || step.url));
+      body.append(element('span', 'verb', 'Opened'), element('span', 'link-pill', step.title ? `“${step.title}”` : step.label || step.url));
+      if (step.title && pageHost(step)) body.append(element('span', 'step-quiet', `· ${pageHost(step)}`));
       if (step.resume) body.append(element('span', 'resume-pill', `from ${timeLabel(step.resume)}`));
     } else if (step.kind === 'press_enter') {
       body.append(element('span', 'verb', 'Pressed'), element('kbd', 'keycap', 'Enter ⏎'));
     } else {
       body.append(element('span', 'verb', stepLabel(step)));
+      if (step.kind === 'open_app' && documentName(step)) body.append(element('span', 'step-quiet', documentName(step)));
     }
     const explanation = detail.understanding?.explanations?.[index];
     if (explanation) {

@@ -45,6 +45,19 @@ def executable(pid):
     return os.path.normcase(str(Path(psutil.Process(pid).exe()).resolve()))
 
 
+def hosted_pid(hwnd, pid, user=None):
+    """Store apps (Calculator, Settings) draw inside an ApplicationFrameHost frame; the frame's
+    CoreWindow child belongs to the app itself. Returns that app's pid, else `pid`."""
+    if not hwnd:
+        return pid
+    user = user or ctypes.windll.user32
+    child = user.FindWindowExW(hwnd, None, "Windows.UI.Core.CoreWindow", None)
+    owner = ctypes.c_ulong()
+    if child and user.GetWindowThreadProcessId(child, ctypes.byref(owner)) and owner.value:
+        return owner.value
+    return pid
+
+
 def selector(control, role):
     info = control.element_info
     result = {"control_type": info.control_type, "automation_id": info.automation_id or ""}
