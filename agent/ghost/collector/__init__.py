@@ -7,6 +7,12 @@ from agent.ghost.collector.window_tracker import (
 )
 from agent.ghost.collector.screen_capture import ScreenCapture
 from agent.ghost.collector.ocr_winrt import WinRtOcrEngine, OcrResult, OcrWord, OcrBoundingBox
+from agent.ghost.collector.visual_annotator import VisualAnnotator
+from agent.ghost.collector.training_data import (
+    TrainingSample,
+    TrainingDatasetExporter,
+    RepresentativeDataGenerator,
+)
 from agent.ghost.collector.visual_memory import VisualMemory, VisualMemoryItem
 
 __all__ = [
@@ -18,6 +24,10 @@ __all__ = [
     "OcrResult",
     "OcrWord",
     "OcrBoundingBox",
+    "VisualAnnotator",
+    "TrainingSample",
+    "TrainingDatasetExporter",
+    "RepresentativeDataGenerator",
     "VisualMemory",
     "VisualMemoryItem",
 ]
