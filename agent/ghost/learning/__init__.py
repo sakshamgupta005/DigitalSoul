@@ -51,6 +51,12 @@ from agent.ghost.learning.skill_recorder import (
     SkillQualityEvaluator,
     SkillOptimizer,
 )
+from agent.ghost.learning.habit_model import (
+    HabitProfile,
+    HabitRule,
+    HabitPruner,
+    ProfileManager,
+)
 
 __all__ = [
     "NormalizedAction",
@@ -84,6 +90,10 @@ __all__ = [
     "SkillQualityReport",
     "SkillQualityEvaluator",
     "SkillOptimizer",
+    "HabitProfile",
+    "HabitRule",
+    "HabitPruner",
+    "ProfileManager",
 ]
 
 

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..learning.miner import needleman_wunsch_alignment
 from ..learning.skill_recorder import SensitiveDataFilter, export_skill_markdown, parse_skill_markdown
+from ..learning.habit_model import ProfileManager
 from .catalog import short, understand_steps
 
 
@@ -119,6 +120,7 @@ class LearningEngine:
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
         self._init_db()
+        self.profiles = ProfileManager(self.db)
 
     def _init_db(self):
         with self.db:
@@ -185,6 +187,12 @@ class LearningEngine:
                  now, json.dumps(steps, ensure_ascii=False), json.dumps(tokens), json.dumps(understanding))
             )
 
+        # Continuous Habit Learning: Distill efficient profile habits from demonstration
+        profile_learned = None
+        try:
+            profile_learned = self.profiles.learn_from_demonstration(steps, name=name)
+        except Exception:
+            pass
 
         # 1. Check if this aligns with any existing learned pattern
         patterns = self.list_patterns()
@@ -508,6 +516,34 @@ class LearningEngine:
     def delete_pattern(self, pattern_id: str):
         with self.db:
             self.db.execute("DELETE FROM learned_patterns WHERE id = ?", (pattern_id,))
+
+    def list_profiles(self) -> List[Dict[str, Any]]:
+        return self.profiles.list_profiles()
+
+    def get_profile(self, profile_id: str) -> Optional[Dict[str, Any]]:
+        return self.profiles.get_profile(profile_id)
+
+    def get_active_profile(self) -> Dict[str, Any]:
+        return self.profiles.get_active_profile()
+
+    def set_active_profile(self, profile_id: str) -> Dict[str, Any]:
+        return self.profiles.set_active_profile(profile_id)
+
+    def create_profile(
+        self,
+        name: str,
+        role: str = "Digital Twin",
+        avatar: str = "👤",
+        initial_rules: Optional[List[Dict[str, Any]]] = None,
+        signature: Optional[str] = None
+    ) -> Dict[str, Any]:
+        return self.profiles.create_profile(name, role, avatar, initial_rules, signature)
+
+    def delete_profile(self, profile_id: str) -> bool:
+        return self.profiles.delete_profile(profile_id)
+
+    def execute_with_habits(self, prompt: str, profile_id: Optional[str] = None) -> Dict[str, Any]:
+        return self.profiles.execute_with_habits(prompt, profile_id)
 
     def close(self):
         self.db.close()

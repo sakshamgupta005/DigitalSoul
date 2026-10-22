@@ -35,12 +35,12 @@ from agent.ghost.learning.skill_recorder import (
     SkillQualityEvaluator,
     SkillOptimizer,
 )
-
-
+from agent.ghost.learning.habit_model import ProfileManager
 
 
 router = APIRouter(prefix="/api/v1", tags=["learning"])
 db = Database()
+profile_mgr = ProfileManager(db.db_path)
 guard = MistakeGuardFeed()
 
 
@@ -563,5 +563,74 @@ async def optimize_skill(payload: SkillOptimizeRequest) -> SkillOptimizeResponse
         compacted_steps_count=res["compacted_steps_count"],
         original_steps_count=res["original_steps_count"],
     )
+
+
+# ============================================================================
+# Digital Model of You / Habit Profile Endpoints
+# ============================================================================
+
+class ProfileCreateRequest(BaseModel):
+    name: str
+    role: str = "Digital Twin"
+    avatar: str = "👤"
+    initial_rules: Optional[List[Dict[str, Any]]] = None
+    signature: Optional[str] = None
+
+
+class ProfileExecuteRequest(BaseModel):
+    prompt: str
+    profile_id: Optional[str] = None
+
+
+@router.get("/profiles")
+def list_user_profiles() -> Dict[str, Any]:
+    """List all digital twin profiles and identify active model."""
+    return {
+        "profiles": profile_mgr.list_profiles(),
+        "active_profile": profile_mgr.get_active_profile()
+    }
+
+
+@router.get("/profiles/active")
+def get_active_user_profile() -> Dict[str, Any]:
+    """Retrieve the currently active digital model of you."""
+    return profile_mgr.get_active_profile()
+
+
+@router.post("/profiles", status_code=status.HTTP_201_CREATED)
+async def create_user_profile(payload: ProfileCreateRequest) -> Dict[str, Any]:
+    """Create a new specialized digital twin profile."""
+    prof = profile_mgr.create_profile(
+        name=payload.name,
+        role=payload.role,
+        avatar=payload.avatar,
+        initial_rules=payload.initial_rules,
+        signature=payload.signature
+    )
+    await stream_manager.broadcast("profile.created", prof)
+    return prof
+
+
+@router.post("/profiles/{profile_id}/active")
+async def activate_user_profile(profile_id: str) -> Dict[str, Any]:
+    """Switch the active digital twin profile driving execution."""
+    active = profile_mgr.set_active_profile(profile_id)
+    await stream_manager.broadcast("profile.activated", active)
+    return active
+
+
+@router.delete("/profiles/{profile_id}")
+async def delete_user_profile(profile_id: str) -> Dict[str, bool]:
+    """Delete a custom digital twin profile."""
+    success = profile_mgr.delete_profile(profile_id)
+    await stream_manager.broadcast("profile.deleted", {"profile_id": profile_id})
+    return {"deleted": success}
+
+
+@router.post("/profiles/execute")
+def execute_task_with_habits(payload: ProfileExecuteRequest) -> Dict[str, Any]:
+    """Execute a task matching the exact habits and conventions of the digital twin."""
+    return profile_mgr.execute_with_habits(payload.prompt, profile_id=payload.profile_id)
+
 
 

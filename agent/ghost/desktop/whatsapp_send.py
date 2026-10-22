@@ -78,6 +78,21 @@ def derive(steps):
             if rec or (field and field.lower().startswith("type a message")):
                 composed.append((i, step, rec))
     if not composed:
+        for i, step in enumerate(whatsapp):
+            label = step.get("label", "")
+            target_name = (step.get("target") or {}).get("name", "")
+            rec = recipient_of(label) or recipient_of(target_name)
+            if rec:
+                app = next((s for s in whatsapp if s["kind"] == "open_app"), {})
+                path = step.get("path") or app.get("path")
+                if not path:
+                    from .whatsapp import find_whatsapp_executable
+                    path = find_whatsapp_executable()
+                recipe = {"format": FORMAT, "recipient": rec, "search": rec,
+                          "message": "Hello", "executable": path,
+                          "app_id": app.get("app_id"), "send": {"kind": "enter"}, "unsent": False}
+                validate(recipe)
+                return recipe
         return None
     index, composer, rec_from_field = composed[-1]
     message = " ".join(composer["value"].split())
@@ -194,9 +209,10 @@ class WhatsAppSend:
                     [row for row in all_rows if _name_matches(row.element_info.name, wanted)]
                 ) if row.is_visible()]
         exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted.lower()]
-        for group in (exact, rows):
-            if len(group) == 1:
-                return group[0]
+        if exact:
+            return exact[0]
+        if len(rows) == 1:
+            return rows[0]
         if len(rows) > 1:
             raise Refused(f"More than one chat matches {wanted!r}; use their full saved name")
         return None
@@ -254,6 +270,7 @@ class WhatsAppSend:
             row = self._wait(lambda: self._result(recipe, recipient), f"a chat named {recipient!r}")
             self._visit(row)
             self._press(row)
+            self._edit_cache = None
             self.chat = chat_name(row.element_info.name)
             self._edit_cache = None  # WhatsApp redraws its DOM after opening a chat; force a fresh walk
         # Proof of identity: the composer must be addressed to this chat before anything is typed.

@@ -460,3 +460,25 @@ footer .text-button{font-size:11px}
 .pattern-card-actions{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:10px}
 .mini-btn{font-size:11px;padding:5px 12px;border-radius:var(--r-sm)}
 
+/* Screen-to-Workflow */
+.scan-screen-button{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--info);border:1px solid color-mix(in srgb,var(--info) 35%,transparent);font-weight:600}
+.scan-screen-button:hover{filter:none;background:color-mix(in srgb,var(--info) 28%,transparent);border-color:var(--info);box-shadow:0 0 12px color-mix(in srgb,var(--info) 25%,transparent)}
+.eyebrow.cyan{color:#06b6d4}
+.screen-data-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:14px;margin-bottom:12px}
+.screen-field-row{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.screen-field-row label{font-size:11px;font-weight:600;color:var(--text-2)}
+.screen-field-row input,.screen-field-row textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--bg);color:var(--text);padding:8px 10px;font-family:inherit;font-size:12px;box-sizing:border-box}
+.privacy-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.privacy-badge.cloud{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--info)}
+
+/* Cross-App Chain Orchestrator */
+.chain-button{background:linear-gradient(135deg,color-mix(in srgb,#f59e0b 22%,transparent),color-mix(in srgb,var(--accent) 25%,transparent));color:#fbbf24;border:1px solid color-mix(in srgb,#fbbf24 40%,transparent);font-weight:600}
+.chain-button:hover{filter:none;background:linear-gradient(135deg,color-mix(in srgb,#f59e0b 32%,transparent),color-mix(in srgb,var(--accent) 35%,transparent));border-color:#fbbf24;box-shadow:0 0 12px color-mix(in srgb,#fbbf24 30%,transparent)}
+.chain-step-card{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);font-size:12px}
+.chain-step-card.completed{border-left:3px solid var(--ok)}
+.chain-step-card.failed{border-left:3px solid var(--rec)}
+.chain-step-card.blocked{border-left:3px solid var(--warn)}
+.chain-step-card.skipped{border-left:3px solid var(--text-4);opacity:0.7}
+.chain-step-card.running{border-left:3px solid var(--accent);animation:pulse-accent 1.5s infinite}
+@keyframes pulse-accent{0%{box-shadow:0 0 0 0 var(--accent-soft)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+

@@ -3,7 +3,8 @@
   "identifier": "notch-local",
   "description": "Local notch events, banner dragging and cursor position for the ghost's gaze; native commands are implemented in Rust",
   "windows": [
-    "notch"
+    "notch",
+    "ghost-hud"
   ],
   "permissions": [
     "core:default",

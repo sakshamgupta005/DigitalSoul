@@ -93,7 +93,7 @@ function movePill() {
 
 function busy(value) {
   state.pending = value;
-  for (const id of ['new-recording', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run']) if ($(id)) $(id).disabled = value;
+  for (const id of ['new-recording', 'chain-drop-btn', 'chain-run-btn', 'chain-preview-btn', 'scan-screen-btn', 'new-shopify', 'new-excel', 'new-ai-workflow', 'ai-synthesize-btn', 'empty-ai-workflow', 'shopify-submit-btn', 'shopify-ai-btn', 'empty-record', 'stop-recording', 'compact-stop', 'confirm-run', 'screen-approve-btn']) if ($(id)) $(id).disabled = value;
   $('record-form').querySelector('[type=submit]').disabled = value;
 }
 
@@ -1116,6 +1116,8 @@ async function handleSynthesizedWorkflow(result) {
     notice(result.message || `✨ Created Excel workflow: ${result.name}`);
     compactVoice(result.message || `Ready: ${result.name}`, `Excel: ${result.name}`);
   } else if (result.kind === 'whatsapp') {
+    state.detail = result.workflow || { id: result.id, flow: result.flow, steps: result.workflow?.steps || [] };
+    await refresh();
     view('approve');
     $('approve-whatsapp-view').hidden = false;
     $('approve-shopify-view').hidden = true;
@@ -1481,6 +1483,265 @@ $('delete-workflow').addEventListener('click', () => action(async () => {
 $('quit').addEventListener('click', () => action(() => tauri.core.invoke('quit_app')));
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.expanded) action(() => expanded(false));
+  if (event.ctrlKey && (event.code === 'Space' || event.key === ' ')) {
+    event.preventDefault();
+    triggerScreenScan();
+  }
+});
+
+let currentScreenProposal = null;
+
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function triggerScreenScan(activeWindow = true) {
+  await expanded(true);
+  notice('📸 Scanning screen / active window & analyzing with AI...', 'info');
+  busy(true);
+  try {
+    const proposal = await rpc('screen_scan', { active_window_only: activeWindow, cleanup_image: true });
+    if (!proposal || !proposal.ok) {
+      notice(proposal?.error || proposal?.summary || 'Screen scan failed or was denied.');
+      return;
+    }
+    currentScreenProposal = proposal;
+    openScreenProposal(proposal);
+  } catch (err) {
+    notice(String(err?.message || err));
+  } finally {
+    busy(false);
+  }
+}
+
+function openScreenProposal(proposal) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-screen-view').hidden = false;
+
+  const modeBadge = $('screen-processing-mode');
+  if (modeBadge) {
+    modeBadge.textContent = proposal.processing_mode || 'Local (WinRT OCR)';
+    modeBadge.className = 'privacy-badge' + (proposal.processing_mode?.includes('Cloud') ? ' cloud' : '');
+  }
+
+  $('screen-proposal-title').textContent = proposal.title || 'Screen Workflow Proposal';
+  $('screen-proposal-summary').textContent = proposal.summary || 'Extracted business information from screen.';
+
+  const container = $('screen-extracted-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const ext = proposal.extracted_data || {};
+  const kind = proposal.kind;
+
+  if (kind === 'shopify') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--brave)">🛍️ Extracted Shopify Product Details (Editable)</div>
+        <div class="screen-field-row"><label>Product Title</label><input id="screen-edit-title" value="${escapeHtml(ext.title || '')}" required></div>
+        <div class="shop-grid">
+          <div class="screen-field-row"><label>Price ($)</label><input id="screen-edit-price" type="number" step="0.01" value="${ext.price || '29.99'}"></div>
+          <div class="screen-field-row"><label>SKU</label><input id="screen-edit-sku" value="${escapeHtml(ext.sku || '')}"></div>
+        </div>
+        <div class="screen-field-row"><label>Description</label><textarea id="screen-edit-desc" rows="2">${escapeHtml(ext.description || '')}</textarea></div>
+      </div>
+    `;
+  } else if (kind === 'excel') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--excel)">📊 Extracted Spreadsheet & Table (Editable)</div>
+        <div class="screen-field-row"><label>Spreadsheet Topic</label><input id="screen-edit-topic" value="${escapeHtml(ext.topic || 'Screen Data')}"></div>
+        <div class="screen-field-row"><label>Columns (Headers)</label><input id="screen-edit-headers" value="${escapeHtml(Array.isArray(ext.headers) ? ext.headers.join(', ') : (ext.headers || ''))}"></div>
+        <div class="screen-field-row"><label>Rows (CSV Format)</label><textarea id="screen-edit-rows" rows="3">${escapeHtml(ext.rows_csv || '')}</textarea></div>
+        <div class="screen-field-row"><label>Summary Formula</label><input id="screen-edit-formula" value="${escapeHtml(ext.formula || '=SUM(...)')}"></div>
+      </div>
+    `;
+  } else if (kind === 'whatsapp') {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--whatsapp)">💬 Extracted Communication (Editable)</div>
+        <div class="screen-field-row"><label>Recipient</label><input id="screen-edit-recipient" value="${escapeHtml(ext.recipient || '')}" required></div>
+        <div class="screen-field-row"><label>Message</label><textarea id="screen-edit-message" rows="3" required>${escapeHtml(ext.message || '')}</textarea></div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div class="screen-data-card">
+        <div style="font-weight:600;font-size:12px;margin-bottom:8px;color:var(--info)">🖥️ Extracted Routine Steps (Editable)</div>
+        <div class="screen-field-row"><label>Routine Name</label><input id="screen-edit-name" value="${escapeHtml(proposal.title || 'Screen Routine')}"></div>
+        <div class="screen-field-row"><label>Summary / Notes</label><textarea id="screen-edit-summary" rows="3">${escapeHtml(ext.text_snippet || proposal.summary || '')}</textarea></div>
+      </div>
+    `;
+  }
+}
+
+$('screen-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!currentScreenProposal) return;
+  const p = currentScreenProposal;
+  action(async () => {
+    if (p.kind === 'shopify') {
+      const updatedProduct = {
+        ...(p.extracted_data || {}),
+        title: $('screen-edit-title')?.value || p.extracted_data?.title,
+        price: $('screen-edit-price')?.value || p.extracted_data?.price,
+        sku: $('screen-edit-sku')?.value || p.extracted_data?.sku,
+        description: $('screen-edit-desc')?.value || p.extracted_data?.description,
+      };
+      openShopifyWorkflow(updatedProduct);
+      notice('Approved screen product! Review fields and run in Edge.');
+    } else if (p.kind === 'excel') {
+      const updatedExcel = {
+        ...(p.extracted_data || {}),
+        topic: $('screen-edit-topic')?.value || p.extracted_data?.topic,
+        headers: $('screen-edit-headers')?.value || p.extracted_data?.headers,
+        rows: $('screen-edit-rows')?.value || p.extracted_data?.rows_csv,
+        formula: $('screen-edit-formula')?.value || p.extracted_data?.formula,
+      };
+      openExcelWorkflow(updatedExcel);
+      notice('Approved screen spreadsheet! Review and update Excel.');
+    } else if (p.kind === 'whatsapp') {
+      const recipient = $('screen-edit-recipient')?.value.trim() || p.extracted_data?.recipient;
+      const message = $('screen-edit-message')?.value.trim() || p.extracted_data?.message;
+      view('approve');
+      $('approve-screen-view').hidden = true;
+      $('approve-whatsapp-view').hidden = false;
+      $('run-recipient').value = recipient;
+      $('run-message').value = message;
+      $('approve-send').checked = true;
+      notice('Approved communication! Confirm recipient and send.');
+    } else {
+      notice(`Approved routine "${p.title}".`);
+      view('library');
+    }
+  });
+});
+
+$('screen-edit-btn')?.addEventListener('click', () => {
+  if (!currentScreenProposal) return;
+  const p = currentScreenProposal;
+  openAddWorkflow(`Automate ${p.title}: ${p.summary}`);
+});
+
+$('scan-screen-btn')?.addEventListener('click', () => triggerScreenScan());
+
+// Cross-App Chain Orchestrator: Process today's supplier drop
+function openChainWorkflow(prefill = {}) {
+  view('approve');
+  $('approve-whatsapp-view').hidden = true;
+  $('approve-shopify-view').hidden = true;
+  $('approve-excel-view').hidden = true;
+  $('approve-pattern-view').hidden = true;
+  $('approve-screen-view').hidden = true;
+  $('approve-chain-view').hidden = false;
+
+  if (prefill.workbook) $('chain-workbook').value = prefill.workbook;
+  if (prefill.store_url) $('chain-store-url').value = prefill.store_url;
+  if (prefill.recipient) $('chain-recipient').value = prefill.recipient;
+
+  $('chain-status-badge').textContent = 'Ready';
+  $('chain-status-badge').className = 'privacy-badge';
+  $('chain-report-container').hidden = true;
+
+  const defaultSteps = [
+    { name: "1. Read Supplier Rows (Excel/CSV)", app: "excel", status: "pending" },
+    { name: "2. Validate Fields & Calculate Totals", app: "validator", status: "pending" },
+    { name: "3. Stage Products in Shopify (browser-use)", app: "shopify", status: "pending" },
+    { name: "4. Verify Staged Details Against Source", app: "verifier", status: "pending" },
+    { name: "5. Notify Store Manager (WhatsApp)", app: "whatsapp", status: "pending" },
+  ];
+  renderChainSteps(defaultSteps);
+}
+
+function renderChainSteps(steps = []) {
+  const container = $('chain-steps-container');
+  if (!container) return;
+  container.innerHTML = '';
+  steps.forEach((s) => {
+    const card = document.createElement('div');
+    card.className = `chain-step-card ${s.status}`;
+    const badgeColor = s.status === 'completed' ? 'var(--ok)' : s.status === 'failed' ? 'var(--rec)' : s.status === 'blocked' ? 'var(--warn)' : 'var(--text-3)';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px">
+        <strong>${escapeHtml(s.name)}</strong>
+        <span style="font-size:10px;color:var(--text-4)">[${escapeHtml(s.app)}]</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        ${s.error ? `<span style="color:var(--rec);font-size:11px">${escapeHtml(s.error)}</span>` : ''}
+        ${s.setup_requirement ? `<span style="color:var(--warn);font-size:11px">${escapeHtml(s.setup_requirement)}</span>` : ''}
+        <span style="font-size:11px;font-weight:600;color:${badgeColor};text-transform:uppercase">${escapeHtml(s.status)}</span>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function renderChainReport(report) {
+  const repEl = $('chain-report-container');
+  if (!repEl) return;
+  repEl.hidden = false;
+  repEl.innerHTML = `
+    <div style="font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between">
+      <span>Execution Report: ${escapeHtml(report.status.toUpperCase())}</span>
+      <span>${report.duration_seconds}s</span>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;background:var(--bg);padding:8px;border-radius:var(--r-sm);white-space:pre-wrap;line-height:1.4">${escapeHtml(report.summary)}</div>
+  `;
+}
+
+$('chain-drop-btn')?.addEventListener('click', () => openChainWorkflow());
+
+$('chain-preview-btn')?.addEventListener('click', () => action(async () => {
+  notice('⚡ Preparing dry-run preview of supplier drop chain...', 'info');
+  busy(true);
+  try {
+    const report = await rpc('chain_plan', {
+      workbook_path: $('chain-workbook').value.trim(),
+      store_url: $('chain-store-url').value.trim(),
+      recipient: $('chain-recipient').value.trim(),
+      dry_run: true,
+      approved: false,
+    });
+    $('chain-status-badge').textContent = 'Preview';
+    $('chain-status-badge').className = 'privacy-badge cloud';
+    renderChainSteps(report.steps);
+    renderChainReport(report);
+    notice('Dry-run preview generated! Check details above before execution.');
+  } catch (err) {
+    notice(String(err?.message || err));
+  } finally {
+    busy(false);
+  }
+}));
+
+$('chain-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  action(async () => {
+    notice('⚡ Executing cross-app supplier drop chain...', 'info');
+    busy(true);
+    try {
+      const report = await rpc('chain_run', {
+        workbook_path: $('chain-workbook').value.trim(),
+        store_url: $('chain-store-url').value.trim(),
+        recipient: $('chain-recipient').value.trim(),
+        dry_run: false,
+        approved: true,
+      });
+      $('chain-status-badge').textContent = report.status;
+      $('chain-status-badge').className = 'privacy-badge ' + (report.status === 'succeeded' ? '' : 'cloud');
+      renderChainSteps(report.steps);
+      renderChainReport(report);
+      notice(`Chain execution finished: ${report.status.toUpperCase()} (${report.duration_seconds}s)`);
+    } catch (err) {
+      notice(String(err?.message || err));
+    } finally {
+      busy(false);
+    }
+  });
 });
 
 async function boot() {
@@ -1550,6 +1811,14 @@ async function boot() {
     const res = await rpc('import_skill', { skill_markdown: md.trim() });
     await refresh();
     notice(`Imported skill "${res.name}" with ${res.step_count} verified steps.`, 'success');
+  }));
+  $('test-hud-btn')?.addEventListener('click', () => action(async () => {
+    notice('Live Ghost Pilot HUD demo engaged! Watch the ghost flight overlay.', 'success');
+    await rpc('hud_demo');
+  }));
+  $('self-heal-btn')?.addEventListener('click', () => action(async () => {
+    notice('Self-Healing demo engaged: simulating recoverable obstacle & verified recovery.', 'success');
+    await rpc('self_heal_demo', { obstacle: 'cookie' });
   }));
   await refresh();
 }

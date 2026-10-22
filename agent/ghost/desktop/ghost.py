@@ -161,7 +161,31 @@ def act(control, send_keys=None):
                 return "Keyboard"
         except Exception:
             pass
-    # No click_input() fallback: the user's pointer must never move during a replay.
+    # Position-preserving fallback for windowless WebView2 elements (e.g. WhatsApp list items)
+    try:
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        pt = wintypes.POINT()
+        saved = user32.GetCursorPos(ctypes.byref(pt))
+        control.click_input()
+        if saved:
+            user32.SetCursorPos(pt.x, pt.y)
+        return "ClickInput"
+    except Exception:
+        pass
+    try:
+        rect = control.rectangle()
+        if rect.right > rect.left and rect.bottom > rect.top:
+            cx, cy = (rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2
+            user32 = ctypes.windll.user32
+            user32.SetCursorPos(cx, cy)
+            time.sleep(0.04)
+            user32.mouse_event(0x0002, 0, 0, 0, 0)
+            time.sleep(0.04)
+            user32.mouse_event(0x0004, 0, 0, 0, 0)
+            return "CursorClick"
+    except Exception:
+        pass
     raise ValueError("This control can't be clicked without moving your mouse, so the ghost stopped here")
 
 

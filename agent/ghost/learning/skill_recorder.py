@@ -503,7 +503,7 @@ metadata:
 
 
 def parse_skill_markdown(markdown_text: str) -> WorkflowCandidate:
-    """Parse a Microsoft SKILL.md file into a DigitalSoul WorkflowCandidate."""
+    """Parse a Microsoft or Hermes Agent SKILL.md file into a DigitalSoul WorkflowCandidate."""
     if not markdown_text or not markdown_text.strip():
         raise ValueError("Empty SKILL.md document")
 
@@ -517,46 +517,98 @@ def parse_skill_markdown(markdown_text: str) -> WorkflowCandidate:
         for line in fm_content.splitlines():
             line_str = line.strip()
             if line_str.startswith("name:"):
-                name = line_str.split(":", 1)[1].strip()
+                val = line_str.split(":", 1)[1].strip()
+                name = val.strip("\"'")
             elif line_str.startswith("description:"):
-                description = line_str.split(":", 1)[1].strip().lstrip(">-").strip()
+                val = line_str.split(":", 1)[1].strip().lstrip(">-").strip()
+                description = val.strip("\"'")
 
-    # 2. Extract sections
+    # Fallback name from markdown header if name is generic or not set
+    if name == "Imported Skill":
+        title_match = re.search(r"^#\s+([^\n]+)", markdown_text, re.MULTILINE)
+        if title_match:
+            name = title_match.group(1).strip()
+
+    # 2. Extract sections & instructions
     instructions: List[CandidateStep] = []
     parameters: List[Dict[str, Any]] = []
 
-    # Look for ## Instructions
-    inst_match = re.search(r"## Instructions\s*\n(.*?)(?=\n## |\Z)", markdown_text, re.DOTALL)
+    # Look for procedural sections: Instructions, Procedure, Workflow, Steps, The canonical workflow, Actions, How to Run
+    inst_match = re.search(
+        r"## (?:Instructions|Procedure|Workflow|Steps|The canonical workflow|Canonical workflow|Actions|How to Run|The ladder|Quick Reference)\s*\n(.*?)(?=\n## |\Z)",
+        markdown_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    raw_step_lines: List[str] = []
     if inst_match:
-        lines = inst_match.group(1).strip().splitlines()
-        for idx, line in enumerate(lines, 1):
-            m = re.match(r"^\d+\.\s*(.+)$", line.strip())
-            if m:
-                instruction_text = m.group(1).strip()
-                # Parse verb and target if present
-                verb = "action"
-                for v in ("CLICK", "SET_FIELD", "NAVIGATE", "SUBMIT", "FOCUS", "click", "set_text", "open_url"):
-                    if v in instruction_text:
-                        verb = v.lower()
-                        break
-                
-                instructions.append(
-                    CandidateStep(
-                        step_id=f"step_{idx}",
-                        kind="action",
-                        verb=verb,
-                        app="imported",
-                        locators=[StepLocator(by="label", value=str(instruction_text[:80]))],
-                        risk="R1" if verb in ("click", "set_field") else "R0",
+        raw_step_lines = inst_match.group(1).strip().splitlines()
+    else:
+        # Fallback: scan whole markdown for numbered or action steps
+        raw_step_lines = markdown_text.splitlines()
 
-                        required=True,
-                        origin="user_defined",
-                        recovery=Recovery(retries=2, on_fail="pause"),
-                    )
+    step_idx = 1
+    for line in raw_step_lines:
+        line_s = line.strip()
+        if not line_s:
+            continue
+        # Match "1. Step", "- **Step", "**Step 1 — ...**", or action calls
+        m_num = re.match(r"^(?:\d+[\.\)]|\*\*\s*Step\s*\d+[^:]*:\s*\*\*|\*\*\s*\d+\.\s*\*\*)\s*(.+)$", line_s, re.IGNORECASE)
+        m_bullet = re.match(r"^[-*]\s+(?:\*\*[^*]+\*\*:?\s*)?(.+)$", line_s)
+        m_call = re.match(r"^(?:computer_use|open_url|click|set_text|navigate|python|curl)\b.*", line_s, re.IGNORECASE)
+        
+        step_text = ""
+        if m_num:
+            step_text = m_num.group(1).strip()
+        elif m_call:
+            step_text = line_s
+        elif m_bullet and any(k in line_s.lower() for k in ("click", "open", "fetch", "run", "navigate", "type", "press", "verify", "step")):
+            step_text = m_bullet.group(1).strip()
+
+        if step_text:
+            # Determine verb
+            st_lower = step_text.lower()
+            verb = "action"
+            app = "imported"
+            val = ""
+
+            if any(v in st_lower for v in ("click", "axbutton", "button")):
+                verb = "click"
+            elif any(v in st_lower for v in ("set_field", "set_text", "type", "text=")):
+                verb = "set_text"
+            elif any(v in st_lower for v in ("open_url", "navigate", "browse", "http://", "https://", "fetch", "youtube", "url=")):
+                verb = "open_url"
+                url_m = re.search(r"https?://[^\s\"')]+", step_text)
+                if url_m:
+                    val = url_m.group(0)
+            elif any(v in st_lower for v in ("capture", "screenshot", "mode=\"som\"")):
+                verb = "capture"
+            elif any(v in st_lower for v in ("submit", "press_enter", "enter")):
+                verb = "submit"
+
+            # Parse app if present (e.g. [Chrome], app="brave")
+            app_m = re.search(r'\[([A-Za-z0-9_\-\.\s]+)\]|app=[\'"]([^\'"]+)[\'"]', step_text)
+            if app_m:
+                app = (app_m.group(1) or app_m.group(2) or "imported").strip()
+
+            clean_label = re.sub(r"[*`]", "", step_text)[:80].strip()
+            instructions.append(
+                CandidateStep(
+                    step_id=f"step_{step_idx}",
+                    kind="action",
+                    verb=verb,
+                    app=app,
+                    input=val if val else None,
+                    locators=[StepLocator(by="label", value=clean_label)],
+                    risk="R1" if verb in ("click", "set_text") else "R0",
+                    required=True,
+                    origin="user_defined",
+                    recovery=Recovery(retries=2, on_fail="pause"),
                 )
+            )
+            step_idx += 1
 
-    # Look for ## Parameters
-    param_match = re.search(r"## Parameters\s*\n(.*?)(?=\n## |\Z)", markdown_text, re.DOTALL)
+    # Look for ## Parameters or ## Prerequisites
+    param_match = re.search(r"## (?:Parameters|Prerequisites|Setup)\s*\n(.*?)(?=\n## |\Z)", markdown_text, re.DOTALL | re.IGNORECASE)
     if param_match:
         p_lines = param_match.group(1).strip().splitlines()
         for pline in p_lines:
@@ -570,6 +622,34 @@ def parse_skill_markdown(markdown_text: str) -> WorkflowCandidate:
                     "origin": "user_defined",
                     "confirmed": True,
                 })
+            else:
+                # Hermes env var / parameter style: `VAR_NAME`
+                env_m = re.search(r"`([A-Z0-9_]{3,})`", pline)
+                if env_m:
+                    parameters.append({
+                        "name": env_m.group(1),
+                        "type": "string",
+                        "default_value": "",
+                        "source": "imported_skill",
+                        "origin": "user_defined",
+                        "confirmed": True,
+                    })
+
+    # Ensure at least 1 step if completely empty
+    if not instructions:
+        instructions.append(
+            CandidateStep(
+                step_id="step_1",
+                kind="action",
+                verb="action",
+                app="imported",
+                locators=[StepLocator(by="label", value=name)],
+                risk="R0",
+                required=True,
+                origin="user_defined",
+                recovery=Recovery(retries=1, on_fail="pause"),
+            )
+        )
 
     return WorkflowCandidate(
         candidate_id=f"cand_imp_{uuid.uuid4().hex[:8]}",

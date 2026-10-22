@@ -16,7 +16,7 @@
     <div id="panel" class="panel" hidden>
       <nav class="tabs" aria-label="DigitalSoul views">
         <div class="segmented"><span id="tab-pill" class="tab-pill" aria-hidden="true"></span><button data-tab="library" class="active">Workflows <span id="workflow-count">0</span></button><button data-tab="patterns">Learned <span id="pattern-count">0</span></button><button data-tab="activity">Activity <span id="job-count">0</span></button></div>
-        <div class="tab-actions"><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
+        <div class="tab-actions"><button id="chain-drop-btn" class="new-button chain-button" title="Cross-App Chain: Process today's supplier drop (Excel -> Shopify -> WhatsApp)"><span style="font-size:13px">⚡</span> Supplier Drop</button><button id="scan-screen-btn" class="new-button scan-screen-button" title="Scan screen or active window to propose workflow (Ctrl+Space)"><span style="font-size:13px">📸</span> Scan Screen</button><button id="self-heal-btn" class="new-button heal-button" title="Test Self-Healing Execution demo (Simulated popup obstacle & verified recovery)" style="border-color:rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#a7f3d0"><span style="color:#4ade80">🛡️</span> Self-Healing</button><button id="test-hud-btn" class="new-button hud-button" title="Test Live Ghost Pilot HUD flight demo" style="border-color:rgba(185,166,255,0.4);background:rgba(185,166,255,0.12);color:#e2ddfe"><span style="color:#b9a6ff">👻</span> Pilot HUD</button><button id="new-ai-workflow" class="new-button ai-workflow-button" title="Add workflow by typing or speaking">✨ Add workflow</button><button id="new-excel" class="new-button excel-button" title="Spreadsheet & Excel automation workflow">📊 Excel</button><button id="new-shopify" class="new-button shopify-button" title="Add a Shopify product with browser-use">🛍 Shopify</button><button id="new-recording" class="new-button"><span class="rec-glyph" aria-hidden="true"></span>New recording</button></div>
       </nav>
       <form id="voice-form" class="voice-command"><label for="voice-text">Jarvis <small id="voice-status" role="status">Mic off · local faster-whisper</small></label><div><input id="voice-text" maxlength="512" placeholder="Hey Jarvis, do workflow name" aria-label="Workflow command"><button class="secondary" type="submit">Find</button></div><p>Speak with the mic, type, or dictate here. Review the saved steps before running.</p></form>
       <div id="notice" class="notice" role="status" hidden></div>
@@ -161,6 +161,56 @@
             <div id="pattern-params-container" class="shop-grid"></div>
             <div class="hint" id="pattern-hint">DigitalSoul will adapt the recorded skeleton steps using your inputs and execute them deterministically.</div>
             <button class="primary wide" type="submit" id="pattern-submit-btn">Execute learned skill</button>
+          </form>
+        </div>
+        <div id="approve-screen-view" hidden>
+          <div class="detail-heading">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <span class="eyebrow cyan">📸 Screen-to-Workflow</span>
+              <span id="screen-processing-mode" class="privacy-badge">Local (WinRT OCR)</span>
+            </div>
+            <h1 id="screen-proposal-title">Screen Workflow Proposal</h1>
+            <p id="screen-proposal-summary">Analyzed active window. Review and edit extracted details below before executing.</p>
+          </div>
+          <form id="screen-form">
+            <div id="screen-extracted-container"></div>
+            <div class="hint warn" style="margin-top:12px;font-size:12px;background:rgba(255,180,0,0.1);border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;color:#fbbf24">
+              ⚠️ <strong>Safety Policy:</strong> Screen text is untrusted data. DigitalSoul never executes actions without your explicit review and approval.
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button class="primary wide" type="submit" id="screen-approve-btn" style="flex:1">Approve & Execute</button>
+              <button class="secondary" type="button" id="screen-edit-btn" style="flex:0 0 auto">Edit in Synthesizer</button>
+            </div>
+          </form>
+        </div>
+        <div id="approve-chain-view" hidden>
+          <div class="detail-heading">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <span class="eyebrow purple">⚡ Cross-App Orchestrator</span>
+              <span id="chain-status-badge" class="privacy-badge">Ready</span>
+            </div>
+            <h1>Process Today’s Supplier Drop</h1>
+            <p>Coordinates Excel data reading, field validation, Shopify browser-use staging, detail verification, and WhatsApp manager notification.</p>
+          </div>
+          <form id="chain-form">
+            <div class="shop-grid">
+              <label>Workbook / Source<input id="chain-workbook" value=".ghost/supplier_drop.csv" placeholder=".ghost/supplier_drop.csv or Active Excel"></label>
+              <label>Store Manager (WhatsApp)<input id="chain-recipient" value="Store Manager" placeholder="Store Manager"></label>
+            </div>
+            <label>Shopify Store URL<input id="chain-store-url" value="http://127.0.0.1:7777/api/v1/shopify/test-form" placeholder="http://127.0.0.1:7777/api/v1/shopify/test-form or admin.shopify.com"></label>
+            
+            <div id="chain-steps-container" style="display:flex;flex-direction:column;gap:8px;margin:12px 0"></div>
+
+            <div id="chain-report-container" class="screen-data-card" hidden style="margin-top:12px;font-size:12px"></div>
+
+            <div class="hint" id="chain-hint" style="margin-top:10px">
+              Safe execution: Each step verifies outputs and checkpoints progress. Consequential staging and messaging require your explicit approval.
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+              <button class="primary wide" type="submit" id="chain-run-btn" style="flex:1">Approve & Execute Chain</button>
+              <button class="secondary" type="button" id="chain-preview-btn" style="flex:0 0 auto">Preview Plan (Dry Run)</button>
+            </div>
           </form>
         </div>
       </section>
