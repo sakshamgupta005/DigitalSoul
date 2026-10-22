@@ -12,8 +12,20 @@ from .catalog import Catalog
 from .jobs import Jobs
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if hasattr(sys.stdin, "reconfigure"):
+    try:
+        sys.stdin.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+
 def emit(value):
-    print(json.dumps(value, ensure_ascii=False), flush=True)
+    print(json.dumps(value), flush=True)
 
 
 def main():
