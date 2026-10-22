@@ -92,7 +92,7 @@ impl Bridge {
     }
 
     fn request(&self, method: String, payload: Value) -> Reply {
-        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize", "export_skill", "import_skill", "demonstration_synthesize", "evaluate_skill", "optimize_skill", "hud_demo", "self_heal_demo", "screen_scan", "chain_plan", "chain_run", "profile_list", "profile_get", "profile_set_active", "profile_create", "profile_delete", "profile_execute"].contains(&method.as_str()) {
+        if !["hello", "list", "detail", "start", "stop", "rename", "delete", "replay", "schedule", "cancel", "stop_jobs", "resume_jobs", "replay_steps", "voice_start", "voice_stop", "voice_command", "shopify_generate", "shopify_run", "shopify_cancel", "learning_patterns", "learning_detail", "learning_execute", "learning_delete", "excel_inspect", "excel_generate", "excel_run", "workflow_synthesize", "export_skill", "import_skill", "list_hermes_skills", "import_hermes_skill", "demonstration_synthesize", "evaluate_skill", "optimize_skill", "hud_demo", "self_heal_demo", "screen_scan", "chain_plan", "chain_run", "profile_list", "profile_get", "profile_set_active", "profile_create", "profile_delete", "profile_execute", "gform_inspect", "gform_run", "gform_memory_get", "gform_memory_save"].contains(&method.as_str()) {
             return Err("Unsupported desktop command".into());
         }
 
@@ -112,8 +112,8 @@ impl Bridge {
             self.pending.lock().unwrap().remove(&id);
             return Err(error);
         }
-        // Shopify runs a real browser; screen_scan and chain_run may orchestrate multiple apps.
-        let wait = if method.starts_with("shopify_") || method == "screen_scan" || method == "chain_run" { 180 } else { 20 };
+        // Shopify and Google Forms run a real browser; screen_scan and chain_run may orchestrate multiple apps.
+        let wait = if method.starts_with("shopify_") || method.starts_with("gform_") || method == "screen_scan" || method == "chain_run" { 180 } else { 20 };
         let result = receiver.recv_timeout(Duration::from_secs(wait));
         self.pending.lock().unwrap().remove(&id);
         result.map_err(|_| "Desktop command timed out; check the app before retrying".to_string())?
