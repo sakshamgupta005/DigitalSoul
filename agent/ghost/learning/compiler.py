@@ -58,6 +58,7 @@ def compile_workflow(
     parameters: Optional[List[Dict[str, Any]]] = None,
     decision_rules: Optional[List[Dict[str, Any]]] = None,
     outcome_checks: Optional[List[Dict[str, Any]]] = None,
+    trust: str = "candidate",
 ) -> Workflow:
     """Compile a validated candidate into an official Workflow instance."""
     wf_id = candidate.candidate_id.replace("cand_", "wf_")
@@ -122,7 +123,7 @@ def compile_workflow(
         version=version,
         name=name or candidate.name,
         description=description or candidate.description,
-        trust="validated",  # Compiling via user approval promotes to validated
+        trust=trust,
         provenance=provenance,
         parameters=compiled_params,
         steps=compiled_steps,

@@ -7,7 +7,7 @@
   "app": {
     "withGlobalTauri": true,
     "windows": [{
-      "label": "notch", "title": "DigitalSoul", "width": 420, "height": 64,
+      "label": "notch", "title": "DigitalSoul", "width": 420, "height": 53,
       "resizable": false, "decorations": false, "transparent": true,
       "alwaysOnTop": true, "shadow": false, "visible": true, "skipTaskbar": false
     }],

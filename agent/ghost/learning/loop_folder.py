@@ -67,7 +67,7 @@ def fold_loops(steps: List[CandidateStep], source_param: str = "account_ids") ->
         scoped_body.append(
             b_step.model_copy(
                 update={
-                    "step_id": f"{loop_step_id}.{b_idx + 1}",
+                    "step_id": f"{loop_step_id}_{b_idx + 1}",
                     "origin": "inferred",
                 }
             )
@@ -77,9 +77,13 @@ def fold_loops(steps: List[CandidateStep], source_param: str = "account_ids") ->
     risk_rank = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
     body_max_risk = max((b.risk for b in scoped_body), key=lambda r: risk_rank.get(r, 0), default="R0")
 
+    loop_app = scoped_body[0].app if scoped_body and scoped_body[0].app else "acme-crm"
+
     loop_step = CandidateStep(
         step_id=loop_step_id,
         kind="loop",
+        app=loop_app,
+        locators=[],
         risk=body_max_risk,
         required=True,
         origin="inferred",

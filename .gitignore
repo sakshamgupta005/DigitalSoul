@@ -48,6 +48,9 @@ Thumbs.db
 scratch/
 check_end.py
 scratch_extract.py
+*.db
+*.db-wal
+*.db-shm
 .ghost/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
