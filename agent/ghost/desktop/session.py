@@ -899,6 +899,28 @@ class Session:
                                 pass
                         if self.capture.composed:
                             self.capture.enter()
+                elif event["kind"] == "tab":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "tab"})
+                elif event["kind"] == "escape":
+                    self.append({"kind": "press_key", "app": PureWindowsPath(path).name, "path": path, "key": "escape"})
+                elif event["kind"] == "hotkey":
+                    self.append({"kind": "hotkey", "app": PureWindowsPath(path).name, "path": path, "combo": event.get("combo")})
+                elif event["kind"] == "scroll":
+                    pt = event.get("point")
+                    rel_pt = None
+                    if pt and window:
+                        try:
+                            wrect = window.rectangle()
+                            rel_pt = [pt[0] - wrect.left, pt[1] - wrect.top]
+                        except Exception:
+                            pass
+                    step = {"kind": "scroll", "app": PureWindowsPath(path).name, "path": path,
+                            "delta": event.get("delta", -120)}
+                    if pt:
+                        step["point"] = list(pt)
+                    if rel_pt:
+                        step["relative_point"] = rel_pt
+                    self.append(step)
                 else:
                     if self._ignored(point=event["point"]):
                         continue  # the notch's own buttons, or a never-record window
@@ -962,7 +984,8 @@ class Session:
                     spec = locator(control, editable=kind == "Edit") if control else {"control_type": kind or "Pane"}
                     if label and label not in ("Text field", kind) and not spec.get("name"):
                         spec["name"] = label
-                    step = {"kind": "click", "app": PureWindowsPath(path).name, "path": path,
+                    step_kind = event["kind"] if event["kind"] in ("double_click", "right_click") else "click"
+                    step = {"kind": step_kind, "app": PureWindowsPath(path).name, "path": path,
                             "label": label, "target": spec, "point": list(pt)}
                     if rel_pt:
                         step["relative_point"] = rel_pt

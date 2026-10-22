@@ -172,8 +172,8 @@ def test_fastapi_hermes_routes():
     app.include_router(router)
     client = TestClient(app)
 
-    # GET /skills/hermes
-    resp = client.get("/skills/hermes")
+    # GET /api/v1/skills/hermes
+    resp = client.get("/api/v1/skills/hermes")
     assert resp.status_code == 200
     data = resp.json()
     assert "skills" in data
