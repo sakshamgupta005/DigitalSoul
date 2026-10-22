@@ -1,6 +1,6 @@
 # Blinky technical reference for DigitalSoul
 
-Recorded on 2026-10-22 at the user's request. Our previous product is located at `C:\Projects\Blinky`. It is a closely related desktop assistant and should inform DigitalSoul implementation decisions.
+Recorded on 2026-10-22 at the user's request. Our previous product is located at `https://github.com/KingSahil/blinky`if you cant find the files in my local folders just open the repo. It is a closely related desktop assistant and should inform DigitalSoul implementation decisions.
 
 These notes come from reading local architecture/security documents and selected source files. Blinky was not built, executed or security-tested during this review. Source paths below are relative to that checkout; source behavior should be rechecked before reuse.
 
