@@ -20,6 +20,7 @@ from .whatsapp import executable, hosted_pid, libraries
 STEP_KINDS = ("open_app", "open_url", "click", "double_click", "right_click", "scroll", "set_text", "press_enter", "press_key", "hotkey")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+EXPLORER_FOLDER_CLASSES = {"CabinetWClass", "ExploreWClass"}
 SYSTEM_HOST_EXES = {
     "svchost.exe", "searchhost.exe", "searchapp.exe", "startmenuexperiencehost.exe",
     "shellexperiencehost.exe", "runtimebroker.exe", "taskhostw.exe", "sihost.exe",
@@ -112,7 +113,7 @@ class Desktop:
             try:
                 if not window.is_visible():
                     continue
-                if is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") in SHELL_CLASSES:
+                if is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") not in EXPLORER_FOLDER_CLASSES:
                     continue
                 exe_path = executable(hosted_pid(window.handle, window.element_info.process_id))
                 if exe_path == path or (exe_path and PureWindowsPath(exe_path).name.lower() == target_name):
@@ -370,7 +371,7 @@ class StepRunner:
         def attempt():
             window, current = self.native.foreground()
             if current == path:
-                if not (is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") in SHELL_CLASSES):
+                if not (is_explorer and getattr(getattr(window, "element_info", None), "class_name", "") not in EXPLORER_FOLDER_CLASSES):
                     return window
             windows = self.native.windows(path)
             if windows:
@@ -768,7 +769,18 @@ def main():
         runner.run(steps, progress)
         skipped = f" Skipped {runner.skipped} text step(s) that were only field placeholders or focus changes." if runner.skipped else ""
         count = len(steps)
-        result = {"ok": True, "detail": f"Replayed {count} step{'' if count == 1 else 's'}.{skipped} Check the apps to confirm the result."}
+        # Save visual debug report (Record-and-Run style HTML timeline)
+        report_path = None
+        if runner.grounder:
+            try:
+                report_path = str(runner.grounder.save_report())
+            except Exception:
+                pass
+        result = {
+            "ok": True,
+            "detail": f"Replayed {count} step{'' if count == 1 else 's'}.{skipped} Check the apps to confirm the result.",
+            "debug_report": report_path,
+        }
     except Stopped as exc:
         result = {"ok": False, "detail": f"{exc} before step {done + 1}."}
     except Exception as exc:
