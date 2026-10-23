@@ -36,6 +36,9 @@ dist/
 
 # Node / JS
 node_modules/
+dist/
+build/
+*.tsbuildinfo
 
 # Local / OS / Editor
 .DS_Store

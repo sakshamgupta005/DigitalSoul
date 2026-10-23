@@ -7,7 +7,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, conint, constr
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class Type(Enum):
@@ -25,19 +25,19 @@ class Payload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    command_id: constr(min_length=1, max_length=128)
-    device_id: constr(min_length=1, max_length=128)
-    workflow_id: constr(min_length=1, max_length=128) | None = None
-    run_id: constr(min_length=1, max_length=128) | None = None
-    step_id: constr(min_length=1, max_length=128) | None = None
-    approval_id: constr(min_length=1, max_length=128) | None = None
+    command_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+    workflow_id: str | None = Field(default=None, min_length=1, max_length=128)
+    run_id: str | None = Field(default=None, min_length=1, max_length=128)
+    step_id: str | None = Field(default=None, min_length=1, max_length=128)
+    approval_id: str | None = Field(default=None, min_length=1, max_length=128)
     type: Type
     protocol_version: Literal[1] | None = None
-    workflow_version: conint(ge=1) | None = None
-    effect_hash: constr(pattern=r'^[a-f0-9]{64}$') | None = None
-    params: dict[str, Any] | None = Field(None, max_length=0)
+    workflow_version: int | None = Field(default=None, ge=1)
+    effect_hash: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
+    params: dict[str, Any] | None = Field(default=None, max_length=0)
     issued_at: AwareDatetime
-    nonce: constr(pattern=r'^[a-f0-9]{32}$')
+    nonce: str = Field(pattern=r'^[a-f0-9]{32}$')
 
 
 class RemoteCommandEnvelope(BaseModel):
@@ -45,9 +45,9 @@ class RemoteCommandEnvelope(BaseModel):
         extra='forbid',
     )
     protocol_version: Literal[1]
-    msg_id: constr(min_length=1, max_length=128)
-    from_device: constr(min_length=1, max_length=128)
-    to_device: constr(min_length=1, max_length=128)
+    msg_id: str = Field(min_length=1, max_length=128)
+    from_device: str = Field(min_length=1, max_length=128)
+    to_device: str = Field(min_length=1, max_length=128)
     kind: Literal['command']
-    sig: constr(pattern=r'^[a-f0-9]{128}$')
+    sig: str = Field(pattern=r'^[a-f0-9]{128}$')
     payload: Payload
