@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "echo 'Static site ready for Vercel'",
+    "build": "node build.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
