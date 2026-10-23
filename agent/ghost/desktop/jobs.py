@@ -23,7 +23,7 @@ def instant(value):
 class Jobs:
     def __init__(self, path, clock=None):
         self.clock = clock or (lambda: datetime.now(timezone.utc))
-        self.db = sqlite3.connect(path, timeout=5)
+        self.db = sqlite3.connect(path, timeout=5, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("""CREATE TABLE IF NOT EXISTS desktop_jobs (

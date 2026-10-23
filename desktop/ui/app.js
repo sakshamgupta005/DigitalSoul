@@ -43,8 +43,18 @@ async function syncTheme() {
 }
 
 async function rpc(method, payload = {}) {
-  if (!tauri) throw new Error('Open the Tauri app to record desktop steps. This browser view has no native backend.');
-  return tauri.core.invoke('backend_request', { method, payload });
+  if (tauri) {
+    return tauri.core.invoke('backend_request', { method, payload });
+  }
+  const apiBase = window.location.origin.includes('7777') ? '' : 'http://127.0.0.1:7777';
+  const res = await fetch(`${apiBase}/api/desktop/rpc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, payload }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Desktop RPC failed');
+  return data.result;
 }
 
 const settle = (ms) => new Promise((resolve) => setTimeout(resolve, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms));
@@ -2044,12 +2054,7 @@ $('chain-form')?.addEventListener('submit', (event) => {
 });
 
 async function boot() {
-  if (!tauri) {
-    await expanded(true);
-    notice('Browser preview only. Launch with npm run dev for native recording and saved workflows.');
-    return;
-  }
-  await tauri.event.listen('desktop-event', async ({ payload }) => {
+  const handleEvent = async (payload) => {
     try {
       if (payload.event === 'voice') {
         if (payload.kind === 'ready') voiceState(true);
@@ -2104,7 +2109,33 @@ async function boot() {
         notice('Local backend disconnected. Reopen DigitalSoul; no new actions will be started.');
       }
     } catch (error) { notice(String(error?.message || error)); }
-  });
+  };
+
+  if (tauri) {
+    await tauri.event.listen('desktop-event', async ({ payload }) => {
+      await handleEvent(payload);
+    });
+  } else {
+    await expanded(true);
+    const apiBase = window.location.origin.includes('7777') ? '' : 'http://127.0.0.1:7777';
+    try {
+      const sse = new EventSource(`${apiBase}/api/desktop/events`);
+      sse.onmessage = async (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          await handleEvent(payload);
+        } catch (_) {}
+      };
+      sse.onerror = () => {
+        state.connected = false;
+        $('connection').className = 'connection error';
+      };
+      sse.onopen = () => {
+        state.connected = true;
+        $('connection').className = 'connection online';
+      };
+    } catch (_) {}
+  }
   applyAccent((await rpc('hello')).accent);
   watchCursor();
   state.connected = true;

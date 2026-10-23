@@ -9,12 +9,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from fastapi import FastAPI, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.ghost.api.learn_routes import router as learn_router
 from agent.ghost.api.shopify_routes import router as shopify_router
+from agent.ghost.api.desktop_routes import router as desktop_router
 from agent.ghost.execution.runtime import Runtime
 from agent.ghost.execution.recovery import RunStore
 from agent.ghost.safety.policy import acme_policy
@@ -83,6 +84,13 @@ def index_page():
     </div>
     <p>Local-first deterministic AI workflow daemon unifying M1 Learning & Observation with M2 Execution & Safety.</p>
     <div class="links">
+      <a class="link-item" href="/dashboard" target="_blank" style="border-color: #f59e0b44; background: #231e15;">
+        <div>
+          <strong style="color: #fbbf24;">DigitalSoul Live Dashboard</strong>
+          <div style="font-size: 13px; color: #d4d4d8;">Companion Console with Live Routine Execution</div>
+        </div>
+        <span style="color: #fbbf24;">/dashboard &rarr;</span>
+      </a>
       <a class="link-item" href="/docs">
         <div>
           <strong>Swagger API Documentation</strong>
@@ -147,10 +155,37 @@ app.include_router(shopify_router)
 # Include M2 Execution & Run routes
 app.include_router(run_router(runtime))
 
+# Include Desktop & Notch live execution routes
+app.include_router(desktop_router, prefix="/api/desktop", tags=["desktop"])
+
 # Mount Notch Desktop UI static files
 _notch_ui_dir = Path(__file__).resolve().parents[2] / "desktop" / "ui"
 if _notch_ui_dir.is_dir():
     app.mount("/notch", StaticFiles(directory=str(_notch_ui_dir), html=True), name="notch")
+
+# Mount Frontend static files and dedicated companion routes
+_frontend_dir = Path(__file__).resolve().parents[2] / "Frontend"
+if _frontend_dir.is_dir():
+    if (_frontend_dir / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_frontend_dir / "assets")), name="frontend-assets")
+
+    @app.get("/dashboard")
+    def dashboard_page():
+        return FileResponse(str(_frontend_dir / "dashboard.html"))
+
+    @app.get("/landing")
+    def landing_page():
+        return FileResponse(str(_frontend_dir / "index.html"))
+
+    @app.get("/docs-page")
+    def docs_page():
+        return FileResponse(str(_frontend_dir / "docs.html"))
+
+    @app.get("/get-started")
+    def get_started_page():
+        return FileResponse(str(_frontend_dir / "get-started.html"))
+
+    app.mount("/app", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend-app")
 
 
 if __name__ == "__main__":

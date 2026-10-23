@@ -197,7 +197,7 @@ def summarize(value, limit=3):
 
 class Catalog:
     def __init__(self, path):
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("CREATE TABLE IF NOT EXISTS recordings (id TEXT PRIMARY KEY, payload BLOB NOT NULL)")
         self.db.commit()
