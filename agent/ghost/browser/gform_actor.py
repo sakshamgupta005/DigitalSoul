@@ -24,146 +24,6 @@ from .edge_session import existing_edge_endpoint, validate_local_cdp
 from .gform_memory import GFormMemory
 
 
-GFORM_FILL_SCRIPT = """(data) => (async () => {
-    const report = { steps: [], errors: [], ok: true, submitted: false };
-    const pause = (ms = 160) => new Promise(r => setTimeout(r, ms));
-    const items = (data.items || []).map((item, index) => ({ ...item, index, done: false }));
-    const visible = (node) => !!node && node.getClientRects().length > 0 && !node.disabled;
-    const norm = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-    const blocks = () => Array.from(document.querySelectorAll('.geS5n, [role="listitem"], .Qr7Oae')).filter(visible);
-    const blockTitle = (block) => {
-        const titleEl = block.querySelector('[role="heading"], .M7eMe, .Fvvcwh, .freebirdFormviewerViewItemsItemItemTitle');
-        return norm(titleEl ? titleEl.innerText : block.innerText || '');
-    };
-    const fireValue = (input, value) => {
-        const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) setter.call(input, value); else input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        input.dispatchEvent(new Event('blur', { bubbles: true }));
-    };
-    const findBlock = (item, currentBlocks) => {
-        if (item.entry_id === 'emailAddress' || norm(item.title || item.key) === 'email') {
-            const emailInput = document.querySelector('input[name="emailAddress"], input[type="email"], input[autocomplete="email"]');
-            if (emailInput && visible(emailInput)) {
-                return emailInput.closest('.geS5n, [role="listitem"], .Qr7Oae') || emailInput.parentElement;
-            }
-        }
-        const entry = item.entry_id ? `entry.${item.entry_id}` : '';
-        if (entry) {
-            const control = document.querySelector(`[name="${entry}"]`);
-            if (control) return control.closest('.geS5n, [role="listitem"], .Qr7Oae') || control.parentElement;
-        }
-        const wanted = norm(item.title || item.key);
-        return currentBlocks.find(block => {
-            const title = blockTitle(block);
-            return title === wanted || (wanted && (title.includes(wanted) || wanted.includes(title.slice(0, 45))));
-        });
-    };
-    const fillBlock = async (block, item) => {
-        const targetVal = String(item.value || '').trim();
-        if (!targetVal) return false;
-        const targetLow = norm(targetVal);
-
-        const input = block.querySelector('input[name="emailAddress"], input[type="email"], input[type="text"], input[type="url"], input:not([type]), textarea')
-            || (block.tagName === 'INPUT' ? block : null);
-        if (input && !input.disabled) {
-            input.focus();
-            fireValue(input, targetVal);
-            return { type: 'text' };
-        }
-
-        const radios = Array.from(block.querySelectorAll('[role="radio"]')).filter(visible);
-        for (const radio of radios) {
-            const label = norm(radio.getAttribute('data-value') || radio.getAttribute('aria-label') || radio.innerText);
-            if (label === targetLow || label.includes(targetLow) || targetLow.includes(label)) {
-                radio.click();
-                await pause();
-                return { type: 'radio' };
-            }
-        }
-
-        const checkboxes = Array.from(block.querySelectorAll('[role="checkbox"]')).filter(visible);
-        for (const checkbox of checkboxes) {
-            const label = norm(checkbox.getAttribute('aria-label') || checkbox.innerText);
-            if (label === targetLow || label.includes(targetLow) || targetLow.includes(label)) {
-                if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
-                await pause();
-                return { type: 'checkbox' };
-            }
-        }
-
-        const dropdown = block.querySelector('[role="listbox"], [role="combobox"]');
-        if (dropdown && visible(dropdown)) {
-            dropdown.click();
-            await pause(100);
-            const option = Array.from(document.querySelectorAll('[role="option"]')).find((candidate) => {
-                const label = norm(candidate.innerText || candidate.getAttribute('aria-label'));
-                return label === targetLow || label.includes(targetLow) || targetLow.includes(label);
-            });
-            if (option) {
-                option.click();
-                await pause();
-                return { type: 'dropdown' };
-            }
-        }
-        return false;
-    };
-
-    // Google Forms is paginated. Fill the visible page, advance, and repeat so
-    // a reviewed answer set can follow the form's own branching flow.
-    for (let page = 0; page < 20; page += 1) {
-        await pause();
-        const currentBlocks = blocks();
-        for (const item of items.filter(candidate => !candidate.done && String(candidate.value || '').trim())) {
-            const block = findBlock(item, currentBlocks);
-            if (!block) continue;
-            const filled = await fillBlock(block, item);
-            if (filled) {
-                item.done = true;
-                report.steps.push({ question: item.title, key: item.key || '', value: String(item.value).trim(), ...filled });
-            }
-        }
-
-        // Ensure any visible built-in email collection input is filled before advancing
-        const emailInput = document.querySelector('input[name="emailAddress"], input[type="email"], input[autocomplete="email"]');
-        if (emailInput && visible(emailInput) && !emailInput.value.trim()) {
-            const emailItem = items.find(it => (it.entry_id === 'emailAddress' || norm(it.title || it.key).includes('email')) && it.value);
-            if (emailItem) {
-                emailInput.focus();
-                fireValue(emailInput, String(emailItem.value).trim());
-                emailItem.done = true;
-                report.steps.push({ question: emailItem.title || 'Email', value: String(emailItem.value).trim(), type: 'email' });
-            }
-        }
-
-        const next = Array.from(document.querySelectorAll('[role="button"], button')).find(button => {
-            const label = norm(button.innerText || button.getAttribute('aria-label'));
-            return visible(button) && /^(next|continue)$/.test(label);
-        });
-        if (!next) break;
-        next.click();
-        await pause(500);
-    }
-
-    for (const item of items) {
-        if (!item.done && String(item.value || '').trim()) report.errors.push(`Could not fill: "${item.title}"`);
-    }
-
-    if (data.click_submit) {
-        const submitBtn = Array.from(document.querySelectorAll('[role="button"], button')).find(button => norm(button.innerText || button.getAttribute('aria-label')) === 'submit' && visible(button));
-        if (submitBtn) {
-            submitBtn.click();
-            report.submitted = true;
-        }
-    }
-
-    report.ok = report.steps.length > 0 && report.errors.length === 0;
-    return JSON.stringify(report);
-})()"""
-
-
 def extract_form_structure(html: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Parse FB_PUBLIC_LOAD_DATA_ from Google Form HTML to extract title and questions."""
     title = "Google Form"
@@ -231,11 +91,16 @@ class GFormActor:
         self.memory = memory or GFormMemory()
         self.browser: Optional[Browser] = None
         self._attached = False
+        self.page = None
+        self.page_url = None
+        self.approval = None
+        self.submission_attempted = False
         self.profile_dir = str(Path(".ghost/gform_browser").resolve())
 
     @classmethod
     def inspect_url(cls, url: str, memory: Optional[GFormMemory] = None) -> Dict[str, Any]:
         """Fetch and analyze Google Form URL structure, matching against remembered profile."""
+        cls.validate_url(url)
         mem = memory or GFormMemory()
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -318,43 +183,128 @@ class GFormActor:
             else:
                 await b.kill()
 
-    async def fill_and_review(self, url: str, items: List[Dict[str, Any]], click_submit: bool = False, save_to_memory: bool = True) -> Dict[str, Any]:
-        """Navigate to Google Form, fill all items, and optionally submit."""
+    @staticmethod
+    def validate_url(url):
+        parsed = urllib.parse.urlsplit(url)
+        if (parsed.scheme != "https" or parsed.hostname != "docs.google.com" or
+                parsed.username or parsed.password or parsed.port not in (None, 443) or
+                not re.fullmatch(r"/forms/(?:u/\d+/)?d/(?:e/)?[\w-]+/viewform", parsed.path)):
+            raise ValueError("Use a Google Forms responder URL ending in /viewform")
+        return url
+
+    async def _page(self, url):
+        self.validate_url(url)
         await self.start()
-        started = time.monotonic()
+        if self.page is None or self.page_url != url:
+            self.page = await self.browser.new_page()
+            await self.page.goto(url)
+            self.page_url = url
+            self.approval = None
+            self.submission_attempted = False
+            await asyncio.sleep(1)
+        return self.page
 
-        page = await self.browser.new_page()
+    async def _snapshot(self):
+        from .gform_fields import operate
+        state = await operate(self.page, "inspect")
+        # A login redirect or another document must never receive reviewed answers.
+        current = urllib.parse.urlsplit(state["url"])
+        expected = urllib.parse.urlsplit(self.page_url)
+        if current.scheme != "https" or current.netloc != expected.netloc or current.path != expected.path:
+            raise ValueError("Form navigated away; complete sign-in and inspect again")
+        return state
+
+    def _review(self, state):
+        known, missing = [], []
+        for question in state["questions"]:
+            key, value, confidence = self.memory.match_question(question["title"], question.get("options") or None)
+            item = dict(question, matched_key=key, suggested_value=value if value is not None else "", confidence=confidence)
+            (known if value is not None and confidence >= .7 else missing).append(item)
+        return dict(title=state["title"], url=self.page_url, total_questions=len(state["questions"]),
+                    known_fields=known, new_fields=missing, current_section_only=True)
+
+    async def inspect(self, url):
+        await self._page(url)
+        self.approval = None
+        state = await self._snapshot()
+        if not state["questions"]:
+            raise ValueError("No visible questions. Check sign-in, form access, or whether responses are closed")
+        return self._review(state)
+
+    async def fill_and_review(self, url, items, click_submit=False, save_to_memory=True):
+        from .gform_fields import operate
+        import secrets
+        if click_submit:
+            raise ValueError("Fill first, then approve the separate submission preview")
+        if self.page_url != url or self.page is None:
+            raise ValueError("Inspect this form in the browser before filling")
+        await self._page(url)
+        if self.submission_attempted:
+            raise ValueError("Submission already attempted; inspect its outcome instead of retrying")
+        self.approval = None
+        state = await self._snapshot()
+        # Require answers for visible required questions; never fill another section by fuzzy title.
+        for q in state["questions"]:
+            answers = [i for i in items if i.get("id") == q["id"]]
+            if len(answers) > 1:
+                raise ValueError("Duplicate answers for a question")
+            if q["required"] and (not answers or answers[0].get("value") in (None, "", [])):
+                raise ValueError("Answer required: " + q["title"])
+        chosen = [i for i in items if i.get("value") not in (None, "", [])]
+        result = await operate(self.page, "fill", signature=state["signature"], items=chosen)
+        fresh = await self._snapshot()
+        if fresh["signature"] != result["signature"] or fresh["values"] != result["values"] or fresh["errors"]:
+            raise ValueError("Form changed or validation failed after filling; inspect the browser")
+        updates = {i["key"]: i["value"] for i in result["steps"] if i.get("key")}
+        if save_to_memory and updates:
+            self.memory.save(updates)
+        response = dict(ok=True, engine="browser-use", filled_steps=result["steps"], errors=[], submitted=False,
+                        saved_memory_count=len(updates) if save_to_memory else 0)
+        if fresh["next"]:
+            await operate(self.page, "next", signature=fresh["signature"])
+            for _ in range(30):
+                await asyncio.sleep(.2)
+                following = await self._snapshot()
+                if following["signature"] != fresh["signature"]:
+                    response.update(review=self._review(following), status="review_next_section")
+                    return response
+                if following["errors"]:
+                    raise ValueError("Next section blocked by form validation")
+            raise ValueError("Next section did not appear; no further click attempted")
+        if not fresh["submit"]:
+            raise ValueError("Final Submit control is unavailable")
+        token = secrets.token_urlsafe(32)
+        self.approval = (token, time.monotonic()+60, fresh)
+        response.update(status="ready_for_submission", approval_token=token)
+        return response
+
+    async def submit(self, token):
+        from .gform_fields import operate
+        approval, self.approval = self.approval, None
+        if not approval or approval[0] != token or time.monotonic() > approval[1] or self.submission_attempted:
+            raise ValueError("Submission approval expired or already used; review the form again")
+        fresh = await self._snapshot()
+        old = approval[2]
+        if any(fresh[k] != old[k] for k in ("signature", "values", "url")) or fresh["errors"]:
+            raise ValueError("Answers changed after review; fill and review again")
+        import hashlib
+        journal = Path(".ghost/gform_submissions")
+        journal.mkdir(parents=True, exist_ok=True)
+        identity = hashlib.sha256(self.page_url.encode()).hexdigest()
         try:
-            await page.goto(url)
-            await asyncio.sleep(2.5)
-
-            raw = await page.evaluate(GFORM_FILL_SCRIPT, {"items": items, "click_submit": click_submit})
-            report = json.loads(raw) if isinstance(raw, str) else raw
-
-            # Persist only values that were actually filled. Unreachable branch
-            # questions and blank placeholders must not become memory facts.
-            updates = {}
-            if save_to_memory:
-                for it in report.get("steps", []):
-                    val = it.get("value")
-                    title = it.get("question", "")
-                    if val and str(val).strip():
-                        clean_key = it.get("key") or re.sub(r"[^a-zA-Z0-9]+", "_", title).strip("_").lower()[:64]
-                        if clean_key:
-                            updates[clean_key] = str(val).strip()
-                if updates:
-                    self.memory.save(updates)
-
-            return {
-                "ok": report.get("ok", True),
-                "engine": "browser-use",
-                "url": url,
-                "filled_steps": report.get("steps", []),
-                "errors": report.get("errors", []),
-                "submitted": report.get("submitted", False),
-                "saved_memory_count": len(updates) if save_to_memory else 0,
-                "duration_seconds": round(time.monotonic() - started, 2)
-            }
-        finally:
-            if self.headless:
-                await page.close()
+            with (journal / (identity + ".attempted")).open("x", encoding="utf-8") as marker:
+                marker.write("Submission attempted; inspect browser outcome before explicitly resetting this record.")
+                marker.flush()
+                os.fsync(marker.fileno())
+        except FileExistsError:
+            raise ValueError("This form has a previous submission attempt. Inspect its outcome before another submission")
+        self.submission_attempted = True  # never automatically retry an uncertain submission
+        await operate(self.page, "submit", signature=fresh["signature"])
+        for _ in range(30):
+            await asyncio.sleep(.2)
+            state = await operate(self.page, "inspect")
+            parsed = urllib.parse.urlsplit(state["url"])
+            expected = urllib.parse.urlsplit(self.page_url)
+            if parsed.netloc == expected.netloc and parsed.path == expected.path.replace("/viewform", "/formResponse") and state["confirmed"]:
+                return dict(ok=True, submitted=True, status="confirmed")
+        return dict(ok=False, submitted=False, status="uncertain", errors=["Submit was attempted; confirmation was not verified. Inspect the browser; do not resubmit."])

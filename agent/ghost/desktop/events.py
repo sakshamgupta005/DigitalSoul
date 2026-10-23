@@ -42,6 +42,10 @@ class WinEvents:
         user.CallNextHookEx.restype = ctypes.c_ssize_t
         user.UnhookWindowsHookEx.argtypes = [wintypes.HANDLE]
         user.GetForegroundWindow.restype = wintypes.HWND
+        user.WindowFromPoint.argtypes = [wintypes.POINT]
+        user.WindowFromPoint.restype = wintypes.HWND
+        user.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+        user.GetAncestor.restype = wintypes.HWND
         user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         kernel.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
         kernel.GetModuleHandleW.restype = wintypes.HMODULE
@@ -60,11 +64,14 @@ class WinEvents:
         def enqueue(kind, point=None, **extra):
             try:
                 hwnd = user.GetForegroundWindow()
+                if point is not None:
+                    hit = user.WindowFromPoint(wintypes.POINT(*point))
+                    hwnd = user.GetAncestor(hit, 2) if hit else 0  # GA_ROOT, before the click activates it
                 pid = wintypes.DWORD()
                 user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
                 if kind != "stop" and not self.everything and pid.value not in self.pids:
                     return
-                item = {"kind": kind, "pid": pid.value, "point": point, "time": time.monotonic(), **extra}
+                item = {"kind": kind, "pid": pid.value, "hwnd": hwnd, "point": point, "time": time.monotonic(), **extra}
                 try:
                     self.queue.put_nowait(item)
                 except queue.Full:

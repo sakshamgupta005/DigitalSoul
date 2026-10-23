@@ -51,6 +51,7 @@ OWN_TITLES = {"DigitalSoul", "DigitalSoul ghost"}
 # Fields whose text is never recorded even when the app does not flag them as passwords.
 SECRET_FIELD = re.compile(r"pass(word|code|phrase)|\bpin\b|\bcvv\b|\bcvc\b|security code|one[- ]time|\botp\b", re.I)
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+EXPLORER_FOLDER_CLASSES = {"CabinetWClass", "ExploreWClass"}
 # Browser steps closer than this to the page they led to are folded into it (see compress_browsing).
 FOLD_SECONDS = 60
 
@@ -167,6 +168,8 @@ def is_substantive_step(step):
     kind = step.get("kind")
     if kind in ("press_enter", "hotkey", "press_key", "double_click", "right_click", "scroll"):
         return True
+    if kind == "open_app":
+        return step.get("activation") == "observed_transition"
     if kind == "set_text":
         return bool((step.get("value") or "").strip())
     if kind == "open_url":
@@ -280,7 +283,7 @@ def drop_empty_visits(steps):
     out = []
     for index, step in enumerate(steps):
         following = steps[index + 1] if index + 1 < len(steps) else None
-        if step["kind"] == "open_app" and (following is None or following.get("path") != step.get("path")
+        if step["kind"] == "open_app" and not is_substantive_step(step) and (following is None or following.get("path") != step.get("path")
                                            or following["kind"] == "open_app"):
             continue
         out.append(step)
@@ -617,6 +620,8 @@ class Session:
         self.send_scanned = 0.0
         self.captured = None  # (field, text) last given to Capture
         self.last_foreground = None
+        self._polled = False
+        self._pending_visit = None
         self.observed_paths = {}
         self.woken = set()
         self.last_url = None
@@ -768,6 +773,7 @@ class Session:
         user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         if not pid.value:
             return None
+        frame_pid = pid.value
         pid = wintypes.DWORD(hosted_pid(hwnd, pid.value))  # a Store app, not its frame host
         path = self.observed_paths.get(pid.value)
         if path is None:
@@ -793,9 +799,10 @@ class Session:
         window = self.native.desktop.window(handle=hwnd).wrapper_object()
         if exe == "explorer.exe":
             cls = getattr(getattr(window, "element_info", None), "class_name", "") or ""
-            if cls in SHELL_CLASSES:
+            if cls not in EXPLORER_FOLDER_CLASSES:
                 return None
         active_pids = self._active_pids(pid.value, path)
+        active_pids.add(frame_pid)  # keyboard hooks see the Store app frame host
         self.events.pids.update(active_pids)
         return window, pid.value, path, active_pids
 
@@ -839,7 +846,33 @@ class Session:
             finally:
                 self._visual_queue.task_done()
 
+    def _visit(self, window, pid, path, baseline=False):
+        if self.last_foreground == path:
+            return
+        self._pending_visit = None
+        self.last_foreground = path
+        step = {"kind": "open_app", "app": PureWindowsPath(path).name, "path": path}
+        try:
+            title = (window.window_text() or window.element_info.name or "").strip()
+            if title:
+                step["title"] = title
+        except Exception:
+            pass
+        if "\\windowsapps\\" in path.lower():
+            step["app_id"] = self.native.app_id(pid)
+        # An existing window at Start, or Explorer surfaced behind Start/Search,
+        # is only context until the user actually interacts with it.
+        if baseline or exe_name(path) == "explorer.exe":
+            self._pending_visit = step
+        else:
+            step["activation"] = "observed_transition"
+            self.append(step)
+
     def append(self, step):
+        pending = getattr(self, "_pending_visit", None)
+        if pending and step.get("kind") != "open_app" and step.get("path") == pending["path"]:
+            self._pending_visit = None
+            self.append(pending)
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
@@ -894,22 +927,11 @@ class Session:
             active = self._foreground()
         except (OSError, ValueError, self.native.psutil.Error):
             pass
+        baseline = not getattr(self, "_polled", False)
+        self._polled = True
         if active:
             window, pid, path, active_pids = active
-            if self.last_foreground != path:
-                title = ""
-                try:
-                    title = (window.window_text() or window.element_info.name or "").strip()
-                except Exception:
-                    pass
-                step = {"kind": "open_app", "app": PureWindowsPath(path).name, "path": path}
-                if title:
-                    step["title"] = title
-                if "\\windowsapps\\" in path.lower():
-                    # Store apps cannot be started from their executable; replay launches the app identity.
-                    step["app_id"] = self.native.app_id(pid)
-                self.append(step)
-                self.last_foreground = path
+            self._visit(window, pid, path, baseline=baseline)
             self._wake(window)
             if self.capture and "executable" not in self.capture.flow and is_whatsapp(path):
                 self.capture.flow.update(executable=path, app_id=self.native.app_id(pid))
@@ -921,7 +943,9 @@ class Session:
                 break
             if event["kind"] == "stop":
                 return "stop"
-            if not active or (not self.everything and event["pid"] not in active_pids):
+            if not active or event["pid"] not in active_pids:
+                continue
+            if event.get("hwnd") and event["hwnd"] != window.handle:
                 continue
             if time.monotonic() - event["time"] > 2:
                 self.replay_error = "Input events arrived too late for reliable replay; evidence saved for review"

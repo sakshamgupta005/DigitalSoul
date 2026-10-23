@@ -90,6 +90,8 @@ def main():
     job_data.mkdir(parents=True, exist_ok=True)
     catalog, jobs = Catalog(data / "workflows.sqlite3"), Jobs(job_data / "jobs.sqlite3")
     learning_engine = LearningEngine(data / "learning.sqlite3")
+    gform_actor = None
+    gform_loop = asyncio.new_event_loop()
     inbox = queue.Queue()
     session = None
     replay = None
@@ -383,7 +385,11 @@ def main():
                                     mem.profile["name"] = str(val).strip()
                                 if k == "name" and "user_name" not in mem.profile:
                                     mem.profile["user_name"] = str(val).strip()
-                        result = GFormActor.inspect_url(payload.get("url", ""), memory=mem)
+                        if gform_actor is None:
+                            gform_actor = GFormActor(headless=False, memory=mem)
+                        else:
+                            gform_actor.memory = mem
+                        result = gform_loop.run_until_complete(gform_actor.inspect(payload.get("url", "")))
                     elif method == "gform_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
@@ -398,25 +404,23 @@ def main():
                                     mem.profile["name"] = str(val).strip()
                                 if k == "name" and "user_name" not in mem.profile:
                                     mem.profile["user_name"] = str(val).strip()
-                        actor = GFormActor(headless=payload.get("headless", False), memory=mem)
-                        try:
-                            result = asyncio.run(actor.fill_and_review(
-                                payload.get("url", ""),
-                                payload.get("items", []),
-                                click_submit=payload.get("click_submit", False),
-                                save_to_memory=payload.get("save_memory", True)
-                            ))
-                            if payload.get("save_memory", True) and isinstance(result, dict):
-                                for step_item in result.get("filled_steps", []):
-                                    q_name = step_item.get("question") or ""
-                                    q_val = step_item.get("value") or ""
-                                    if q_name and q_val:
-                                        import re
-                                        clean_k = re.sub(r"[^a-zA-Z0-9]+", "_", q_name).strip("_").lower()[:32]
-                                        if clean_k:
-                                            learning_engine.save_user_fact(clean_k, str(q_val).strip(), source="gform_fill")
-                        finally:
-                            asyncio.run(actor.close())
+                        if gform_actor is None:
+                            raise ValueError("Inspect the form before filling it")
+                        gform_actor.memory = mem
+                        result = gform_loop.run_until_complete(gform_actor.fill_and_review(
+                            payload.get("url", ""), payload.get("items", []),
+                            click_submit=payload.get("click_submit", False),
+                            save_to_memory=payload.get("save_memory", True)))
+                        if result.get("ok") and payload.get("save_memory", True):
+                            for step in result.get("filled_steps", []):
+                                if step.get("key") and step.get("value"):
+                                    learning_engine.save_user_fact(step["key"], step["value"], source="gform_used")
+                    elif method == "gform_submit":
+                        if session or replay or step_run:
+                            raise ValueError("Wait for the active recording or replay")
+                        if gform_actor is None:
+                            raise ValueError("Inspect and fill the form first")
+                        result = gform_loop.run_until_complete(gform_actor.submit(payload.get("approval_token")))
                     elif method == "gform_memory_get":
                         from ..browser.gform_memory import GFormMemory
                         gmem = GFormMemory().profile
@@ -813,6 +817,9 @@ def main():
                     replay, replay_id = spawn_replay(root, job_data, due["id"]), due["id"]
                     emit({"event": "replay_started", "job_id": replay_id})
     finally:
+        if gform_actor:
+            gform_loop.run_until_complete(gform_actor.close())
+        gform_loop.close()
         if shopify_future is not None:
             shopify_future.cancel()
         if shopify_session:

@@ -143,3 +143,48 @@ executable or shell command is allowed. Existing fresh UIA resolution and review
 step replay remain authoritative. Hermes plans compositions of demonstrated
 routines; it cannot supply new locators or invoke desktop/browser tools. See
 [command planning](docs/COMMAND_PLANNING.md). Blinky was not modified.
+
+## Windows Search app recordings (2026-10-23)
+
+Re-inspected Blinky's `windows/python/uia.py` shell-region scoping and
+`common/python/computer_use/tools.py` app identity launch paths. DigitalSoul
+now accepts only Explorer folder window classes for Explorer capture/replay;
+Start, taskbar and desktop surfaces are not folder windows. Input events carry
+their original top-level window and process, including mouse hit-test ownership.
+Initial foreground context and incidental Explorer visits require an actual
+interaction before becoming steps. Observed non-shell app transitions survive
+cleanup even in mixed routines. Store app identities remain the replay targets.
+No Blinky files were modified. Regression tests use fake windows/events; a live
+Windows Search launch demonstration remains necessary to verify native behavior.
+
+## WhatsApp preparation diagnostics (2026-10-23)
+
+Rechecked Blinky's Windows UIA import/availability handling in
+`windows/python/uia.py`. DigitalSoul keeps its own bounded preparation and
+reviewed-recipient checks. Preparation failures now carry allowlisted stages
+and fixed remediation text; provider errors, contact names and message text
+are not persisted in job details. Known flow failures do not invoke a fallback
+adapter. Existing historical generic errors cannot be reconstructed. Tests use
+fake adapters and do not send WhatsApp messages.
+
+## Live WhatsApp WebView2 targeting (2026-10-23)
+
+Consulted Blinky's `common/python/computer_use/backends/cua_driver.py` for
+window-scoped Cua snapshots. Live Cua enumeration exposed WhatsApp.Root.exe's
+WinUI frame and its separately owned msedgewebview2.exe content window. The
+outer frame UIA walk timed out; the renderer exposed the named search Edit.
+`desktop/whatsapp_window.py` now selects the content window only after resolving
+its process ancestry to the recorded WhatsApp executable. Multiple content
+windows fail closed. Contact results collapse ancestor/descendant UIA duplicates
+but reject separate same-name contacts. Generic composers cannot establish the
+recipient. Cua is used for window discovery; existing guarded keyboard/UIA
+execution remains in place. UFO's hybrid inspection approach informed diagnosis;
+UFO was not installed or introduced as an autonomous executor.
+
+Live verification: searched the user-approved contact, resolved its unique row,
+opened the chat and verified its recipient-labelled composer. One approved test
+message was dispatched through the durable Jobs state machine. An independent
+Cua screenshot showed the exact outgoing message, an empty composer and two grey
+ticks. The durable job correctly remains attempted_unverified because the current
+job adapter does not automate delivery-receipt verification. No automatic retry
+was made after dispatch.

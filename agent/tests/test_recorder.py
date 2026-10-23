@@ -535,3 +535,94 @@ def test_finish_records_concrete_apps_in_everything_mode():
 
 
 
+
+def launch_session(monkeypatch):
+    s = Session.__new__(Session)
+    s.started = rec.time.monotonic()
+    s.steps = []
+    s.last_foreground = None
+    s._pending_visit = None
+    s._polled = False
+    s.everything = True
+    s.capture = None
+    s.events = types.SimpleNamespace(error=None, queue=queue.Queue())
+    s.native = types.SimpleNamespace(
+        app_id=lambda pid: 'Recorded.App!App',
+        focused=lambda: types.SimpleNamespace(element_info=types.SimpleNamespace(process_id=-1)),
+        psutil=types.SimpleNamespace(Error=RuntimeError))
+    s._wake = lambda window: None
+    s._track_url = lambda *args: None
+    return s
+
+
+def active_window(path, pid=1, hwnd=10):
+    window = types.SimpleNamespace(handle=hwnd, window_text=lambda: '',
+                                   element_info=types.SimpleNamespace(name=''))
+    return window, pid, path, {pid}
+
+
+def test_search_launch_sequence_does_not_replay_incidental_explorer(monkeypatch):
+    s = launch_session(monkeypatch)
+    explorer = r'C:\Windows\explorer.exe'
+    spotify = r'C:\Apps\Spotify.exe'
+    # Search/Start are excluded foreground observations. Their Enter must not
+    # become an Enter in the newly opened app, even in Everything mode.
+    observations = [active_window(explorer), None, active_window(WA, 2, 20),
+                    active_window(explorer), None, active_window(spotify, 3, 30)]
+    for active in observations:
+        s._foreground = lambda: active
+        if active and active[2] != explorer:
+            s.events.queue.put({'kind': 'enter', 'pid': 99, 'hwnd': 99,
+                                'time': rec.time.monotonic()})
+        s.poll()
+    saved = rec.clean_steps(s.steps)
+    assert [(x['kind'], x['path']) for x in saved] == [('open_app', WA), ('open_app', spotify)]
+    assert saved[0]['app_id'] == 'Recorded.App!App'
+
+
+def test_explorer_interaction_still_records_folder_visit(monkeypatch):
+    s = launch_session(monkeypatch)
+    explorer = r'C:\Windows\explorer.exe'
+    window, pid, path, _ = active_window(explorer)
+    s._visit(window, pid, path, baseline=True)
+    assert s.steps == []
+    s.append(step('press_key', path=explorer, key='tab'))
+    assert [x['kind'] for x in rec.clean_steps(s.steps)] == ['open_app', 'press_key']
+
+
+def test_launch_is_kept_alongside_other_app_actions(monkeypatch):
+    s = launch_session(monkeypatch)
+    window, pid, path, _ = active_window(WA)
+    s._visit(window, pid, path)
+    s.append(step('open_app', path=BRAVE))
+    s.append(step('open_url', path=BRAVE, url=VIDEO))
+    assert rec.clean_steps(s.steps)[0]['path'] == WA
+
+
+def test_keyboard_event_from_other_window_of_same_process_is_not_reassigned(monkeypatch):
+    s = launch_session(monkeypatch)
+    s._foreground = lambda: active_window(BRAVE)
+    s.events.queue.put({'kind': 'enter', 'pid': 1, 'hwnd': 123, 'time': rec.time.monotonic()})
+    s.poll()
+    assert s.steps == []
+
+@pytest.mark.parametrize('window_class,accepted', [
+    ('CabinetWClass', True), ('ExploreWClass', True),
+    ('Shell_TrayWnd', False), ('Windows.UI.Core.CoreWindow', False), ('', False),
+])
+def test_explorer_shell_surfaces_are_not_folder_windows(monkeypatch, window_class, accepted):
+    s = launch_session(monkeypatch)
+    s.observed_paths = {1: r'C:\Windows\explorer.exe'}
+    s.events.pids = set()
+    s._ignored = lambda hwnd: False
+    s._active_pids = lambda pid, path: {pid}
+    window = types.SimpleNamespace(element_info=types.SimpleNamespace(class_name=window_class))
+    class User:
+        def GetForegroundWindow(self):
+            return 10
+        def GetWindowThreadProcessId(self, hwnd, ref):
+            ref._obj.value = 1
+    s.native.user = User()
+    s.native.desktop = types.SimpleNamespace(window=lambda **kw: types.SimpleNamespace(wrapper_object=lambda: window))
+    monkeypatch.setattr(rec, 'hosted_pid', lambda hwnd, pid: pid)
+    assert (s._foreground() is not None) == accepted

@@ -1243,78 +1243,72 @@ async function inspectGForm(url) {
     const res = await rpc('gform_inspect', { url });
     if (!res) throw new Error('Could not read form.');
 
-    if (res.title) {
-      $('gform-title').textContent = res.title;
-      $('gform-subtitle').textContent = `Total questions: ${res.total_questions} · Auto-filled: ${res.known_fields.length} · New: ${res.new_fields.length}`;
-    }
-
-    $('gform-known-count').textContent = res.known_fields.length;
-    $('gform-new-count').textContent = res.new_fields.length;
-
-    const knownCont = $('gform-known-container');
-    const newCont = $('gform-new-container');
-    knownCont.replaceChildren();
-    newCont.replaceChildren();
-
-    currentGFormQuestions = [];
-
-    // Render known fields
-    if (res.known_fields && res.known_fields.length) {
-      $('gform-known-header').hidden = false;
-      for (const item of res.known_fields) {
-        currentGFormQuestions.push(item);
-        const card = element('div', 'gform-field-card');
-        const lbl = element('label');
-        lbl.textContent = item.title;
-        const inp = element('input');
-        inp.name = item.title;
-        inp.value = item.suggested_value || '';
-        inp.dataset.title = item.title;
-        inp.dataset.key = item.matched_key || '';
-        card.append(lbl, inp);
-        knownCont.append(card);
-      }
-    } else {
-      $('gform-known-header').hidden = true;
-    }
-
-    // Render new fields
-    if (res.new_fields && res.new_fields.length) {
-      $('gform-new-header').hidden = false;
-      for (const item of res.new_fields) {
-        currentGFormQuestions.push(item);
-        const card = element('div', 'gform-field-card new');
-        const lbl = element('label');
-        lbl.textContent = item.title;
-        const inp = element('input');
-        inp.name = item.title;
-        // Pre-fill from suggested_value or remembered user_memory
-        let val = item.suggested_value || '';
-        if (!val && state.user_memory) {
-          const tLower = item.title.toLowerCase();
-          for (const [mKey, mData] of Object.entries(state.user_memory)) {
-            const mVal = mData.value || '';
-            const mNorm = mKey.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (mVal && (tLower.includes(mNorm) || (mNorm.includes('name') && tLower.includes('name')) || (mNorm.includes('email') && tLower.includes('email')) || ((mNorm.includes('org') || mNorm.includes('college')) && (tLower.includes('college') || tLower.includes('org') || tLower.includes('university'))))) {
-              val = mVal;
-              break;
-            }
-          }
-        }
-        inp.value = val;
-        inp.dataset.title = item.title;
-        card.append(lbl, inp);
-        newCont.append(card);
-      }
-    } else {
-      $('gform-new-header').hidden = true;
-    }
-
-    $('gform-progress').textContent = `✨ Mapped ${res.known_fields.length} known answers. ${res.new_fields.length} new fields ready to review.`;
+    renderGFormReview(res);
   } catch (err) {
     $('gform-progress').textContent = String(err?.message || err);
   }
 }
+
+let gformApproval = null;
+function renderGFormReview(res) {
+  gformApproval = null;
+  $('gform-confirm-submit').hidden = true;
+  $('gform-title').textContent = res.title;
+  $('gform-subtitle').textContent = `Current section: ${res.total_questions} questions. Later sections are reviewed when reached.`;
+  currentGFormQuestions = [...res.known_fields, ...res.new_fields];
+  for (const [kind, items] of [['known', res.known_fields], ['new', res.new_fields]]) {
+    $(`gform-${kind}-count`).textContent = items.length;
+    $(`gform-${kind}-header`).hidden = !items.length;
+    const container = $(`gform-${kind}-container`);
+    container.replaceChildren();
+    for (const item of items) {
+      const card = element('div', 'gform-field-card');
+      const lbl = element('label');
+      lbl.textContent = item.title + (item.required ? ' (required)' : '');
+      card.dataset.question = String(currentGFormQuestions.indexOf(item));
+      card.append(lbl);
+      const addChoices = (options, multiple, value, row) => {
+        if (multiple) {
+          for (const option of [...new Set(options)]) {
+            const wrap = element('label'), box = element('input');
+            box.type = 'checkbox'; box.value = option; box.dataset.row = row || '';
+            box.checked = Array.isArray(value) && value.includes(option);
+            wrap.append(box, document.createTextNode(option)); card.append(wrap);
+          }
+        } else {
+          const select = element('select'); select.dataset.row = row || '';
+          select.append(new Option('Choose an answer', ''));
+          for (const option of [...new Set(options)]) select.append(new Option(option, option));
+          select.value = value || ''; card.append(select);
+        }
+      };
+      if (item.type === 'grid') {
+        for (const row of item.rows || []) {
+          const name = element('div'); name.textContent = row.title; card.append(name);
+          addChoices(row.options, row.multiple, item.suggested_value?.[row.title], row.title);
+        }
+      } else if (['checkbox','radio','dropdown'].includes(item.type) && item.options?.length) {
+        addChoices(item.options, item.type === 'checkbox', item.suggested_value);
+      } else {
+        const inp = element('input');
+        inp.value = item.suggested_value ?? '';
+        if (['date','time','number','email','url'].includes(item.type)) inp.type = item.type;
+        if (['upload','unsupported','file'].includes(item.type)) { inp.disabled = true; inp.placeholder = 'Requires manual input in the browser'; }
+        card.append(inp);
+      }
+      container.append(card);
+    }
+  }
+  $('gform-progress').textContent = 'Review suggested answers and supply missing answers before filling.';
+}
+$('gform-confirm-submit')?.addEventListener('click', () => action(async () => {
+  if (!gformApproval) throw new Error('Fill and review again before submitting.');
+  if (!window.confirm('Submit the reviewed answers to this Google Form now?')) return;
+  const approval_token = gformApproval; gformApproval = null;
+  $('gform-confirm-submit').hidden = true;
+  const result = await rpc('gform_submit', { approval_token });
+  $('gform-progress').textContent = result.submitted ? 'Submission confirmed by Google Forms.' : (result.errors || []).join('; ');
+}));
 
 function openGFormWorkflow(prefill = {}) {
   view('approve');
@@ -1344,16 +1338,19 @@ $('gform-form')?.addEventListener('submit', (event) => {
 
     // Gather all inputs
     const items = [];
-    const allInputs = $('gform-fields-section').querySelectorAll('input');
-    allInputs.forEach(inp => {
-      if (inp.dataset.title) {
-        items.push({
-          title: inp.dataset.title,
-          value: inp.value,
-          key: inp.dataset.key || ''
-        });
-      }
-    });
+    for (const card of $('gform-fields-section').querySelectorAll('[data-question]')) {
+      const q = currentGFormQuestions[Number(card.dataset.question)];
+      const read = controls => controls.some(c=>c.type==='checkbox') ? controls.filter(c=>c.checked).map(c=>c.value) : controls[0]?.value || '';
+      const controls = [...card.querySelectorAll('input, select')];
+      let value;
+      if (q.type === 'grid') {
+        value = {};
+        for (const row of q.rows || []) value[row.title] = read(controls.filter(c=>c.dataset.row===row.title));
+      } else value = read(controls);
+      items.push({ id:q.id, title:q.title, value, key:q.matched_key || q.title.toLowerCase().replace(/[^a-z0-9]+/g,'_') });
+    }
+    gformApproval = null;
+    $('gform-confirm-submit').hidden = true;
 
     $('gform-progress').textContent = 'Opening browser to fill Google Form...';
     $('compact-label').textContent = 'Google Forms · filling…';
@@ -1368,9 +1365,13 @@ $('gform-form')?.addEventListener('submit', (event) => {
         headless: false
       });
       await expanded(true);
-      if (res && res.ok) {
+      if (res?.review) {
+        renderGFormReview(res.review);
+      } else if (res && res.ok) {
+        gformApproval = res.approval_token;
+        $('gform-confirm-submit').hidden = !gformApproval;
         $('gform-progress').textContent = `✅ Successfully filled ${(res.filled_steps || []).length} form fields! Review the form in your browser before manual Submit.`;
-        notice(`Form filled: ${(res.filled_steps || []).length} fields filled for review. Answers remembered!`, 'success');
+        notice(`Form filled: ${(res.filled_steps || []).length} fields filled for review. ${res.saved_memory_count || 0} answers remembered.`, 'success');
       } else {
         $('gform-progress').textContent = `Filled ${(res?.filled_steps || []).length} fields. ${(res?.errors || []).join('; ')}`;
       }

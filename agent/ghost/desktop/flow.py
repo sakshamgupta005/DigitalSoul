@@ -1,4 +1,6 @@
 """Record/replay the bounded WhatsApp launch/search/select/compose/send flow."""
+from .preparation import PreparationError, diagnosed_prepare
+
 import ctypes
 import json
 import os
@@ -185,6 +187,21 @@ class Native:
 
     def active(self, path=None):
         target_path = os.path.normcase(str(path)) if path else None
+        # Cua enumerates the renderer HWND without walking the unresponsive
+        # WinUI outer frame. Never select an unrelated Edge WebView window.
+        from .whatsapp_window import content_window
+        from .whatsapp import webview_host
+        content = content_window(target_path)
+        if content:
+            handle = int(content["window_id"])
+            owner_pid = wintypes.DWORD()
+            self.user.GetWindowThreadProcessId(handle, ctypes.byref(owner_pid))
+            if owner_pid.value != int(content["pid"]):
+                raise ValueError("WhatsApp content window changed before activation")
+            self.user.ShowWindow(handle, 9)
+            self.user.SwitchToThisWindow(handle, True)
+            self.user.SetForegroundWindow(handle)
+            return self.desktop.window(handle=handle).wrapper_object(), owner_pid.value, executable(webview_host(owner_pid.value))
         hwnd = self.user.GetForegroundWindow()
         pid = wintypes.DWORD()
         self.user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
@@ -356,7 +373,7 @@ class FlowAdapter:
 
     def _allow(self):
         if not self.guard():
-            raise ValueError("Desktop job stopped or cancelled")
+            raise PreparationError("cancelled")
 
     def _window(self, flow):
         self._allow()
@@ -381,6 +398,7 @@ class FlowAdapter:
     def _park(self):
         getattr(self.native, "park", lambda: None)()
 
+    @diagnosed_prepare
     def prepare(self, flow, message):
         try:
             self._prepare(flow, message)
@@ -390,12 +408,16 @@ class FlowAdapter:
 
     def _prepare(self, flow, message):
         validate(flow)
+        self.preparation_stage = "connect"
         self.native = self.native or Native()
         self._header = flow["header"]
         self._allow()
+        self.preparation_stage = "open"
         self.native.open(flow)
+        self.preparation_stage = "window"
         self._wait(lambda: self._window(flow))
         for action in flow["actions"]:
+            self.preparation_stage = {"navigate": "search", "select": "recipient", "compose": "composer", "search": "search"}.get(action["kind"], "unknown")
             if action["kind"] == "select" and flow.get("retarget"):
                 # Different person: open the one search result whose name matches, never a guess.
                 result = self._wait(lambda: self._result(flow))
@@ -417,8 +439,9 @@ class FlowAdapter:
                 value = message if action["kind"] == "compose" else flow["search"]
                 getattr(self.native, "glide_to", lambda control: None)(target)
                 if action["kind"] == "compose" and target.get_value() and target.get_value().strip():
-                    raise ValueError("Existing message draft will not be overwritten")
+                    raise PreparationError("draft")
                 self._allow()
+                self.preparation_stage = "type" if action["kind"] == "compose" else "search"
                 try:
                     target.set_edit_text(value)
                 except Exception:
@@ -450,7 +473,9 @@ class FlowAdapter:
                             pass
                         target.type_keys(escaped, with_spaces=True, set_foreground=False)
                     time.sleep(0.4)
+                self.preparation_stage = "verify" if action["kind"] == "compose" else "search"
                 self._wait(lambda: self._value_matches(flow, action["target"], value))
+        self.preparation_stage = "verify"
         self.ready(flow, message)
 
     def _value_matches(self, flow, spec, value):

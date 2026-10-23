@@ -46,6 +46,7 @@ Thumbs.db
 *.log
 *.swp
 *.swo
+*.xlsx
 
 # Project temp and runtime artifacts
 scratch/

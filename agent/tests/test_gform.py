@@ -93,3 +93,38 @@ def test_google_cloud_enrolment_form_inspection(tmp_path):
     assert any(f["matched_key"] == "email" for f in res["known_fields"])
     assert any(f["matched_key"] == "name" for f in res["known_fields"])
 
+
+def test_typed_memory_and_context(tmp_path):
+    mem=GFormMemory(tmp_path/'memory.md')
+    mem.save({'name':'Test Person','skills':['Python','Java'],'grid':{'Row':'Yes'}})
+    loaded=GFormMemory(tmp_path/'memory.md')
+    assert loaded.profile['skills']==['Python','Java']
+    assert loaded.profile['grid']=={'Row':'Yes'}
+    assert loaded.match_question("Father's name")== (None,None,0.0)
+    assert loaded._match_option('Male',['Female']) is None
+
+@pytest.mark.parametrize('url', ['http://docs.google.com/forms/d/abc/viewform', 'https://evil.test/forms/d/abc/viewform', 'https://docs.google.com@evil.test/forms/d/abc/viewform', 'https://docs.google.com/forms/d/abc/edit'])
+def test_reject_non_responder_url(url):
+    with pytest.raises(ValueError): GFormActor.validate_url(url)
+
+
+def test_submission_approval_is_consumed_and_bound_to_values(tmp_path, monkeypatch):
+    import asyncio, time
+    from agent.ghost.browser import gform_fields
+    actor=GFormActor(memory=GFormMemory(tmp_path/'memory.md'))
+    actor.page_url='https://docs.google.com/forms/d/abc/viewform'
+    state={'signature':'s','values':[['approved']], 'url':actor.page_url,'errors':[]}
+    actor.approval=('token',time.monotonic()+60,state)
+    async def snapshot(): return dict(state,values=[['changed']])
+    actor._snapshot=snapshot
+    async def forbidden(*args,**kwargs): pytest.fail('Must not click Submit')
+    monkeypatch.setattr(gform_fields,'operate',forbidden)
+    with pytest.raises(ValueError,match='changed'): asyncio.run(actor.submit('token'))
+    with pytest.raises(ValueError,match='already used'): asyncio.run(actor.submit('token'))
+
+
+def test_no_fill_and_submit_shortcut(tmp_path):
+    import asyncio
+    actor=GFormActor(memory=GFormMemory(tmp_path/'memory.md'))
+    with pytest.raises(ValueError,match='separate'):
+        asyncio.run(actor.fill_and_review('https://docs.google.com/forms/d/abc/viewform',[],click_submit=True))

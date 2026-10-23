@@ -3,6 +3,8 @@
 No keylogging, chat-history collection, arbitrary script replay, or coordinate replay.
 Blinky windows/python/uia.py informs process scoping and fresh element resolution.
 """
+from .preparation import PreparationError, diagnosed_prepare
+
 import ctypes
 import os
 import sys
@@ -223,13 +225,16 @@ class WhatsApp:
 
     def check(self, recipe):
         from .whatsapp_send import control_text
+        self.preparation_stage = "window"
         window = self.window(recipe)
+        self.preparation_stage = "composer"
         composer = resolve(window, recipe["controls"]["composer"])
         val = control_text(composer)
         if val and val.strip():
-            raise ValueError("Clear the existing draft first")
+            raise PreparationError("draft")
         return True
 
+    @diagnosed_prepare
     def prepare(self, recipe, message):
         if recipe.get("format") == "digitalsoul.whatsapp-send.v1":
             from .whatsapp_send import WhatsAppSend
@@ -240,13 +245,17 @@ class WhatsApp:
                 from .flow import FlowAdapter
                 self._flow_adapter = FlowAdapter(guard=getattr(self, "_guard", None))
                 return self._flow_adapter.prepare(recipe, message)
+            except PreparationError:
+                raise
             except Exception:
                 from .whatsapp_send import WhatsAppSend
                 self._flow_adapter = WhatsAppSend(guard=getattr(self, "_guard", None), ghost=None)
                 return self._flow_adapter.prepare(recipe, message)
         from .whatsapp_send import control_text
+        self.preparation_stage = "composer"
         self.check(recipe)
         composer = resolve(self.window(recipe), recipe["controls"]["composer"])
+        self.preparation_stage = "type"
         # Literal ValuePattern assignment: braces and + are not keyboard commands.
         try:
             composer.set_edit_text(message)
@@ -259,6 +268,7 @@ class WhatsApp:
             import re
             escaped = re.sub(r'([+^%~{}()])', r'{\1}', message)
             composer.type_keys(escaped, with_spaces=True, set_foreground=False)
+        self.preparation_stage = "verify"
         self._ready(recipe, message)
 
     def _ready(self, recipe, message):

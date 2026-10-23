@@ -8,6 +8,7 @@ from ..safety.credentials import protect
 from .flow import FORMAT as FLOW_FORMAT, retarget
 from .whatsapp_send import FORMAT as SEND_FORMAT
 from .whatsapp import validate_recipe
+from .preparation import failure_detail
 
 
 def instant(value):
@@ -103,16 +104,18 @@ class Jobs:
         if row is None or not self._transition(row["id"], "pending", "preparing"):
             return None
         job_id = row["id"]
+        stage = "payload"
         try:
             if hasattr(adapter, "set_guard"):
                 adapter.set_guard(lambda: bool(self.db.execute("""SELECT 1 FROM desktop_jobs
                     WHERE id=? AND state IN ('preparing','dispatching')
                     AND (SELECT stopped FROM desktop_control WHERE id=1)=0""", (job_id,)).fetchone()))
             payload = json.loads(protect(row["payload"], decrypt=True))
+            stage = "unknown"
             adapter.prepare(payload["recipe"], payload["message"])
-        except Exception:
+        except Exception as exc:
             # Never persist exception text: a UIA provider may include private UI text.
-            self._transition(job_id, "preparing", "blocked", "Desktop precondition failed; inspect locally")
+            self._transition(job_id, "preparing", "blocked", failure_detail(exc, stage))
             return job_id
         if self.clock().timestamp() > row["expires"]:
             self._transition(job_id, "preparing", "missed", "Preparation exceeded the send window; draft may remain")

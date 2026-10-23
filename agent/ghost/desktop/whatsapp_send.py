@@ -3,6 +3,8 @@
 WhatsApp names its composer "Type a message to <chat>", which both identifies the person when
 recording and proves the right chat is open before anything is typed or sent.
 """
+from .preparation import PreparationError, diagnosed_prepare
+
 import re
 import time
 from pathlib import PureWindowsPath
@@ -13,8 +15,10 @@ FORMAT = "digitalsoul.whatsapp-send.v1"
 COMPOSER = re.compile(r"^\s*Type a message to\s+(.+?)\s*$", re.IGNORECASE)
 
 
-class Refused(ValueError):
-    """A deliberate stop (ambiguous chat, existing draft) that waiting longer cannot fix."""
+class Refused(PreparationError):
+    """A deliberate stop for an ambiguous chat; never includes its name."""
+    def __init__(self, _detail=None):
+        super().__init__("ambiguous")
 
 
 def whatsapp_in_front():
@@ -176,13 +180,13 @@ class WhatsAppSend:
                     pass
                 self.sleep(0.3)
                 if not whatsapp_in_front():
-                    raise ValueError("WhatsApp is not in front, so the ghost stopped before typing anywhere else")
+                    raise PreparationError("focus")
             real(text, **kwargs)
         return guarded
 
     def _allow(self):
         if not self.guard():
-            raise ValueError("Desktop job stopped or cancelled")
+            raise PreparationError("cancelled")
 
     def _wait(self, attempt, what):
         deadline = time.monotonic() + self.timeout
@@ -190,7 +194,7 @@ class WhatsAppSend:
             self._allow()
             try:
                 result = attempt()
-            except Refused:
+            except (Refused, PreparationError):
                 raise
             except Exception:
                 # WhatsApp's WebView2 tree rebuilds constantly; stale elements mean "look again".
@@ -261,10 +265,6 @@ class WhatsAppSend:
             name = recipient_of(edit.element_info.name)
             if name and (recipient is None or name.lower() == recipient.lower()):
                 return edit
-        for edit in edits:
-            raw_name = (getattr(getattr(edit, "element_info", None), "name", "") or "").strip().lower()
-            if raw_name.startswith("type a message") and not recipient_of(raw_name):
-                return edit
         self._edit_cache = None
         return None
 
@@ -291,7 +291,28 @@ class WhatsAppSend:
                     [row for row in all_rows if _name_matches(row.element_info.name, wanted)]
                 ) if row.is_visible()]
         exact = [row for row in rows if chat_name(row.element_info.name).lower() == wanted.lower()]
-        if exact:
+        # A single result exposes both its outer row and a nested title row.
+        # Collapse only ancestor/descendant duplicates, never separate contacts.
+        def key(control):
+            return tuple(control.element_info.runtime_id)
+        outer = []
+        exact_keys = {key(row) for row in exact}
+        for row in exact:
+            parent = row.parent()
+            nested = False
+            for _ in range(12):
+                if parent is None:
+                    break
+                if key(parent) in exact_keys:
+                    nested = True
+                    break
+                parent = parent.parent()
+            if not nested:
+                outer.append(row)
+        exact = outer
+        if len(exact) > 1:
+            raise Refused()
+        if len(exact) == 1:
             return exact[0]
         if len(rows) == 1:
             return rows[0]
@@ -342,6 +363,7 @@ class WhatsAppSend:
         from .steps import keys
         send_keys("^a{BACKSPACE}" + keys(text), with_spaces=True, pause=0.04)  # faster keystrokes get garbled by Windows text boxes
 
+    @diagnosed_prepare
     def prepare(self, recipe, message):
         try:
             self._prepare(recipe, message)
@@ -352,24 +374,29 @@ class WhatsAppSend:
     def _prepare(self, recipe, message):
         from .flow import Native, chat_name
         validate(dict(recipe, message=message))
+        self.preparation_stage = "connect"
         self.native = self.native or Native()
         self._executable = recipe["executable"]
         self._allow()
+        self.preparation_stage = "open"
         self.native.open({"executable": recipe["executable"], "app_id": recipe.get("app_id")})
+        self.preparation_stage = "window"
         window = self._wait(lambda: self._window(recipe), "the WhatsApp window")
         recipient = recipe["recipient"].strip()
         self.chat = recipient
         try:
             if not self._composer(recipe, recipient):
+                self.preparation_stage = "search"
                 search = self._wait(lambda: self._search_box(recipe), "the search box")
                 self._type(search, recipe.get("search") or recipient)
+                self.preparation_stage = "recipient"
                 row = self._wait(lambda: self._result(recipe, recipient), f"a chat named {recipient!r}")
                 self._visit(row)
                 self._press(row)
                 self._edit_cache = None
                 self.chat = chat_name(row.element_info.name)
                 self._edit_cache = None
-        except Refused:
+        except (Refused, PreparationError):
             raise
         except Exception:
             try:
@@ -382,12 +409,15 @@ class WhatsAppSend:
             except Exception:
                 raise
         self._edit_cache = None  # the chat just changed: look its message box up fresh
+        self.preparation_stage = "composer"
         composer = self._wait(lambda: self._composer(recipe, self.chat), f"the message box for {self.chat!r}")
         existing = (control_text(composer) or "").strip()
         if existing and existing != message.strip():
-            raise Refused("An unsent draft is already in that chat; it will not be overwritten")
+            raise PreparationError("draft")
         if existing != message.strip():
+            self.preparation_stage = "type"
             self._type(composer, message)
+            self.preparation_stage = "verify"
             self._wait(lambda: composer if (self._live_text(composer) or "").strip() == message.strip() else None, "the typed message")
 
     def send(self, recipe, message):

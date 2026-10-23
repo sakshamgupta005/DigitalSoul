@@ -237,7 +237,7 @@ def test_check_ignores_empty_or_newline_draft(monkeypatch):
         monkeypatch.setattr("agent.ghost.desktop.whatsapp.resolve", lambda w, spec: SimpleNamespace(get_value=lambda: empty_val))
         assert adapter.check(recipe()) is True
     monkeypatch.setattr("agent.ghost.desktop.whatsapp.resolve", lambda w, spec: SimpleNamespace(get_value=lambda: "real draft"))
-    with pytest.raises(ValueError, match="Clear the existing draft"):
+    with pytest.raises(ValueError, match="existing draft"):
         adapter.check(recipe())
 
 
@@ -253,3 +253,62 @@ def test_send_allows_matching_stripped_composer(monkeypatch):
     # Should not raise "Composer differs from the approved message"
     adapter.send(recipe(), "happy birthday")
 
+
+@pytest.mark.parametrize('code', ['open', 'window', 'focus', 'search', 'recipient', 'composer', 'draft', 'type', 'verify', 'ambiguous'])
+def test_preparation_reason_is_persisted_without_sending(store, code):
+    from agent.ghost.desktop.preparation import PreparationError
+    schedule(store)
+    def fail():
+        raise PreparationError(code)
+    adapter = Adapter(prepare=fail)
+    store.tick(adapter, now=NOW + timedelta(seconds=10))
+    store.tick(adapter, now=NOW + timedelta(seconds=11))
+    detail = store.list()[0]['detail']
+    assert f'[{code}]' in detail
+    assert 'Send was not attempted' in detail
+    assert not adapter.sends
+    assert len(adapter.preparations) == 1
+
+
+def test_real_send_adapter_wraps_provider_error_at_open_stage(monkeypatch):
+    from agent.ghost.desktop.whatsapp_send import WhatsAppSend, FORMAT
+    from agent.ghost.desktop.preparation import PreparationError, failure_detail
+    def fail(_):
+        raise OSError('PRIVATE contact and message text')
+    native = SimpleNamespace(open=fail, park=lambda: None)
+    adapter = WhatsAppSend(native=native)
+    plan = dict(format=FORMAT, recipient='Private Contact', executable=r'C:\Apps\WhatsApp.exe')
+    with pytest.raises(PreparationError) as caught:
+        adapter.prepare(plan, 'Private Message')
+    assert caught.value.code == 'open'
+    assert 'PRIVATE' not in failure_detail(caught.value)
+    assert 'Private' not in failure_detail(caught.value)
+
+
+def test_stage_wrapper_hides_unknown_exception_and_rejects_unknown_codes():
+    from agent.ghost.desktop.preparation import diagnosed_prepare, PreparationError, failure_detail
+    class Broken:
+        @diagnosed_prepare
+        def prepare(self):
+            self.preparation_stage = 'composer'
+            raise RuntimeError('PRIVATE UI CONTENT')
+    with pytest.raises(PreparationError) as caught:
+        Broken().prepare()
+    assert caught.value.code == 'composer'
+    assert 'PRIVATE' not in failure_detail(caught.value)
+    assert '[unknown]' in failure_detail(PreparationError('PRIVATE UI CONTENT'))
+
+
+def test_known_flow_failure_does_not_start_another_adapter(monkeypatch):
+    from agent.ghost.desktop import flow, whatsapp_send
+    from agent.ghost.desktop.preparation import PreparationError
+    class BrokenFlow:
+        def __init__(self, **kwargs):
+            pass
+        def prepare(self, *args):
+            raise PreparationError('draft')
+    monkeypatch.setattr(flow, 'FlowAdapter', BrokenFlow)
+    monkeypatch.setattr(whatsapp_send, 'WhatsAppSend', lambda **kwargs: pytest.fail('must not retry preparation'))
+    with pytest.raises(PreparationError) as caught:
+        WhatsApp().prepare({'format': 'digitalsoul.whatsapp-flow.v1'}, 'message')
+    assert caught.value.code == 'draft'

@@ -181,9 +181,6 @@ class LearningEngine:
 
         now = datetime.now(timezone.utc).isoformat()
         defaults = [
-            ("user_name", "Eshan Sharma", "Full Name", "identity", "profile_default", 1.0),
-            ("email", "eshansharma@example.com", "Email Address", "identity", "profile_default", 1.0),
-            ("organization", "GDG", "Organization", "identity", "profile_default", 0.95),
             ("shopify_store_url", "https://admin.shopify.com/store/gzn0vr-qn/products", "Shopify Store URL", "commerce", "system_default", 0.95),
             ("default_whatsapp_recipient", "Alex", "Primary WhatsApp Contact", "messaging", "system_default", 0.90),
             ("preferred_browser", "msedge.exe", "Preferred Browser", "workflow_habit", "system_default", 0.95),

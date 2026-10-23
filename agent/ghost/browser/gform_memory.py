@@ -7,6 +7,7 @@ them into a form (or explicitly saves them through the existing memory path).
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -95,13 +96,13 @@ class GFormMemory:
             key = re.sub(r"[^a-zA-Z0-9]+", "_", match.group(1)).strip("_").lower()
             value = match.group(2).strip()
             if key and value:
-                result[key] = value
+                result[key] = json.loads(value[6:]) if value.startswith("@json:") else value
         return result
 
     def _write_markdown(self) -> None:
         lines = [MEMORY_HEADER.rstrip(), ""]
         for key in sorted(self.profile):
-            value = str(self.profile[key]).replace("\r", " ").replace("\n", " ").strip()
+            value = ("@json:" + json.dumps(self.profile[key], ensure_ascii=False) if isinstance(self.profile[key], (list, dict)) else str(self.profile[key])).replace("\r", " ").replace("\n", " ").strip()
             if value:
                 lines.append(f"- `{key}`: {value}")
         lines.append("")
@@ -114,7 +115,7 @@ class GFormMemory:
             key = re.sub(r"[^a-zA-Z0-9]+", "_", str(raw_key)).strip("_").lower()
             if not key or value is None:
                 continue
-            cleaned = str(value).strip()
+            cleaned = value if isinstance(value, (list, dict)) else str(value).strip()
             if cleaned:
                 self.profile[key] = cleaned
             else:
@@ -131,6 +132,11 @@ class GFormMemory:
         Returns (profile_key, value_to_fill, confidence).
         """
         q_norm = question_text.strip().lower()
+        exact_key = re.sub(r"[^a-z0-9]+", "_", q_norm).strip("_")
+        if exact_key in self.profile:
+            return exact_key, self.profile[exact_key], 1.0
+        if re.search(r"\b(father|mother|guardian|emergency|alternate)\b", q_norm):
+            return None, None, 0.0
 
         # Match specific question text against profile aliases
         best_key = None
@@ -184,14 +190,11 @@ class GFormMemory:
 
     @staticmethod
     def _match_option(user_val: str, options: List[str]) -> Optional[str]:
+        if not isinstance(user_val, str):
+            return None
         val_norm = user_val.strip().lower()
         # Exact match
         for opt in options:
             if opt.strip().lower() == val_norm:
-                return opt
-        # Partial match
-        for opt in options:
-            opt_lower = opt.strip().lower()
-            if val_norm in opt_lower or opt_lower in val_norm:
                 return opt
         return None
