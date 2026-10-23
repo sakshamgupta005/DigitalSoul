@@ -389,7 +389,15 @@ def main():
                             gform_actor = GFormActor(headless=False, memory=mem)
                         else:
                             gform_actor.memory = mem
-                        result = gform_loop.run_until_complete(gform_actor.inspect(payload.get("url", "")))
+                        try:
+                            result = gform_loop.run_until_complete(gform_actor.inspect(payload.get("url", "")))
+                        except Exception:
+                            try:
+                                gform_loop.run_until_complete(gform_actor.close())
+                            except Exception:
+                                pass
+                            gform_actor = None
+                            raise
                     elif method == "gform_run":
                         if session or replay or step_run:
                             raise ValueError("Stop recording or wait for the active replay")
@@ -407,14 +415,22 @@ def main():
                         if gform_actor is None:
                             raise ValueError("Inspect the form before filling it")
                         gform_actor.memory = mem
-                        result = gform_loop.run_until_complete(gform_actor.fill_and_review(
-                            payload.get("url", ""), payload.get("items", []),
-                            click_submit=payload.get("click_submit", False),
-                            save_to_memory=payload.get("save_memory", True)))
-                        if result.get("ok") and payload.get("save_memory", True):
-                            for step in result.get("filled_steps", []):
-                                if step.get("key") and step.get("value"):
-                                    learning_engine.save_user_fact(step["key"], step["value"], source="gform_used")
+                        try:
+                            result = gform_loop.run_until_complete(gform_actor.fill_and_review(
+                                payload.get("url", ""), payload.get("items", []),
+                                click_submit=payload.get("click_submit", False),
+                                save_to_memory=payload.get("save_memory", True)))
+                            if result.get("ok") and payload.get("save_memory", True):
+                                for step in result.get("filled_steps", []):
+                                    if step.get("key") and step.get("value"):
+                                        learning_engine.save_user_fact(step["key"], step["value"], source="gform_used")
+                        except Exception:
+                            try:
+                                gform_loop.run_until_complete(gform_actor.close())
+                            except Exception:
+                                pass
+                            gform_actor = None
+                            raise
                     elif method == "gform_submit":
                         if session or replay or step_run:
                             raise ValueError("Wait for the active recording or replay")

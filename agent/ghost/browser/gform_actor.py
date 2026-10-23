@@ -142,46 +142,61 @@ class GFormActor:
         if Browser is None:
             raise RuntimeError("browser_use is required for Google Forms automation")
 
-        # Try attaching to existing Edge CDP if available
+        # Try attaching to existing Edge CDP if available and responsive
+        endpoint = None
         if self.cdp_url:
             endpoint = validate_local_cdp(self.cdp_url)
-            self.browser = Browser(cdp_url=endpoint, use_cloud=False, keep_alive=True,
-                                   enable_default_extensions=False, auto_download_pdfs=False)
-            self._attached = True
-            await self.browser.start()
-            return self
+        else:
+            try:
+                candidate = existing_edge_endpoint()
+                parsed = urllib.parse.urlsplit(candidate)
+                if parsed.port:
+                    req = urllib.request.Request(f"http://127.0.0.1:{parsed.port}/json/version")
+                    with urllib.request.urlopen(req, timeout=0.8) as resp:
+                        if resp.status == 200:
+                            endpoint = candidate
+            except Exception:
+                endpoint = None
 
-        try:
-            endpoint = existing_edge_endpoint()
-            self.browser = Browser(cdp_url=endpoint, use_cloud=False, keep_alive=True,
-                                   enable_default_extensions=False, auto_download_pdfs=False)
-            self._attached = True
-            await self.browser.start()
-            return self
-        except Exception:
-            # Fall back to isolated browser session
-            Path(self.profile_dir).mkdir(parents=True, exist_ok=True)
-            self.browser = Browser(
-                user_data_dir=self.profile_dir,
-                headless=self.headless,
-                is_local=True,
-                keep_alive=not self.headless,
-                use_cloud=False,
-                executable_path=browser_executable(),
-                enable_default_extensions=False,
-                auto_download_pdfs=False,
-            )
-            self._attached = False
-            await self.browser.start()
-            return self
+        if endpoint:
+            try:
+                self.browser = Browser(cdp_url=endpoint, use_cloud=False, keep_alive=True,
+                                       enable_default_extensions=False, auto_download_pdfs=False)
+                self._attached = True
+                await self.browser.start()
+                return self
+            except Exception:
+                await self.close()
+
+        # Fall back to isolated browser session launched with executable
+        Path(self.profile_dir).mkdir(parents=True, exist_ok=True)
+        self.browser = Browser(
+            user_data_dir=self.profile_dir,
+            headless=self.headless,
+            is_local=True,
+            keep_alive=not self.headless,
+            use_cloud=False,
+            executable_path=browser_executable(),
+            enable_default_extensions=False,
+            auto_download_pdfs=False,
+        )
+        self._attached = False
+        await self.browser.start()
+        return self
 
     async def close(self):
+        self.page = None
+        self.page_url = None
+        self.approval = None
         if self.browser:
             b, self.browser = self.browser, None
-            if self._attached:
-                await b.stop()
-            else:
-                await b.kill()
+            try:
+                if self._attached:
+                    await b.stop()
+                else:
+                    await b.kill()
+            except Exception:
+                pass
 
     @staticmethod
     def validate_url(url):
@@ -194,15 +209,19 @@ class GFormActor:
 
     async def _page(self, url):
         self.validate_url(url)
-        await self.start()
-        if self.page is None or self.page_url != url:
-            self.page = await self.browser.new_page()
-            await self.page.goto(url)
-            self.page_url = url
-            self.approval = None
-            self.submission_attempted = False
-            await asyncio.sleep(1)
-        return self.page
+        try:
+            await self.start()
+            if self.page is None or self.page_url != url:
+                self.page = await self.browser.new_page()
+                await self.page.goto(url)
+                self.page_url = url
+                self.approval = None
+                self.submission_attempted = False
+                await asyncio.sleep(1)
+            return self.page
+        except Exception:
+            await self.close()
+            raise
 
     async def _snapshot(self):
         from .gform_fields import operate
