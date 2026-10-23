@@ -604,7 +604,6 @@ async function showDetail(id) {
       header.append(label);
       $('step-list').append(header);
       lastApp = step.app;
-      if (step.kind === 'open_app') continue;
     }
     const row = element('li', `kind-${step.kind}`);
     row.style.setProperty('--i', String(index));

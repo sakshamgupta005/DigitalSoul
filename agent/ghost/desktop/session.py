@@ -165,10 +165,10 @@ def is_blank_url(url):
 def is_substantive_step(step):
     """Determine whether a step achieved a concrete action or state change."""
     kind = step.get("kind")
+    if kind in ("press_enter", "hotkey", "press_key", "double_click", "right_click", "scroll"):
+        return True
     if kind == "set_text":
         return bool((step.get("value") or "").strip())
-    if kind == "press_enter":
-        return True
     if kind == "open_url":
         return not is_blank_url(step.get("url"))
     if kind == "click":
@@ -189,6 +189,8 @@ def is_substantive_step(step):
         if c_type in ("ListItem", "DataItem", "TreeItem", "Button", "SplitButton", "MenuItem", "CheckBox", "RadioButton"):
             return True
         if label and not c_type:
+            return True
+        if step.get("point") or step.get("relative_point"):
             return True
     return False
 
@@ -271,6 +273,10 @@ def drop_non_substantive_steps(steps):
 def drop_empty_visits(steps):
     """An app that was only passed through (in front when recording started, or alt-tabbed past)
     has nothing to replay; switching to it would just pull it in front for no reason."""
+    if not steps:
+        return []
+    if all(s.get("kind") == "open_app" for s in steps):
+        return steps
     out = []
     for index, step in enumerate(steps):
         following = steps[index + 1] if index + 1 < len(steps) else None
@@ -321,9 +327,9 @@ def clean_steps(steps):
             break
         out = trimmed
     if not out:
-        # A routine that only opens an app ("open Notepad") keeps the app it ended in.
+        # A routine that only opens an app ("open Notepad") keeps the opened apps.
         opened = [step for step in steps if step["kind"] == "open_app" and not is_system_host(step)]
-        out = opened[-1:]
+        out = opened
     return out
 
 
@@ -1203,5 +1209,11 @@ class Session:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
         self._video_time()
         self.steps = clean_steps(compress_browsing(self.steps))
-        return {"name": self.name, "apps": self.apps, "steps": self.steps, "flow": flow,
+        recorded_apps = []
+        for s in self.steps:
+            app_n = s.get("app")
+            if app_n and app_n not in recorded_apps:
+                recorded_apps.append(app_n)
+        saved_apps = recorded_apps if recorded_apps else self.apps
+        return {"name": self.name, "apps": saved_apps, "steps": self.steps, "flow": flow,
                 "duration": round(time.monotonic() - self.started, 1), "replay_error": self.replay_error}

@@ -504,3 +504,34 @@ def test_clean_steps_drops_system_host_daemons_and_launchers():
     assert cleaned[1]["kind"] == "click"
 
 
+def test_clean_steps_preserves_multiapp_shortcuts_and_actions():
+    from agent.ghost.desktop.session import clean_steps
+    calc = r"C:\Windows\calc.exe"
+    notepad = r"C:\Windows\notepad.exe"
+    raw_steps = [
+        {"kind": "open_app", "app": "calc.exe", "path": calc},
+        {"kind": "hotkey", "app": "calc.exe", "path": calc, "combo": "^c"},
+        {"kind": "open_app", "app": "notepad.exe", "path": notepad},
+        {"kind": "hotkey", "app": "notepad.exe", "path": notepad, "combo": "^v"},
+    ]
+    cleaned = clean_steps(raw_steps)
+    assert len(cleaned) == 4
+    assert [s["app"] for s in cleaned] == ["calc.exe", "calc.exe", "notepad.exe", "notepad.exe"]
+
+
+def test_finish_records_concrete_apps_in_everything_mode():
+    s = bare_session([
+        step("open_app", path=r"C:\Apps\editor.exe"),
+        step("set_text", path=r"C:\Apps\editor.exe", value="code"),
+        step("open_app", path=r"C:\Apps\browser.exe"),
+        step("open_url", path=r"C:\Apps\browser.exe", url="https://example.com/"),
+    ])
+    assert s.apps == ["*"]
+    result = s.finish()
+    # Finish should populate the actual apps observed rather than leaving [*]
+    assert "editor.exe" in result["apps"]
+    assert "browser.exe" in result["apps"]
+    assert "*" not in result["apps"]
+
+
+
