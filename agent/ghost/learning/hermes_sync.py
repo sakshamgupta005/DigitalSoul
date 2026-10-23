@@ -36,6 +36,47 @@ CURATED_HERMES_SKILLS = [
     {"name": "systematic-debugging", "category": "software-development", "desc": "Disciplined failure reproduction and root-cause tracing"},
 ]
 
+FALLBACK_CURATED_SKILLS = {
+    "computer-use": """---
+name: "computer-use"
+description: "Drive the desktop background-first; escalate on signal."
+version: 2.1.0
+platforms: [macos, windows, linux]
+metadata:
+  hermes:
+    tags: [computer-use, desktop, automation]
+---
+
+# Computer Use (universal, any-model, cross-platform)
+
+Drive desktop background-first.
+
+## The canonical workflow
+
+1. computer_use(action="capture", mode="som", app="chrome")
+2. computer_use(action="click", element=7)
+3. computer_use(action="click", element=7, capture_after=True)
+
+## Prerequisites
+- **`TIMEOUT`** (integer): Default `30`
+""",
+    "youtube-content": """---
+name: youtube-content
+description: "YouTube transcripts to summaries, threads, blogs."
+version: 1.0.0
+---
+
+# YouTube Content Tool
+
+## Workflow
+
+1. **Fetch** the transcript using `terminal` from https://youtube.com/watch?v=123.
+2. **Validate**: confirm the output is non-empty.
+3. **Transform** into the requested output format.
+4. **Verify**: re-read the transformed output.
+"""
+}
+
 
 def get_hermes_repo_root() -> Optional[Path]:
     """Return local path to hermes-agent checkout if present."""
@@ -137,6 +178,11 @@ def copy_hermes_skill(skill_name: str, target_dir: Optional[Path] = None) -> Tup
                 (dest_skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
             return True, f"Fetched '{skill_name}' directly from Hermes GitHub to {dest_skill_dir}", dest_skill_dir
         except Exception as exc:
+            # Fallback to local curated template if network is unavailable or timed out
+            fallback_text = FALLBACK_CURATED_SKILLS.get(skill_name)
+            if fallback_text:
+                (dest_skill_dir / "SKILL.md").write_text(fallback_text, encoding="utf-8")
+                return True, f"Loaded curated offline template for '{skill_name}' into {dest_skill_dir}", dest_skill_dir
             return False, f"Failed to fetch '{skill_name}' from GitHub: {exc}", None
 
     return False, f"Skill '{skill_name}' not found in local Hermes repo or curated catalog", None

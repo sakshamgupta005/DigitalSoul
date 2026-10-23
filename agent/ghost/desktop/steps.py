@@ -20,6 +20,20 @@ from .whatsapp import executable, hosted_pid, libraries
 STEP_KINDS = ("open_app", "open_url", "click", "double_click", "right_click", "scroll", "set_text", "press_enter", "press_key", "hotkey")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+SYSTEM_HOST_EXES = {
+    "svchost.exe", "searchhost.exe", "searchapp.exe", "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe", "runtimebroker.exe", "taskhostw.exe", "sihost.exe",
+    "services.exe", "lsass.exe", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "dwm.exe", "fontdrvhost.exe", "searchindexer.exe", "ctfmon.exe", "wlanext.exe", "spoolsv.exe"
+}
+
+
+def is_system_host(step):
+    if not isinstance(step, dict):
+        return False
+    p = PureWindowsPath(step.get("path", "")).name.lower()
+    a = (step.get("app") or "").lower()
+    return p in SYSTEM_HOST_EXES or a in SYSTEM_HOST_EXES
 
 
 def unique(controls):
@@ -297,7 +311,10 @@ class StepRunner:
 
     def _app_window(self, path, title=None):
         # Prefer the recorded app's foreground window (dialogs included), else its first window.
-        is_explorer = PureWindowsPath(str(path)).name.lower() == "explorer.exe"
+        exe_lower = PureWindowsPath(str(path)).name.lower()
+        if exe_lower in SYSTEM_HOST_EXES:
+            return None
+        is_explorer = exe_lower == "explorer.exe"
         def attempt():
             window, current = self.native.foreground()
             if current == path:
@@ -377,6 +394,8 @@ class StepRunner:
         pass
 
     def open_app(self, step):
+        if is_system_host(step):
+            return
         app_name = PureWindowsPath(step.get("path", "")).name
         self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=app_name, rect=None, status=f"Opening {app_name}")
         if not self.native.windows(step["path"]):
@@ -387,6 +406,8 @@ class StepRunner:
         self._glide(window)  # the ghost visibly arrives at the app it is about to use
 
     def click(self, step):
+        if is_system_host(step):
+            return
         window = self._app_window(step["path"])
         label = step.get("label") or step.get("target", {}).get("name") or "control"
         self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=label, rect=None, status=f"Locating: {label}")
@@ -460,6 +481,8 @@ class StepRunner:
             raise ValueError(f"Could not find '{label}'")
 
     def set_text(self, step, committed=True):
+        if is_system_host(step):
+            return
         window = self._app_window(step["path"])
         value = step["value"]
         label = step.get("label") or step.get("target", {}).get("name") or "text field"
@@ -558,6 +581,8 @@ class StepRunner:
         self._glide(bar or window)
 
     def press_enter(self, step):
+        if is_system_host(step):
+            return
         self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="press_enter", label="Enter", rect=None, status="Submitting (Enter)")
         self._app_window(step["path"])
         self.native.send_keys("{ENTER}")
@@ -630,6 +655,7 @@ class StepRunner:
         self.native.send_keys(combo)
 
     def run(self, steps, progress=lambda index, step: None):
+        steps = [s for s in steps if not is_system_host(s)]
         self.total_steps = len(steps)
         previous = None
         for index, step in enumerate(steps):
@@ -676,7 +702,10 @@ def main():
     done = 0
     desktop = None
     try:
-        validate(payload["steps"])
+        from .session import clean_steps
+        raw_steps = payload.get("steps", [])
+        steps = clean_steps(raw_steps)
+        validate(steps)
         wf_name = payload.get("workflow_name") or payload.get("name") or "default"
         desktop = Desktop()
         runner = StepRunner(desktop, event_sink=lambda evt: print(json.dumps(evt), flush=True), workflow_name=wf_name)
@@ -684,9 +713,9 @@ def main():
         def progress(index, step):
             nonlocal done
             done = index
-        runner.run(payload["steps"], progress)
+        runner.run(steps, progress)
         skipped = f" Skipped {runner.skipped} text step(s) that were only field placeholders or focus changes." if runner.skipped else ""
-        count = len(payload["steps"])
+        count = len(steps)
         result = {"ok": True, "detail": f"Replayed {count} step{'' if count == 1 else 's'}.{skipped} Check the apps to confirm the result."}
     except Stopped as exc:
         result = {"ok": False, "detail": f"{exc} before step {done + 1}."}

@@ -118,7 +118,7 @@ function setRecording(value) {
   if ($('new-recording')) $('new-recording').disabled = value || state.running;
 }
 
-const APP_NAMES = { 'whatsapp.exe': 'WhatsApp', 'whatsapp.root.exe': 'WhatsApp', 'brave.exe': 'Brave', 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'excel.exe': 'Excel', 'winword.exe': 'Word', 'powerpnt.exe': 'PowerPoint', 'explorer.exe': 'File Explorer', 'calculatorapp.exe': 'Calculator', 'file explorer': 'File Explorer', '*': 'Everything' };
+const APP_NAMES = { 'whatsapp.exe': 'WhatsApp', 'whatsapp.root.exe': 'WhatsApp', 'brave.exe': 'Brave', 'chrome.exe': 'Chrome', 'msedge.exe': 'Edge', 'excel.exe': 'Excel', 'winword.exe': 'Word', 'powerpnt.exe': 'PowerPoint', 'explorer.exe': 'File Explorer', 'calculatorapp.exe': 'Calculator', 'file explorer': 'File Explorer', 'spotify.exe': 'Spotify', '*': 'Everything' };
 function appName(app) {
   if (!app) return 'Desktop';
   const name = APP_NAMES[app.toLowerCase()] || app.replace(/\.exe$/i, '');
@@ -147,7 +147,7 @@ function stepLabel(step) {
   return ({ click: `Click ${step.label || step.target?.name || 'control'}`, set_text: 'Enter text', press_enter: 'Press Enter' })[step.kind] || step.kind;
 }
 
-const APPS = [[/whatsapp/i, 'whatsapp', 'W'], [/brave/i, 'brave', 'B'], [/chrome/i, 'chrome', 'C'], [/excel/i, 'excel', 'X'], [/winword/i, 'word', 'W']];
+const APPS = [[/whatsapp/i, 'whatsapp', 'W'], [/brave/i, 'brave', 'B'], [/chrome/i, 'chrome', 'C'], [/excel/i, 'excel', 'X'], [/winword/i, 'word', 'W'], [/spotify/i, 'spotify', 'S']];
 function appStyle(apps = []) {
   for (const [pattern, token, letter] of APPS) if (apps.some((app) => pattern.test(app))) return { token, letter };
   const name = (apps.find((app) => app !== '*') || 'Desktop').replace(/\.exe$/i, '');

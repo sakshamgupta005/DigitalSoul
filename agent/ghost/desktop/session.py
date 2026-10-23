@@ -24,6 +24,20 @@ def exe_name(path):
     s = str(path)
     idx = max(s.rfind("\\"), s.rfind("/"))
     return s[idx + 1:].lower() if idx != -1 else s.lower()
+SYSTEM_HOST_EXES = {
+    "svchost.exe", "searchhost.exe", "searchapp.exe", "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe", "runtimebroker.exe", "taskhostw.exe", "sihost.exe",
+    "services.exe", "lsass.exe", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "dwm.exe", "fontdrvhost.exe", "searchindexer.exe", "ctfmon.exe", "wlanext.exe", "spoolsv.exe"
+}
+
+
+def is_system_host(step):
+    if not isinstance(step, dict):
+        return False
+    p = exe_name(step.get("path", ""))
+    a = (step.get("app") or "").lower()
+    return p in SYSTEM_HOST_EXES or a in SYSTEM_HOST_EXES
 CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabItem", "CheckBox", "RadioButton",
                    "DataItem", "TreeItem", "Text", "Image", "ComboBox", "SplitButton")
 # Clicking a page or window root says nothing about what was clicked (typing is captured separately).
@@ -31,7 +45,7 @@ ROOT_KINDS = ("Window", "Pane", "Document")
 # "Everything" mode still never watches DigitalSoul itself, sign-in prompts or password managers.
 NEVER_RECORD = {"digitalsoul-notch.exe", "consent.exe", "lockapp.exe", "credentialuibroker.exe", "logonui.exe",
                 "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe",
-                "enpass.exe", "nordpass.exe", "roboform.exe", "keeperpasswordmanager.exe"}
+                "enpass.exe", "nordpass.exe", "roboform.exe", "keeperpasswordmanager.exe"} | SYSTEM_HOST_EXES
 # DigitalSoul's own windows (notch, ghost overlay), whatever executable a dev build runs as.
 OWN_TITLES = {"DigitalSoul", "DigitalSoul ghost"}
 # Fields whose text is never recorded even when the app does not flag them as passwords.
@@ -277,6 +291,8 @@ def clean_steps(steps):
     - Apps visited without doing anything are dropped."""
     out = []
     for index, step in enumerate(steps):
+        if is_system_host(step):
+            continue
         target = step.get("target") or {}
         browser = exe_name(step.get("path", "")) in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
@@ -306,7 +322,7 @@ def clean_steps(steps):
         out = trimmed
     if not out:
         # A routine that only opens an app ("open Notepad") keeps the app it ended in.
-        opened = [step for step in steps if step["kind"] == "open_app"]
+        opened = [step for step in steps if step["kind"] == "open_app" and not is_system_host(step)]
         out = opened[-1:]
     return out
 
