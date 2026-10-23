@@ -204,12 +204,16 @@ class VisualMemory:
         session_id: Optional[str] = None,
         analyze_with_omniroute: bool = True,
         annotate_screen: bool = True,
+        image: Optional[Any] = None,
     ) -> VisualMemoryItem:
         """Capture screenshot via dxcam, annotate markings, run WinRT OCR, and save memory."""
         now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         # 1. Capture screen using dxcam / fallback
-        shot_path, img = self.capturer.save_screenshot(prefix="obs", region=region)
+        if image is not None:
+            shot_path, img = self.capturer.save_screenshot(image=image, prefix="obs", region=region)
+        else:
+            shot_path, img = self.capturer.save_screenshot(prefix="obs", region=region)
 
         # 2. Run WinRT OCR
         ocr_res: OcrResult = OcrResult(text="", lines=[], words=[])

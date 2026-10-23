@@ -610,6 +610,12 @@ class Session:
         elif options.get("whatsapp") or self.everything:
             # Any recording that touches WhatsApp also learns who was searched and what was typed.
             self.capture = Capture()
+        self.capturer = None
+        try:
+            from agent.ghost.collector.screen_capture import ScreenCapture
+            self.capturer = ScreenCapture()
+        except Exception:
+            self.capturer = None
         self.visual_memory = None
         self._closed = threading.Event()
         self._visual_queue = None
@@ -778,26 +784,34 @@ class Session:
             except queue.Empty:
                 continue
             if task is None:
+                self._visual_queue.task_done()
                 break
-            step_dict, app_name, window_title, target_name, action_kind, coords = task
+            step_dict, app_name, window_title, target_name, action_kind, coords, pre_img = task
             try:
-                mem_item = self.visual_memory.capture_and_remember(
-                    app=app_name,
-                    window_title=window_title,
-                    action_kind=action_kind,
-                    coords=coords,
-                    target_name=target_name,
-                    session_id=self.name,
-                    analyze_with_omniroute=False,
-                )
-                if mem_item and mem_item.screenshot_path:
-                    step_dict["screenshot_path"] = mem_item.screenshot_path
-                if mem_item and mem_item.marked_screenshot_path:
-                    step_dict["marked_screenshot_path"] = mem_item.marked_screenshot_path
-                if mem_item and mem_item.ocr_text:
-                    step_dict["ocr_snippet"] = mem_item.ocr_text[:120].strip()
-                if mem_item and mem_item.intent_summary:
-                    step_dict["intent"] = mem_item.intent_summary
+                if getattr(self, "visual_memory", None):
+                    mem_item = self.visual_memory.capture_and_remember(
+                        app=app_name,
+                        window_title=window_title,
+                        action_kind=action_kind,
+                        coords=coords,
+                        target_name=target_name,
+                        session_id=self.name,
+                        analyze_with_omniroute=False,
+                        image=pre_img,
+                    )
+                    if mem_item:
+                        if mem_item.screenshot_path and not step_dict.get("screenshot_path"):
+                            step_dict["screenshot_path"] = mem_item.screenshot_path
+                        if mem_item.marked_screenshot_path:
+                            step_dict["marked_screenshot_path"] = mem_item.marked_screenshot_path
+                        if mem_item.ocr_text:
+                            step_dict["ocr_snippet"] = mem_item.ocr_text[:120].strip()
+                        if mem_item.intent_summary:
+                            step_dict["intent"] = mem_item.intent_summary
+                elif pre_img and getattr(self, "capturer", None):
+                    shot_path, _ = self.capturer.save_screenshot(image=pre_img, prefix="step")
+                    if shot_path and not step_dict.get("screenshot_path"):
+                        step_dict["screenshot_path"] = shot_path
             except Exception:
                 pass
             finally:
@@ -807,6 +821,19 @@ class Session:
         if len(self.steps) >= 500:
             raise ValueError("Recording reached 500 steps; stop and save it")
         step["at"] = round(time.monotonic() - self.started, 2)
+
+        # Every point and step counted on the recorder takes a screenshot with it
+        frame = None
+        if getattr(self, "capturer", None):
+            try:
+                frame = self.capturer.capture_frame()
+                if frame and not step.get("screenshot_path"):
+                    shot_path, _ = self.capturer.save_screenshot(image=frame, prefix="step")
+                    if shot_path:
+                        step["screenshot_path"] = shot_path
+            except Exception:
+                pass
+
         if getattr(self, "visual_memory", None) and getattr(self, "_visual_queue", None):
             try:
                 app_name = step.get("app") or "Desktop"
@@ -817,7 +844,7 @@ class Session:
                 coords = step.get("point")
                 if not coords and isinstance(step.get("target"), dict) and "point" in step["target"]:
                     coords = step["target"]["point"]
-                self._visual_queue.put_nowait((step, app_name, window_title, target_name, step.get("kind", "action"), coords))
+                self._visual_queue.put_nowait((step, app_name, window_title, target_name, step.get("kind", "action"), coords, frame))
             except Exception:
                 pass
         last = self.steps[-1] if self.steps else {}
@@ -827,6 +854,10 @@ class Session:
                 last.get(key) == step.get(key) for key in ("target", "path")) and (
                 last.get("field") == step.get("field") or
                 step["value"].startswith(last["value"]) or last["value"].startswith(step["value"])):
+            if not step.get("screenshot_path") and last.get("screenshot_path"):
+                step["screenshot_path"] = last.get("screenshot_path")
+            if not step.get("marked_screenshot_path") and last.get("marked_screenshot_path"):
+                step["marked_screenshot_path"] = last.get("marked_screenshot_path")
             self.steps[-1] = step
         else:
             self.steps.append(step)
@@ -1111,11 +1142,12 @@ class Session:
             self._closed.set()
         if getattr(self, "_visual_queue", None):
             try:
+                self._visual_queue.join()
                 self._visual_queue.put_nowait(None)
             except Exception:
                 pass
         if getattr(self, "_visual_thread", None) and self._visual_thread.is_alive():
-            self._visual_thread.join(timeout=1.0)
+            self._visual_thread.join(timeout=2.0)
 
         flow = None
         if self.capture and self.capture.composed and not self.capture.done:

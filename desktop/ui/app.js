@@ -629,6 +629,22 @@ async function showDetail(id) {
     if (explanation) {
       body.append(element('p', 'step-explanation', explanation));
     }
+    const shotPath = step.marked_screenshot_path || step.screenshot_path;
+    if (shotPath) {
+      const thumbWrap = element('div', 'step-shot-wrap');
+      const imgSrc = tauri?.tauri?.convertFileSrc ? tauri.tauri.convertFileSrc(shotPath) : `file:///${shotPath.replace(/\\/g, '/')}`;
+      const img = element('img', 'step-shot-thumb');
+      img.src = imgSrc;
+      img.alt = `Screenshot for step ${index + 1}`;
+      img.title = 'Click to open full screenshot';
+      img.loading = 'lazy';
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.open(imgSrc, '_blank');
+      });
+      thumbWrap.append(img);
+      body.append(thumbWrap);
+    }
     row.append(node, body, element('time', '', timeLabel(step.at || 0)));
     $('step-list').append(row);
   }
@@ -1273,10 +1289,20 @@ async function inspectGForm(url) {
         lbl.textContent = item.title;
         const inp = element('input');
         inp.name = item.title;
-        inp.placeholder = item.options ? `e.g. ${item.options.slice(0, 2).join(' or ')}` : 'Enter answer (will be remembered)';
-        // Never invent an answer for a new field. The person must provide it
-        // once; a successfully filled value is then remembered locally.
-        inp.value = item.suggested_value || '';
+        // Pre-fill from suggested_value or remembered user_memory
+        let val = item.suggested_value || '';
+        if (!val && state.user_memory) {
+          const tLower = item.title.toLowerCase();
+          for (const [mKey, mData] of Object.entries(state.user_memory)) {
+            const mVal = mData.value || '';
+            const mNorm = mKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (mVal && (tLower.includes(mNorm) || (mNorm.includes('name') && tLower.includes('name')) || (mNorm.includes('email') && tLower.includes('email')) || ((mNorm.includes('org') || mNorm.includes('college')) && (tLower.includes('college') || tLower.includes('org') || tLower.includes('university'))))) {
+              val = mVal;
+              break;
+            }
+          }
+        }
+        inp.value = val;
         inp.dataset.title = item.title;
         card.append(lbl, inp);
         newCont.append(card);
@@ -2032,7 +2058,13 @@ async function boot() {
       } else if (payload.event === 'recording_progress') {
         $('live-count').textContent = `${payload.step_count} steps`;
         $('live-time').textContent = $('compact-time').textContent = timeLabel(payload.elapsed);
-        $('live-last').textContent = payload.last_step ? stepLabel(payload.last_step) : 'Open an allowed app to begin.';
+        const lastStep = payload.last_step;
+        if (lastStep) {
+          const hasShot = lastStep.screenshot_path || lastStep.marked_screenshot_path;
+          $('live-last').textContent = `${stepLabel(lastStep)}${hasShot ? ' 📸' : ''}`;
+        } else {
+          $('live-last').textContent = 'Open an allowed app to begin.';
+        }
       } else if (payload.event === 'recording_saved') {
         await hideNotch(false);
         setRecording(false);

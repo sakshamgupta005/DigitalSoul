@@ -431,3 +431,56 @@ def test_clean_steps_keeps_button_only_routines():
         {"kind": "click", "path": calc, "label": name, "target": {"control_type": "Button", "automation_id": auto, "name": name}}
         for name, auto in (("Seven", "num7Button"), ("Plus", "plusButton"), ("Eight", "num8Button"), ("Equals", "equalButton"))]
     assert [s.get("label") for s in clean_steps(steps)] == [None, "Seven", "Plus", "Eight", "Equals"]
+
+
+def test_session_append_takes_screenshot_with_every_counted_point(tmp_path):
+    """Every point and step counted on the recorder must take a screenshot with it."""
+    from agent.ghost.desktop.session import Session
+
+    # Construct lightweight fake session without Windows hooks
+    class DummyEvents:
+        everything = False
+        def __enter__(self): pass
+        def __exit__(self, *a): pass
+    class DummyWatch:
+        def start(self): pass
+
+    class FakeCapturer:
+        def __init__(self, out_dir):
+            self.out_dir = out_dir
+            self.count = 0
+        def capture_frame(self):
+            return "mock_frame"
+        def save_screenshot(self, image=None, prefix="step", region=None):
+            self.count += 1
+            fpath = str(self.out_dir / f"{prefix}_{self.count}.png")
+            with open(fpath, "w") as f:
+                f.write("fake_png")
+            return fpath, "fake_img"
+
+    # Instantiate session with hooks mocked
+    s = object.__new__(Session)
+    s.started = 1000.0
+    s.steps = []
+    s.events = DummyEvents()
+    s.watch = DummyWatch()
+    s.capture = None
+    s.visual_memory = None
+    s._visual_queue = None
+    s._closed = threading.Event()
+    s.capturer = FakeCapturer(tmp_path)
+
+    # 1. Point interaction (click with point)
+    pt_step = {"kind": "click", "path": r"C:\app.exe", "label": "Save", "point": [100, 200]}
+    s.append(pt_step)
+    assert len(s.steps) == 1
+    assert "screenshot_path" in s.steps[0]
+    assert s.steps[0]["screenshot_path"].endswith("step_1.png")
+
+    # 2. Text input point
+    text_step = {"kind": "set_text", "path": r"C:\app.exe", "value": "test", "target": {"name": "search"}}
+    s.append(text_step)
+    assert len(s.steps) == 2
+    assert "screenshot_path" in s.steps[1]
+    assert s.steps[1]["screenshot_path"].endswith("step_2.png")
+

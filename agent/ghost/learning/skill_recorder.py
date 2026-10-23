@@ -485,7 +485,9 @@ metadata:
             label = s.get("label") or (s.get("target") or {}).get("name") or s.get("title") or "target element"
             val = s.get("value")
             val_clause = f" to `{val}`" if val else ""
-            body_lines.append(f"{idx}. {kind.capitalize()} on '{label}'{val_clause}.")
+            shot = s.get("marked_screenshot_path") or s.get("screenshot_path")
+            shot_clause = f" *(Screenshot: `{os.path.basename(shot)}`)*" if shot else ""
+            body_lines.append(f"{idx}. {kind.capitalize()} on '{label}'{val_clause}.{shot_clause}")
     body_lines.append("")
 
     # Guardrails & Edge Cases
@@ -701,12 +703,20 @@ class ActionCompactor:
 
                 # If prev was click to focus, and current is set_text on same field, replace click with set_text
                 if prev_kind == "click" and kind == "set_text" and (prev_label == label or not prev_label or not label):
+                    if not s.get("screenshot_path") and prev.get("screenshot_path"):
+                        s["screenshot_path"] = prev["screenshot_path"]
+                    if not s.get("marked_screenshot_path") and prev.get("marked_screenshot_path"):
+                        s["marked_screenshot_path"] = prev["marked_screenshot_path"]
                     cleaned[-1] = s
                     continue
 
                 # If prev was set_text on same field, update settled value
                 if prev_kind == "set_text" and kind == "set_text" and prev_label == label:
                     prev["value"] = val
+                    if s.get("screenshot_path"):
+                        prev["screenshot_path"] = s["screenshot_path"]
+                    if s.get("marked_screenshot_path"):
+                        prev["marked_screenshot_path"] = s["marked_screenshot_path"]
                     continue
 
                 # If duplicate click on same element within rapid sequence
