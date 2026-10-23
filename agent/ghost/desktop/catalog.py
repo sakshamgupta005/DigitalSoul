@@ -72,7 +72,8 @@ def understand_steps(steps, flow=None, name=None):
     for step in steps:
         kind = step.get("kind")
         raw_app = step.get("app") or "App"
-        app = {"explorer.exe": "File Explorer", "calculatorapp.exe": "Calculator"}.get(
+        app = {"explorer.exe": "File Explorer", "calculatorapp.exe": "Calculator", "spotify.exe": "Spotify",
+               "whatsapp.root.exe": "WhatsApp", "whatsapp.exe": "WhatsApp", "msedge.exe": "Edge"}.get(
             raw_app.lower(), raw_app.replace(".exe", "").capitalize())
         if app not in apps_touched:
             apps_touched.append(app)
@@ -207,6 +208,9 @@ class Catalog:
         value.setdefault("created_at", datetime.now(timezone.utc).isoformat())
         if not isinstance(value.get("name"), str) or not 1 <= len(value["name"].strip()) <= 80:
             raise ValueError("Use a recording name of 1–80 characters")
+        from .session import clean_steps
+        if isinstance(value.get("steps"), list):
+            value["steps"] = clean_steps(value["steps"])
         if not isinstance(value.get("steps"), list) or len(value["steps"]) > 500:
             raise ValueError("Recording exceeds the 500-step limit")
         value["name"] = value["name"].strip()
@@ -221,7 +225,10 @@ class Catalog:
         if not row:
             raise ValueError("Recording not found")
         val = json.loads(protect(row[0], decrypt=True))
-        if "understanding" not in val:
+        from .session import clean_steps
+        if isinstance(val.get("steps"), list):
+            val["steps"] = clean_steps(val["steps"])
+        if "understanding" not in val or any(app in str(val.get("understanding", "")).lower() for app in ("searchhost", "svchost")):
             val["understanding"] = understand_steps(val.get("steps", []), val.get("flow"), val.get("name"))
         return val
 
@@ -231,13 +238,16 @@ class Catalog:
         for row in self.db.execute("SELECT id FROM recordings"):
             value = self.get(row[0])
             understanding = value.get("understanding") or understand_steps(value.get("steps", []), value.get("flow"), value.get("name"))
+            steps = value.get("steps", [])
+            from .session import is_system_host
+            used = list(dict.fromkeys(step["app"] for step in steps if step.get("app") and not is_system_host(step)))
             result.append({key: value.get(key) for key in
                            ("id", "name", "created_at", "apps", "duration", "replay_error")}
-                          | {"step_count": len(value["steps"]), "can_run": bool(value.get("flow")),
+                          | {"step_count": len(steps), "can_run": bool(value.get("flow")),
                              "recipient": (value.get("flow") or {}).get("recipient"),
                              "intent": understanding.get("intent"),
                              "understanding": understanding,
-                             "used": list(dict.fromkeys(step["app"] for step in value["steps"] if step.get("app"))),
+                             "used": used,
                              "summary": summarize(value)})
         return sorted(result, key=lambda r: r["created_at"], reverse=True)
 

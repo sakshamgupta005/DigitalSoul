@@ -24,6 +24,20 @@ def exe_name(path):
     s = str(path)
     idx = max(s.rfind("\\"), s.rfind("/"))
     return s[idx + 1:].lower() if idx != -1 else s.lower()
+SYSTEM_HOST_EXES = {
+    "svchost.exe", "searchhost.exe", "searchapp.exe", "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe", "runtimebroker.exe", "taskhostw.exe", "sihost.exe",
+    "services.exe", "lsass.exe", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "dwm.exe", "fontdrvhost.exe", "searchindexer.exe", "ctfmon.exe", "wlanext.exe", "spoolsv.exe"
+}
+
+
+def is_system_host(step):
+    if not isinstance(step, dict):
+        return False
+    p = exe_name(step.get("path", ""))
+    a = (step.get("app") or "").lower()
+    return p in SYSTEM_HOST_EXES or a in SYSTEM_HOST_EXES
 CLICKABLE_KINDS = ("Button", "ListItem", "Edit", "Hyperlink", "MenuItem", "TabItem", "CheckBox", "RadioButton",
                    "DataItem", "TreeItem", "Text", "Image", "ComboBox", "SplitButton")
 # Clicking a page or window root says nothing about what was clicked (typing is captured separately).
@@ -31,7 +45,7 @@ ROOT_KINDS = ("Window", "Pane", "Document")
 # "Everything" mode still never watches DigitalSoul itself, sign-in prompts or password managers.
 NEVER_RECORD = {"digitalsoul-notch.exe", "consent.exe", "lockapp.exe", "credentialuibroker.exe", "logonui.exe",
                 "1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "dashlane.exe", "lastpass.exe",
-                "enpass.exe", "nordpass.exe", "roboform.exe", "keeperpasswordmanager.exe"}
+                "enpass.exe", "nordpass.exe", "roboform.exe", "keeperpasswordmanager.exe"} | SYSTEM_HOST_EXES
 # DigitalSoul's own windows (notch, ghost overlay), whatever executable a dev build runs as.
 OWN_TITLES = {"DigitalSoul", "DigitalSoul ghost"}
 # Fields whose text is never recorded even when the app does not flag them as passwords.
@@ -151,10 +165,10 @@ def is_blank_url(url):
 def is_substantive_step(step):
     """Determine whether a step achieved a concrete action or state change."""
     kind = step.get("kind")
+    if kind in ("press_enter", "hotkey", "press_key", "double_click", "right_click", "scroll"):
+        return True
     if kind == "set_text":
         return bool((step.get("value") or "").strip())
-    if kind == "press_enter":
-        return True
     if kind == "open_url":
         return not is_blank_url(step.get("url"))
     if kind == "click":
@@ -175,6 +189,8 @@ def is_substantive_step(step):
         if c_type in ("ListItem", "DataItem", "TreeItem", "Button", "SplitButton", "MenuItem", "CheckBox", "RadioButton"):
             return True
         if label and not c_type:
+            return True
+        if step.get("point") or step.get("relative_point"):
             return True
     return False
 
@@ -257,6 +273,10 @@ def drop_non_substantive_steps(steps):
 def drop_empty_visits(steps):
     """An app that was only passed through (in front when recording started, or alt-tabbed past)
     has nothing to replay; switching to it would just pull it in front for no reason."""
+    if not steps:
+        return []
+    if all(s.get("kind") == "open_app" for s in steps):
+        return steps
     out = []
     for index, step in enumerate(steps):
         following = steps[index + 1] if index + 1 < len(steps) else None
@@ -277,6 +297,8 @@ def clean_steps(steps):
     - Apps visited without doing anything are dropped."""
     out = []
     for index, step in enumerate(steps):
+        if is_system_host(step):
+            continue
         target = step.get("target") or {}
         browser = exe_name(step.get("path", "")) in BROWSER_EXES
         following = steps[index + 1] if index + 1 < len(steps) else {}
@@ -305,9 +327,9 @@ def clean_steps(steps):
             break
         out = trimmed
     if not out:
-        # A routine that only opens an app ("open Notepad") keeps the app it ended in.
-        opened = [step for step in steps if step["kind"] == "open_app"]
-        out = opened[-1:]
+        # A routine that only opens an app ("open Notepad") keeps the opened apps.
+        opened = [step for step in steps if step["kind"] == "open_app" and not is_system_host(step)]
+        out = opened
     return out
 
 
@@ -1187,5 +1209,11 @@ class Session:
             self.replay_error = "Search, contact click, exact message, verified header and Send must all be observed for replay"
         self._video_time()
         self.steps = clean_steps(compress_browsing(self.steps))
-        return {"name": self.name, "apps": self.apps, "steps": self.steps, "flow": flow,
+        recorded_apps = []
+        for s in self.steps:
+            app_n = s.get("app")
+            if app_n and app_n not in recorded_apps:
+                recorded_apps.append(app_n)
+        saved_apps = recorded_apps if recorded_apps else self.apps
+        return {"name": self.name, "apps": saved_apps, "steps": self.steps, "flow": flow,
                 "duration": round(time.monotonic() - self.started, 1), "replay_error": self.replay_error}

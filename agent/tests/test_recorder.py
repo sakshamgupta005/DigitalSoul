@@ -484,3 +484,54 @@ def test_session_append_takes_screenshot_with_every_counted_point(tmp_path):
     assert "screenshot_path" in s.steps[1]
     assert s.steps[1]["screenshot_path"].endswith("step_2.png")
 
+
+def test_clean_steps_drops_system_host_daemons_and_launchers():
+    from agent.ghost.desktop.session import clean_steps, NEVER_RECORD, SYSTEM_HOST_EXES
+    assert "searchhost.exe" in NEVER_RECORD and "svchost.exe" in NEVER_RECORD
+    assert "searchhost.exe" in SYSTEM_HOST_EXES
+
+    raw_steps = [
+        {"kind": "open_app", "app": "searchhost.exe", "path": r"C:\Windows\SystemApps\SearchHost.exe"},
+        {"kind": "set_text", "app": "searchhost.exe", "path": r"C:\Windows\SystemApps\SearchHost.exe", "value": "spotify"},
+        {"kind": "press_enter", "app": "searchhost.exe", "path": r"C:\Windows\SystemApps\SearchHost.exe"},
+        {"kind": "open_app", "app": "spotify.exe", "path": r"C:\Users\test\AppData\Roaming\Spotify\Spotify.exe"},
+        {"kind": "click", "app": "spotify.exe", "path": r"C:\Users\test\AppData\Roaming\Spotify\Spotify.exe", "label": "Play"},
+    ]
+    cleaned = clean_steps(raw_steps)
+    assert len(cleaned) == 2
+    assert [s["app"] for s in cleaned] == ["spotify.exe", "spotify.exe"]
+    assert cleaned[0]["kind"] == "open_app"
+    assert cleaned[1]["kind"] == "click"
+
+
+def test_clean_steps_preserves_multiapp_shortcuts_and_actions():
+    from agent.ghost.desktop.session import clean_steps
+    calc = r"C:\Windows\calc.exe"
+    notepad = r"C:\Windows\notepad.exe"
+    raw_steps = [
+        {"kind": "open_app", "app": "calc.exe", "path": calc},
+        {"kind": "hotkey", "app": "calc.exe", "path": calc, "combo": "^c"},
+        {"kind": "open_app", "app": "notepad.exe", "path": notepad},
+        {"kind": "hotkey", "app": "notepad.exe", "path": notepad, "combo": "^v"},
+    ]
+    cleaned = clean_steps(raw_steps)
+    assert len(cleaned) == 4
+    assert [s["app"] for s in cleaned] == ["calc.exe", "calc.exe", "notepad.exe", "notepad.exe"]
+
+
+def test_finish_records_concrete_apps_in_everything_mode():
+    s = bare_session([
+        step("open_app", path=r"C:\Apps\editor.exe"),
+        step("set_text", path=r"C:\Apps\editor.exe", value="code"),
+        step("open_app", path=r"C:\Apps\browser.exe"),
+        step("open_url", path=r"C:\Apps\browser.exe", url="https://example.com/"),
+    ])
+    assert s.apps == ["*"]
+    result = s.finish()
+    # Finish should populate the actual apps observed rather than leaving [*]
+    assert "editor.exe" in result["apps"]
+    assert "browser.exe" in result["apps"]
+    assert "*" not in result["apps"]
+
+
+

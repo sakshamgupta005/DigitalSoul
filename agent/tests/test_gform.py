@@ -85,10 +85,11 @@ def test_form_mapping_known_vs_new(tmp_path):
 def test_google_cloud_enrolment_form_inspection(tmp_path):
     url = "https://docs.google.com/forms/d/e/1FAIpQLScIxD14Pyc183PbDLHcS9N-nbQRRYSncqY0TP3g7qSsfWgnKQ/viewform"
     mem = GFormMemory(tmp_path / "user_memory.md")
-    mem.save({"name": "Sahil"})
+    mem.save({"name": "Sahil", "email": "sahil@example.com"})
     res = GFormActor.inspect_url(url, memory=mem)
     assert res["title"] != ""
     assert res["total_questions"] > 0
-    assert len(res["known_fields"]) >= 1
+    assert len(res["known_fields"]) >= 2
+    assert any(f["matched_key"] == "email" for f in res["known_fields"])
     assert any(f["matched_key"] == "name" for f in res["known_fields"])
 

@@ -20,6 +20,20 @@ from .whatsapp import executable, hosted_pid, libraries
 STEP_KINDS = ("open_app", "open_url", "click", "double_click", "right_click", "scroll", "set_text", "press_enter", "press_key", "hotkey")
 BROWSER_EXES = {"chrome.exe", "brave.exe", "msedge.exe"}
 SHELL_CLASSES = {"Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Progman", "WorkerW"}
+SYSTEM_HOST_EXES = {
+    "svchost.exe", "searchhost.exe", "searchapp.exe", "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe", "runtimebroker.exe", "taskhostw.exe", "sihost.exe",
+    "services.exe", "lsass.exe", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+    "dwm.exe", "fontdrvhost.exe", "searchindexer.exe", "ctfmon.exe", "wlanext.exe", "spoolsv.exe"
+}
+
+
+def is_system_host(step):
+    if not isinstance(step, dict):
+        return False
+    p = PureWindowsPath(step.get("path", "")).name.lower()
+    a = (step.get("app") or "").lower()
+    return p in SYSTEM_HOST_EXES or a in SYSTEM_HOST_EXES
 
 
 def unique(controls):
@@ -270,25 +284,68 @@ class StepRunner:
                 self.emit_hud("hud_paused_for_help", reason=f"Security boundary detected ({sec_reason}). Automatic dismissal is blocked.")
                 return False
 
-            # Check for recoverable dialogs (e.g. Tips, Welcome, Notifications)
-            dismiss_words = ("close", "dismiss", "ok", "got it", "not now", "skip", "cancel")
+            # NEVER dismiss or close the target application itself.
+            # An obstacle must be a secondary dialog window, an owned popup, or a modal overlay container.
+            target_dialog = None
+            main_hwnd = getattr(self.window, "handle", None) if self.window else None
+            curr_hwnd = getattr(window, "handle", None)
+
+            # 1. Distinct dialog window (different handle, or class_name is a dialog)
+            cls_name = getattr(getattr(window, "element_info", None), "class_name", "") or ""
+            is_dialog_class = cls_name in ("#32770", "Dialog", "bosa_sdm_ms98")
+            if (main_hwnd and curr_hwnd and curr_hwnd != main_hwnd) or is_dialog_class:
+                target_dialog = window
+            else:
+                # 2. Check for child dialog/modal overlays inside window
+                try:
+                    popups = [
+                        d for d in window.descendants(control_type="Window")
+                        if getattr(d, "handle", None) != curr_hwnd and _shown(d)
+                    ]
+                    if popups:
+                        target_dialog = popups[0]
+                except Exception:
+                    pass
+
+            if not target_dialog:
+                return False
+
+            dialog_title = (target_dialog.window_text() or getattr(target_dialog.element_info, "name", "") or "").strip()
+            # Double check security boundary on dialog title/text
+            is_sec_dlg, sec_dlg_reason = is_security_boundary(dialog_title)
+            if is_sec_dlg:
+                self.emit_hud("hud_obstacle", kind=ObstacleCategory.SECURITY_BOUNDARY.value,
+                              label=f"Security Boundary: {dialog_title}", recoverable=False, reason=sec_dlg_reason)
+                self.emit_hud("hud_paused_for_help", reason=f"Security boundary detected ({sec_dlg_reason}). Automatic dismissal is blocked.")
+                return False
+
+            # Check for safe dismiss buttons inside the dialog (never the system title bar Close button!)
+            dismiss_words = ("dismiss", "ok", "got it", "not now", "skip", "no thanks", "later", "close")
             candidates = []
-            for b in window.descendants(control_type="Button"):
+            for b in target_dialog.descendants(control_type="Button"):
+                if not _shown(b):
+                    continue
+                auto_id = str(getattr(b.element_info, "automation_id", "") or "").strip().lower()
+                # Crucial safeguard: NEVER click the window title bar system close button
+                if auto_id in ("close", "btnclose", "systemclosebutton", "titlebarclosebutton"):
+                    continue
                 name = (b.element_info.name or "").strip().lower()
-                if any(w == name or w in name for w in dismiss_words):
+                if name in ("close window", "exit", "quit"):
+                    continue
+                if any(w == name for w in dismiss_words) or any(w in name for w in ("dismiss", "got it", "not now", "no thanks")):
                     candidates.append(b)
 
             if candidates:
                 btn = candidates[0]
-                btn_name = btn.element_info.name or "Close"
-                rect = self._control_rect(window)
+                btn_name = btn.element_info.name or "Dismiss"
+                rect = self._control_rect(target_dialog)
                 self.emit_hud("hud_obstacle", kind=ObstacleCategory.MODAL_OVERLAY.value,
-                              label=f"Unexpected Dialog: '{title or 'Notice'}'", recoverable=True, rect=rect)
+                              label=f"Unexpected Dialog: '{dialog_title or 'Notice'}'", recoverable=True, rect=rect)
                 self.emit_hud("hud_recovering", strategy="dismiss_dialog",
-                              status=f"Recovering: Dismissing dialog '{title}' via '{btn_name}'", rect=rect)
+                              status=f"Recovering: Dismissing dialog '{dialog_title}' via '{btn_name}'", rect=rect)
                 self.native.act(btn)
                 self.emit_hud("hud_retrying_verification",
-                              status=f"Retrying verification: Confirming '{title}' dismissed...")
+                              status=f"Retrying verification: Confirming '{dialog_title}' dismissed...")
                 self.sleep(0.4)
                 return True
         except Exception:
@@ -297,7 +354,19 @@ class StepRunner:
 
     def _app_window(self, path, title=None):
         # Prefer the recorded app's foreground window (dialogs included), else its first window.
-        is_explorer = PureWindowsPath(str(path)).name.lower() == "explorer.exe"
+        exe_lower = PureWindowsPath(str(path)).name.lower()
+        if exe_lower in SYSTEM_HOST_EXES:
+            return None
+        is_explorer = exe_lower == "explorer.exe"
+
+        # If the recorded application is not currently running, launch it (OpenAdapt / Blinky pattern)
+        if not self.native.windows(path):
+            try:
+                self.native.launch({"path": path})
+                self.sleep(0.5)
+            except Exception:
+                pass
+
         def attempt():
             window, current = self.native.foreground()
             if current == path:
@@ -377,6 +446,8 @@ class StepRunner:
         pass
 
     def open_app(self, step):
+        if is_system_host(step):
+            return
         app_name = PureWindowsPath(step.get("path", "")).name
         self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=app_name, rect=None, status=f"Opening {app_name}")
         if not self.native.windows(step["path"]):
@@ -387,6 +458,8 @@ class StepRunner:
         self._glide(window)  # the ghost visibly arrives at the app it is about to use
 
     def click(self, step):
+        if is_system_host(step):
+            return
         window = self._app_window(step["path"])
         label = step.get("label") or step.get("target", {}).get("name") or "control"
         self.emit_hud("hud_targeting", step_index=self.current_index + 1, total_steps=self.total_steps, label=label, rect=None, status=f"Locating: {label}")
@@ -460,6 +533,8 @@ class StepRunner:
             raise ValueError(f"Could not find '{label}'")
 
     def set_text(self, step, committed=True):
+        if is_system_host(step):
+            return
         window = self._app_window(step["path"])
         value = step["value"]
         label = step.get("label") or step.get("target", {}).get("name") or "text field"
@@ -558,6 +633,8 @@ class StepRunner:
         self._glide(bar or window)
 
     def press_enter(self, step):
+        if is_system_host(step):
+            return
         self.emit_hud("hud_acting", step_index=self.current_index + 1, total_steps=self.total_steps, action="press_enter", label="Enter", rect=None, status="Submitting (Enter)")
         self._app_window(step["path"])
         self.native.send_keys("{ENTER}")
@@ -630,6 +707,7 @@ class StepRunner:
         self.native.send_keys(combo)
 
     def run(self, steps, progress=lambda index, step: None):
+        steps = [s for s in steps if not is_system_host(s)]
         self.total_steps = len(steps)
         previous = None
         for index, step in enumerate(steps):
@@ -676,7 +754,10 @@ def main():
     done = 0
     desktop = None
     try:
-        validate(payload["steps"])
+        from .session import clean_steps
+        raw_steps = payload.get("steps", [])
+        steps = clean_steps(raw_steps)
+        validate(steps)
         wf_name = payload.get("workflow_name") or payload.get("name") or "default"
         desktop = Desktop()
         runner = StepRunner(desktop, event_sink=lambda evt: print(json.dumps(evt), flush=True), workflow_name=wf_name)
@@ -684,9 +765,9 @@ def main():
         def progress(index, step):
             nonlocal done
             done = index
-        runner.run(payload["steps"], progress)
+        runner.run(steps, progress)
         skipped = f" Skipped {runner.skipped} text step(s) that were only field placeholders or focus changes." if runner.skipped else ""
-        count = len(payload["steps"])
+        count = len(steps)
         result = {"ok": True, "detail": f"Replayed {count} step{'' if count == 1 else 's'}.{skipped} Check the apps to confirm the result."}
     except Stopped as exc:
         result = {"ok": False, "detail": f"{exc} before step {done + 1}."}

@@ -297,3 +297,26 @@ def test_pacing_stays_calm_but_bounded():
         {"kind": "press_enter", "path": APP},
     ])
     assert [p for p in pauses if p != 0.2] == [0.5, 1.6, 0.5]
+
+
+def test_recovery_never_closes_target_app():
+    close_btn = Control("Button", "Close", "Close")
+    app_window = Window([close_btn])
+    desktop = FakeDesktop(app_window, running=True)
+    r = StepRunner(desktop, sleep=lambda _: None, timeout=0)
+    r.window = app_window
+    recovered = r._attempt_desktop_recovery("some element")
+    assert recovered is False
+    assert close_btn.clicked == 0
+
+
+def test_app_window_launches_if_not_running():
+    target = Control("Edit", "Text")
+    app_window = Window([target])
+    desktop = FakeDesktop(app_window, running=False)
+    r = StepRunner(desktop, sleep=lambda _: None, timeout=0)
+    # APP is not running initially; _app_window should call native.launch
+    win = r._app_window(APP)
+    assert desktop.launched == [APP]
+    assert win == app_window
+
