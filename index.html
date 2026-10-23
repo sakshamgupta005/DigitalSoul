@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DigitalSoul</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..700;1,400..700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffeb;
+      --text: #1c1b17;
+      --text-soft: #6b675a;
+      --text-faint: #8c8675;
+      --border: rgba(58, 46, 14, 0.12);
+      --border-hover: rgba(58, 46, 14, 0.28);
+      --card-bg: rgba(255, 255, 255, 0.65);
+      --spring: cubic-bezier(0.18, 0.89, 0.32, 1.28);
+      --ease-ui: cubic-bezier(0.2, 0.7, 0.2, 1);
+      --font-display: 'EB Garamond', Georgia, serif;
+      --font-body: 'Figtree', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Hitodama Solarpunk Atmosphere */
+    .hitodama-atmosphere {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .hitodama-sun {
+      position: absolute;
+      top: -120px;
+      right: -80px;
+      width: 520px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(245, 222, 170, 0.45) 0%, rgba(255, 255, 235, 0) 70%);
+      filter: blur(24px);
+    }
+
+    .hitodama-grid {
+      position: absolute;
+      inset: 0;
+      opacity: 0.22;
+      background-image: 
+        linear-gradient(rgba(58, 46, 14, 0.05) 1px, transparent 0),
+        linear-gradient(90deg, rgba(58, 46, 14, 0.04) 1px, transparent 0);
+      background-size: 96px 96px;
+      -webkit-mask-image: linear-gradient(180deg, black 0%, transparent 85%);
+      mask-image: linear-gradient(180deg, black 0%, transparent 85%);
+    }
+
+    /* Hero Section */
+    .hero-section {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding: 28px 48px;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-mark {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #1c1b17;
+      color: #ffffeb;
+      box-shadow: 0 2px 8px rgba(28, 27, 23, 0.15);
+    }
+
+    .logo-mark svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: #ffffeb;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 28px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #ffffeb;
+      background: #1c1b17;
+      border: 1px solid #1c1b17;
+      border-radius: 999px;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(28, 27, 23, 0.15);
+      transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    .cta-btn:hover {
+      background: #333029;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(28, 27, 23, 0.22);
+    }
+
+    .scroll-hint {
+      margin-top: auto;
+      margin-bottom: 36px;
+      align-self: center;
+      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-soft);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      animation: pulseHint 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseHint {
+      0%, 100% { opacity: 0.4; transform: translateY(0); }
+      50% { opacity: 0.9; transform: translateY(4px); }
+    }
+
+    /* Paragraph Scroll Parallax Section */
+    .about-section {
+      position: relative;
+      z-index: 1;
+      min-height: 155vh;
+      padding: 60px 40px 100px;
+    }
+
+    .about-sticky {
+      position: sticky;
+      top: 0;
+      height: 90vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    .fill-text {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 3.2vw, 3.1rem);
+      font-weight: 400;
+      line-height: 1.38;
+      letter-spacing: -0.01em;
+      text-align: left;
+    }
+
+    /* Premium Kinetic Typography Word Reveal */
+    .fill-word {
+      display: inline-block;
+      color: rgba(28, 27, 23, 0.16);
+      filter: blur(1px);
+      transform: translateY(5px);
+      transition: color 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
+                  filter 0.35s cubic-bezier(0.16, 1, 0.3, 1), 
+                  transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      margin-right: 0.26em;
+      will-change: transform, filter, color;
+    }
+
+    .fill-word.active {
+      color: var(--text);
+      filter: blur(0px);
+      transform: translateY(0);
+    }
+
+    /* Scroll-Driven Polaroid Carousel Track with Generous Breathing Room */
+    .carousel-section {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 270vh;
+      margin-top: 60px;
+      padding-top: 40px;
+    }
+
+    .carousel-sticky {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .pl-root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      --pl-bg: transparent;
+      --pl-ink: #1c1b17;
+      --pl-muted: #6b675a;
+      --pl-cw: 320px;
+      user-select: none;
+      -webkit-user-select: none;
+      outline: none;
+    }
+
+    .pl-string { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+    .pl-card { position: absolute; left: 0; top: 0; width: var(--pl-cw); transform-origin: 50% 0; will-change: transform; }
+    .pl-print {
+      margin-top: 10px;
+      background: #ffffff;
+      padding: 12px 12px 8px;
+      border-radius: 2px;
+      box-shadow: 0 4px 14px rgba(58, 46, 14, 0.08), 0 18px 36px -8px rgba(58, 46, 14, 0.18);
+      border: 1px solid rgba(58, 46, 14, 0.08);
+      transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.4s ease;
+    }
+    .pl-card[data-on='0'] .pl-print {
+      transform: scale(0.9);
+      filter: saturate(0.7) brightness(0.95);
+    }
+    .pl-shot { position: relative; aspect-ratio: 1; overflow: hidden; background: #eee; border-radius: 1px; }
+    .pl-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+    .pl-note {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 6px;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: 15px;
+      color: #3a2e0e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pl-peg {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 10px;
+      height: 26px;
+      margin-left: -5px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #c9a67a, #e3c9a1 45%, #b8915f);
+      box-shadow: 0 2px 4px rgba(58, 46, 14, 0.2);
+    }
+    .pl-peg::after {
+      content: '';
+      position: absolute;
+      left: 4px;
+      top: 8px;
+      width: 2px;
+      height: 7px;
+      background: rgba(80, 60, 30, 0.4);
+      border-radius: 1px;
+    }
+    .pl-bar {
+      position: absolute;
+      left: clamp(24px, 5vw, 64px);
+      right: clamp(24px, 5vw, 64px);
+      bottom: clamp(28px, 5vh, 48px);
+      display: flex;
+      align-items: center;
+      cursor: default;
+    }
+    .pl-cap { flex: 1; min-width: 0; overflow: hidden; }
+    .pl-title { font-family: var(--font-display); font-size: clamp(22px, 2.4vw, 30px); font-weight: 500; color: var(--text); }
+    .pl-sub { margin-top: 4px; font-size: 14px; color: var(--text-soft); }
+
+    /* ==============================================================
+       The Ultimate Productivity Tool Section (Hitodama Exact Layout)
+       ============================================================== */
+    .productivity-section {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      min-height: 120vh;
+      padding: clamp(140px, 18vh, 220px) 24px clamp(140px, 16vh, 200px);
+      margin-top: 40px;
+      overflow: clip;
+    }
+
+    .tool-field {
+      position: relative;
+      display: grid;
+      grid-template-columns: auto clamp(460px, 40vw, 620px) auto;
+      grid-template-rows: repeat(6, auto);
+      justify-content: center;
+      align-items: center;
+      justify-items: center;
+      gap: clamp(14px, 2vh, 28px) clamp(24px, 2.8vw, 52px);
+      width: 100%;
+      max-width: 1380px;
+    }
+
+    @media (max-width: 1024px) {
+      .tool-field {
+        display: flex;
+        flex-direction: column;
+        gap: 36px;
+      }
+    }
+
+    .tool-copy {
+      position: relative;
+      z-index: 4;
+      grid-column: 2;
+      grid-row: 3/5;
+      display: grid;
+      justify-items: center;
+      gap: 20px;
+      width: 100%;
+      text-align: center;
+      pointer-events: none;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tool-headline {
+      font-family: var(--font-display);
+      font-size: clamp(48px, 5.8vw, 92px);
+      font-weight: 400;
+      line-height: 0.9;
+      letter-spacing: -0.04em;
+      color: var(--text);
+    }
+
+    .tool-headline span { display: block; }
+    .tool-headline em { display: block; font-style: italic; }
+
+    .tool-description {
+      width: min(100%, 540px);
+      margin: 0 auto;
+      color: var(--text-soft);
+      font-size: clamp(15px, 1.1vw, 17px);
+      font-weight: 400;
+      line-height: 1.6;
+      letter-spacing: -0.01em;
+    }
+
+    /* Floating Tool Cards with Dynamic Scroll Parallax */
+    .tool-card {
+      position: relative;
+      display: grid;
+      gap: 12px;
+      width: var(--card-width, 250px);
+      padding: 15px 16px 16px;
+      border: 0;
+      border-radius: 16px;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      background: rgba(255, 254, 242, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 16px 32px -24px rgba(58, 46, 14, 0.28);
+      backdrop-filter: blur(12px);
+      cursor: pointer;
+      transform: translateY(var(--parallax-y, 0px)) rotate(var(--tilt, 0deg));
+      transform-origin: 50% 50%;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s var(--ease-ui), background 0.3s;
+      will-change: transform;
+    }
+
+    .tool-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(120, 98, 40, 0.16);
+      border-radius: inherit;
+      pointer-events: none;
+    }
+
+    .tool-card:hover {
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 1), 0 24px 45px -20px rgba(58, 46, 14, 0.32), 0 0 0 6px rgba(184, 145, 95, 0.15);
+      transform: translateY(calc(var(--parallax-y, 0px) - 10px)) rotate(var(--lift-tilt, 0deg)) scale(var(--lift-scale, 1.05));
+    }
+
+    /* Card Positions */
+    .pos-circle {
+      grid-column: 1;
+      grid-row: 1/4;
+      align-self: end;
+      transform: translateX(10px);
+    }
+
+    .pos-routine {
+      grid-column: 1;
+      grid-row: 4/7;
+      align-self: start;
+      transform: translateX(-10px);
+    }
+
+    .pos-amazon {
+      grid-column: 2;
+      grid-row: 1/3;
+      align-self: end;
+      margin-bottom: 12px;
+    }
+
+    .pos-search {
+      grid-column: 2;
+      grid-row: 5/7;
+      align-self: start;
+      margin-top: 14px;
+    }
+
+    .pos-dictation {
+      grid-column: 3;
+      grid-row: 1/4;
+      align-self: end;
+      transform: translate(-14px, -32px);
+    }
+
+    .pos-todo {
+      grid-column: 3;
+      grid-row: 4/7;
+      align-self: start;
+      transform: translateX(8px);
+    }
+
+    /* Tool Card Elements */
+    .tool-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tool-name {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #7a6e5b;
+    }
+
+    .tool-keys {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    kbd {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #1c1b17;
+      color: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .tool-keys i {
+      font-style: normal;
+      font-size: 10px;
+      color: #9c8e79;
+    }
+
+    .tool-picture {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #f0ecdf;
+    }
+
+    .tool-caption {
+      font-size: 12.5px;
+      line-height: 1.4;
+      color: var(--text-soft);
+      font-style: italic;
+    }
+
+    /* Card 1: Circle To Ask */
+    .pic-circle {
+      position: relative;
+      height: 140px;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    .pic-circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .circle-trace {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .circle-cursor {
+      position: absolute;
+      top: 32%;
+      left: 68%;
+      width: 18px;
+      height: 24px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+      animation: cursorBob 2.5s infinite ease-in-out;
+    }
+
+    @keyframes cursorBob {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-4px, 4px); }
+    }
+
+    .circle-text h4 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .circle-text p {
+      font-size: 12px;
+      color: var(--text-soft);
+    }
+
+    /* Card 2: Scheduled Search */
+    .pic-schedule {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: rgba(244, 240, 226, 0.85);
+      border-radius: 10px;
+    }
+
+    .cal-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+      width: 48px;
+      box-shadow: 0 2px 6px rgba(58, 46, 14, 0.1);
+      border: 1px solid rgba(58, 46, 14, 0.1);
+    }
+
+    .cal-badge b {
+      width: 100%;
+      background: #1c1b17;
+      color: #fff;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      text-align: center;
+      padding: 2px 0;
+    }
+
+    .cal-badge strong {
+      font-size: 18px;
+      font-weight: 700;
+      padding: 2px 0 4px;
+      color: var(--text);
+    }
+
+    .time-badge strong {
+      font-size: 18px;
+      font-weight: 700;
+      display: block;
+      color: var(--text);
+    }
+
+    .time-badge span {
+      font-size: 11px;
+      color: #d97706;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Card 3: Dictation */
+    .pic-dictation {
+      padding: 16px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      background: rgba(244, 240, 226, 0.85);
+      border-radius: 10px;
+    }
+
+    .dictation-pill {
+      background: #1c1b17;
+      color: #fff;
+      padding: 7px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .dictation-check {
+      width: 14px;
+      height: 14px;
+      stroke: #60a5fa;
+      stroke-width: 2.5;
+    }
+
+    .dictation-result {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* Card 4: Routine */
+    .pic-routine {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(244, 240, 226, 0.85);
+      border-radius: 10px;
+    }
+
+    .pic-routine strong {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .routine-apps {
+      display: flex;
+      gap: 8px;
+    }
+
+    .app-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .app-unity { background: #000; }
+    .app-spotify { background: #1ed760; }
+
+    /* Card 5: To-Do List */
+    .todo-rows {
+      display: grid;
+      gap: 7px;
+    }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .todo-circle {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(58, 46, 14, 0.35);
+    }
+
+    .todo-time {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-soft);
+    }
+
+    /* Card 6: YouTube Search */
+    .pic-search {
+      padding: 10px;
+      background: #111;
+      border-radius: 10px;
+      color: #fff;
+    }
+
+    .search-input {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      background: #222;
+      padding: 6px 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      color: #ccc;
+    }
+
+    .yt-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+
+    .yt-thumb {
+      height: 34px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .yt-thumb svg { width: 14px; height: 10px; fill: #ff0000; }
+
+    /* ==============================================================
+       How Our System Works Section (At The End)
+       ============================================================== */
+    .system-section {
+      position: relative;
+      z-index: 2;
+      max-width: 1240px;
+      margin: 60px auto 0;
+      padding: clamp(140px, 16vh, 200px) 40px clamp(120px, 14vh, 180px);
+      border-top: 1px solid rgba(58, 46, 14, 0.08);
+    }
+
+    .system-header {
+      margin-bottom: 56px;
+    }
+
+    .system-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #9c6c2e;
+      margin-bottom: 14px;
+    }
+
+    .system-tag::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #9c6c2e;
+    }
+
+    .system-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 4vw, 3.8rem);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      max-width: 800px;
+    }
+
+    .system-title em {
+      font-style: italic;
+    }
+
+    .system-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    @media (max-width: 960px) {
+      .system-grid { grid-template-columns: 1fr; }
+    }
+
+    .system-card {
+      position: relative;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 38px 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 340px;
+      box-shadow: 0 4px 18px rgba(58, 46, 14, 0.04);
+      transition: border-color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
+    }
+
+    .system-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 10px 30px rgba(58, 46, 14, 0.08);
+      transform: translateY(-3px);
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .card-num {
+      font-family: var(--font-mono);
+      font-size: 0.92rem;
+      letter-spacing: 0.15em;
+      color: #9c6c2e;
+      font-weight: 600;
+    }
+
+    .card-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: rgba(58, 46, 14, 0.05);
+      border: 1px solid rgba(58, 46, 14, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-icon svg {
+      width: 19px;
+      height: 19px;
+      stroke: var(--text);
+      stroke-width: 2;
+      fill: none;
+    }
+
+    .card-heading {
+      font-family: var(--font-display);
+      font-size: 1.55rem;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .card-desc {
+      font-size: 0.96rem;
+      line-height: 1.58;
+      color: var(--text-soft);
+    }
+
+    .footer-spacer { height: 10vh; }
+  </style>
+</head>
+<body>
+
+  <!-- Hitodama Solarpunk Background Atmosphere -->
+  <div class="hitodama-atmosphere">
+    <div class="hitodama-sun"></div>
+    <div class="hitodama-grid"></div>
+  </div>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <header class="navbar">
+      <a href="#" class="logo">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <span>DigitalSoul</span>
+      </a>
+      <a href="#get-started" class="cta-btn">Get Started</a>
+    </header>
+
+    <div class="scroll-hint">
+      <span>Scroll to explore</span>
+      <span>↓</span>
+    </div>
+  </section>
+
+  <!-- Paragraph Section with Scroll Parallax Illumination -->
+  <section class="about-section" id="about">
+    <div class="about-sticky">
+      <p class="fill-text" id="revealParagraph">
+        The AI era has created a new generation of exceptional builders. We value those who have dedicated the last few years to mastering this craft through relentless learning, experimentation, and execution. If you possess the rare drive to turn the unimaginable into reality, let's craft the future together.
+      </p>
+    </div>
+  </section>
+
+  <!-- Scroll-Based Polaroid Line Carousel Section -->
+  <section class="carousel-section" id="carousel">
+    <div class="carousel-sticky">
+      <div id="polaroidCarousel" class="pl-root">
+        <svg class="pl-string" aria-hidden="true">
+          <path id="stringPath" fill="none" stroke="#9e8a75" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <div id="cardsContainer"></div>
+        <div class="pl-bar">
+          <div class="pl-cap">
+            <div class="pl-title" id="barTitle">Above the Clouds</div>
+            <div class="pl-sub" id="barCaption">Valais, Switzerland — sunrise at 3,100 m.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- The Ultimate Productivity Tool Section (Hitodama Exact Layout & Animation) -->
+  <section class="productivity-section" id="productivity">
+    <div class="tool-field">
+
+      <!-- Center Headline & Copy -->
+      <div class="tool-copy">
+        <h2 class="tool-headline">
+          <span>The Ultimate</span>
+          <em>Productivity Tool</em>
+        </h2>
+        <p class="tool-description">
+          Hitodama is a combination of tools built to increase your productivity by up to 10×. It lives on your computer, makes your job easier, simplifies your tasks, and saves you time.
+        </p>
+      </div>
+
+      <!-- Card 1: Circle To Ask -->
+      <div class="pos-circle">
+        <button type="button" class="tool-card" style="--tilt: 3deg; --lift-tilt: 1deg; --lift-scale: 1.06; --card-width: 275px;">
+          <div class="tool-head">
+            <span class="tool-name">Circle To Ask</span>
+            <span class="tool-keys"><kbd>Ctrl</kbd> <i>+</i> <kbd>Shift</kbd></span>
+          </div>
+          <div class="pic-circle">
+            <img src="https://images.unsplash.com/photo-1517411032315-54ef2cb783bb?q=80&w=600&auto=format&fit=crop" alt="Tree in snowy field" />
+            <svg class="circle-trace" viewBox="0 0 280 140" fill="none">
+              <path d="M 190 100 C 215 90, 230 65, 215 45 C 195 20, 140 15, 95 20 C 50 25, 25 45, 35 70 C 45 98, 90 115, 135 120 C 160 122, 180 112, 190 100 Z" stroke="rgba(255,255,255,0.9)" stroke-width="2.5" stroke-dasharray="6 4"/>
+            </svg>
+            <svg class="circle-cursor" viewBox="0 0 18 24">
+              <path d="M2 1v19l4.5-4.1 3.2 7 3.1-1.5-3.4-7h6.1L2 1Z" fill="#fff" stroke="#000" stroke-width="1.2"/>
+            </svg>
+          </div>
+          <div class="circle-text">
+            <h4>Circle anything.</h4>
+            <p>Ask about it.</p>
+          </div>
+        </button>
+      </div>
+
+      <!-- Card 2: Scheduled Search -->
+      <div class="pos-amazon">
+        <button type="button" class="tool-card" style="--tilt: -2deg; --lift-tilt: 1deg; --lift-scale: 1.06; --card-width: 285px;">
+          <div class="tool-head">
+            <span class="tool-name">Scheduled Search</span>
+          </div>
+          <div class="pic-schedule">
+            <div class="cal-badge">
+              <b>NOV</b>
+              <strong>10</strong>
+            </div>
+            <div class="time-badge">
+              <strong>11:00 AM</strong>
+              <span>opens amazon.in</span>
+            </div>
+          </div>
+          <div class="tool-caption">
+            “Search Amazon for gift wraps on 10th November at 11:00 a.m.”
+          </div>
+        </button>
+      </div>
+
+      <!-- Card 3: Dictation -->
+      <div class="pos-dictation">
+        <button type="button" class="tool-card" style="--tilt: -5deg; --lift-tilt: 2deg; --lift-scale: 1.06; --card-width: 250px;">
+          <div class="tool-head">
+            <span class="tool-name">Dictation</span>
+            <span class="tool-keys"><kbd>Ctrl</kbd> <i>+</i> <kbd>Win</kbd></span>
+          </div>
+          <div class="pic-dictation">
+            <div class="dictation-pill">
+              <svg class="dictation-check" viewBox="0 0 24 24" fill="none">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <div class="dictation-result">Let's meet at 10.</div>
+          </div>
+          <div class="tool-caption">
+            “uh so meet at nine… no, ten?”
+          </div>
+        </button>
+      </div>
+
+      <!-- Card 4: Routine -->
+      <div class="pos-routine">
+        <button type="button" class="tool-card" style="--tilt: -6deg; --lift-tilt: -3deg; --lift-scale: 1.05; --card-width: 270px;">
+          <div class="tool-head">
+            <span class="tool-name">Routine</span>
+          </div>
+          <div class="pic-routine">
+            <strong>9:00</strong>
+            <div class="routine-apps">
+              <div class="app-icon app-unity">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+                  <path d="M12 2L4 6.5v9l8 4.5 8-4.5v-9L12 2zm0 2.3l5.8 3.3L12 10.9 6.2 7.6 12 4.3z"/>
+                </svg>
+              </div>
+              <div class="app-icon app-spotify">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+                  <circle cx="12" cy="12" r="10" fill="#1ed760"/>
+                  <path d="M6.3 9.2c3.5-1 7.8-.7 11.4.9M6.9 12.4c3-.8 6.6-.5 9.8.7M7.7 15.4c2.3-.5 5-.3 7.4.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <div class="tool-caption">
+            “Every morning at 9:00, open Unity and Spotify.”
+          </div>
+        </button>
+      </div>
+
+      <!-- Card 5: To-Do List -->
+      <div class="pos-todo">
+        <button type="button" class="tool-card" style="--tilt: 4deg; --lift-tilt: 1deg; --lift-scale: 1.05; --card-width: 255px;">
+          <div class="tool-head">
+            <span class="tool-name">To-Do List</span>
+            <span class="tool-keys"><small style="font-family:var(--font-mono);font-size:10px;color:#8c8675;">0/3</small></span>
+          </div>
+          <div class="todo-rows" style="padding: 6px 0;">
+            <div class="todo-item">
+              <span class="todo-circle"></span>
+              <span>Subscribe to Otism</span>
+            </div>
+            <div class="todo-item">
+              <span class="todo-circle"></span>
+              <span>Call Mom</span>
+            </div>
+            <div class="todo-item">
+              <span class="todo-circle"></span>
+              <span>Gym</span>
+              <span class="todo-time">6:00 PM</span>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Card 6: YouTube Search -->
+      <div class="pos-search">
+        <button type="button" class="tool-card" style="--tilt: 1deg; --lift-tilt: -1deg; --lift-scale: 1.06; --card-width: 285px;">
+          <div class="tool-head">
+            <span class="tool-name">Search</span>
+          </div>
+          <div class="pic-search">
+            <div class="search-input">
+              <span>how to cook spaghetti</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </div>
+            <div class="yt-grid">
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #e8b04a, #b8561d);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #c9452c, #6d1f14);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #f1d27a, #c7812e);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #b64a2a, #5a1a10);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #e0a45a, #8a4a18);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+              <div class="yt-thumb" style="background: linear-gradient(135deg, #d86a3c, #7a2a12);"><svg viewBox="0 0 28 20"><path d="M11 6l7 4-7 4V6z" fill="#fff"/></svg></div>
+            </div>
+          </div>
+          <div class="tool-caption">
+            “Search how to cook spaghetti on YouTube.”
+          </div>
+        </button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- How Our System Works Section (At The End) -->
+  <section class="system-section" id="how-it-works">
+    <div class="system-header">
+      <div class="system-tag">Architecture</div>
+      <h2 class="system-title">How Our System <em>Works</em></h2>
+    </div>
+
+    <div class="system-grid">
+      <!-- Step 1 -->
+      <div class="system-card">
+        <div>
+          <div class="card-top">
+            <span class="card-num">01</span>
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-heading">Consented Observation</h3>
+        </div>
+        <p class="card-desc">
+          Passively records your repetitive browser and desktop interactions with granular user consent, isolating UI targets and workflows without interrupting focus.
+        </p>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="system-card">
+        <div>
+          <div class="card-top">
+            <span class="card-num">02</span>
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-heading">Workflow Synthesis</h3>
+        </div>
+        <p class="card-desc">
+          Transforms observed actions into auditable, deterministic JSON schemas with strict review gates, validating parameters and state transitions beforehand.
+        </p>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="system-card">
+        <div>
+          <div class="card-top">
+            <span class="card-num">03</span>
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+          </div>
+          <h3 class="card-heading">Deterministic Execution</h3>
+        </div>
+        <p class="card-desc">
+          Executes verified workflows via native browser-use sessions and local OmniRoute inference with verifiable agent-side approvals and zero hallucination risk.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer-spacer"></div>
+
+  <script>
+    // 1. Text Fill Scroll Animation
+    const paragraph = document.getElementById('revealParagraph');
+    const words = paragraph.textContent.trim().split(/\s+/);
+    paragraph.innerHTML = words.map(w => `<span class="fill-word">${w}</span>`).join(' ');
+    const wordSpans = paragraph.querySelectorAll('.fill-word');
+    const aboutSection = document.getElementById('about');
+
+    function updateTextScroll() {
+      const rect = aboutSection.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      const progress = Math.min(Math.max(-rect.top / total, 0), 1);
+      const activeCount = Math.floor(progress * wordSpans.length);
+
+      wordSpans.forEach((span, i) => {
+        if (i <= activeCount && progress > 0.02) {
+          span.classList.add('active');
+        } else {
+          span.classList.remove('active');
+        }
+      });
+    }
+
+    // 2. Pure Scroll-Driven Polaroid Line Carousel
+    const U = id => "https://images.unsplash.com/photo-" + id + "?q=80&w=1200&auto=format&fit=crop";
+    const slides = [
+      { image: U("1506905925346-21bda4d32df4"), title: "Above the Clouds", caption: "Valais, Switzerland — sunrise at 3,100 m." },
+      { image: U("1501785888041-af3ef285b470"), title: "Glass Lake", caption: "Lago di Braies, a rowboat at noon." },
+      { image: U("1469474968028-56623f02e42e"), title: "Gold Valley", caption: "Late light pouring over the ridge." },
+      { image: U("1464822759023-fed622ff2c3b"), title: "Snow Line", caption: "Pines, river flats and the high range." },
+      { image: U("1500534314209-a25ddb2bd429"), title: "Blue Ridges", caption: "Seven layers of haze before dusk." },
+      { image: U("1433086966358-54859d0ed716"), title: "Falls Bridge", caption: "Multnomah Falls after the rain." },
+    ];
+
+    const n = slides.length;
+    const carouselEl = document.getElementById('polaroidCarousel');
+    const carouselSection = document.getElementById('carousel');
+    const container = document.getElementById('cardsContainer');
+    const pathRef = document.getElementById('stringPath');
+    const barTitle = document.getElementById('barTitle');
+    const barCaption = document.getElementById('barCaption');
+
+    slides.forEach((sl, i) => {
+      const card = document.createElement('div');
+      card.className = 'pl-card';
+      card.dataset.i = i;
+      card.dataset.on = i === 0 ? '1' : '0';
+      card.innerHTML = `
+        <div class="pl-print">
+          <div class="pl-shot"><img src="${sl.image}" alt="${sl.title}" draggable="false" /></div>
+          <div class="pl-note">${sl.title}</div>
+        </div>
+        <div class="pl-peg"></div>
+      `;
+      container.appendChild(card);
+    });
+
+    const cardEls = container.querySelectorAll('.pl-card');
+    let cardWidth = 320;
+    const sag = 46, swing = 1;
+    let sim = { off: 0, vel: 0, target: 0, a: new Array(n).fill(0), w: new Array(n).fill(0) };
+    let active = 0;
+
+    function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+    function stringY(x, w, y0, sagVal) {
+      const t = clamp(x / w, 0, 1);
+      return y0 + 4 * sagVal * t * (1 - t);
+    }
+    function springStep(x, v, target, dt, k = 65) {
+      const c = 2 * Math.sqrt(k);
+      const nv = v + (k * (target - x) - c * v) * dt;
+      return [x + nv * dt, nv];
+    }
+    function swingStep(a, w, lineVel, dt, gain) {
+      const nw = w + (-38 * a - 4.2 * w + lineVel * 0.0034 * gain) * dt;
+      return [clamp(a + nw * dt, -0.6, 0.6), nw];
+    }
+    function getSpacing() { return cardWidth * 1.1; }
+
+    function updateCardWidth() {
+      const r = carouselEl.getBoundingClientRect();
+      cardWidth = Math.round(Math.max(160, Math.min(320, r.width * 0.38, r.height * 0.44)));
+      carouselEl.style.setProperty('--pl-cw', cardWidth + 'px');
+    }
+    function onScroll() {
+      updateTextScroll();
+
+      const rect = carouselSection.getBoundingClientRect();
+      const scrollable = rect.height - window.innerHeight;
+      const progress = clamp(-rect.top / scrollable, 0, 1);
+      const maxOffset = (n - 1) * getSpacing();
+
+      sim.target = progress * maxOffset;
+    }
+
+    let prev = performance.now();
+    function carouselLoop(now) {
+      const dt = Math.min(0.033, (now - prev) / 1000);
+      prev = now;
+      const r = carouselEl.getBoundingClientRect();
+      const w = r.width, h = r.height;
+      const y0 = Math.max(30, h * 0.12);
+      const spacing = getSpacing();
+
+      const before = sim.off;
+      [sim.off, sim.vel] = springStep(sim.off, sim.vel, sim.target, dt);
+      const lineVel = -(sim.off - before) / Math.max(dt, 1e-3);
+
+      const near = clamp(Math.round(sim.off / spacing), 0, n - 1);
+      if (near !== active) {
+        active = near;
+        barTitle.textContent = slides[active].title;
+        barCaption.textContent = slides[active].caption;
+        cardEls.forEach((el, idx) => el.setAttribute('data-on', idx === active ? '1' : '0'));
+      }
+
+      for (let i = 0; i < n; i++) {
+        const el = cardEls[i];
+        const x = w / 2 + i * spacing - sim.off;
+        if (x < -cardWidth * 1.5 || x > w + cardWidth * 1.5) {
+          el.style.visibility = 'hidden';
+          continue;
+        }
+        el.style.visibility = 'visible';
+        let a = sim.a[i] || 0;
+        let av = sim.w[i] || 0;
+        [a, av] = swingStep(a, av, lineVel, dt, swing);
+        a += Math.sin(now / 1300 + i * 1.7) * 0.0009 * swing;
+        sim.a[i] = a;
+        sim.w[i] = av;
+        const y = stringY(x, w, y0, sag) - 6;
+        el.style.transform = `translate(${(x - cardWidth / 2).toFixed(1)}px, ${y.toFixed(1)}px) rotate(${a.toFixed(4)}rad)`;
+        el.style.zIndex = (i === active ? n + 2 : n - Math.abs(i - active));
+      }
+
+      pathRef.setAttribute('d', `M0 ${y0} Q${w / 2} ${y0 + 2 * sag} ${w} ${y0}`);
+      requestAnimationFrame(carouselLoop);
+    }
+    requestAnimationFrame(carouselLoop);
+
+    // 3. Global Multi-Layer Parallax Controller
+    const sunEl = document.querySelector('.hitodama-sun');
+    const gridEl = document.querySelector('.hitodama-grid');
+    const heroContent = document.querySelector('.navbar');
+    const scrollHint = document.querySelector('.scroll-hint');
+    const prodSection = document.getElementById('productivity');
+    const toolCards = document.querySelectorAll('.tool-card');
+    const systemCards = document.querySelectorAll('.system-card');
+
+    // Individual parallax depth factors for each tool card (layered 3D float)
+    const cardDepths = [0.12, -0.09, 0.15, -0.14, 0.11, -0.07];
+
+    let currentScrollY = window.scrollY;
+    let targetScrollY = window.scrollY;
+
+    window.addEventListener('scroll', () => {
+      targetScrollY = window.scrollY;
+      onScroll();
+    }, { passive: true });
+
+    function parallaxLoop() {
+      // Smooth lerp for buttery parallax motion
+      currentScrollY += (targetScrollY - currentScrollY) * 0.1;
+
+      // 1. Background atmospheric depth
+      if (sunEl) sunEl.style.transform = `translate3d(0, ${currentScrollY * 0.22}px, 0)`;
+      if (gridEl) gridEl.style.transform = `translate3d(0, ${currentScrollY * 0.08}px, 0)`;
+
+      // 2. Hero subtle depth fade
+      if (heroContent && currentScrollY < window.innerHeight) {
+        heroContent.style.transform = `translate3d(0, ${currentScrollY * 0.15}px, 0)`;
+        heroContent.style.opacity = Math.max(0, 1 - currentScrollY / 500);
+      }
+      if (scrollHint && currentScrollY < window.innerHeight) {
+        scrollHint.style.opacity = Math.max(0, 1 - currentScrollY / 250);
+      }
+
+      // 3. Floating Productivity Cards Multi-Layer Parallax
+      if (prodSection) {
+        const prodRect = prodSection.getBoundingClientRect();
+        if (prodRect.top < window.innerHeight && prodRect.bottom > 0) {
+          const sectionProgress = (window.innerHeight - prodRect.top);
+          toolCards.forEach((card, idx) => {
+            const depth = cardDepths[idx % cardDepths.length];
+            const translateY = (sectionProgress - window.innerHeight * 0.5) * depth;
+            card.style.setProperty('--parallax-y', `${translateY.toFixed(1)}px`);
+          });
+        }
+      }
+
+      // 4. System Cards Subtle Floating Depth
+      systemCards.forEach((card, idx) => {
+        const rect = card.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) {
+          const shift = (window.innerHeight - rect.top) * (0.04 + idx * 0.015);
+          card.style.transform = `translate3d(0, ${-shift.toFixed(1)}px, 0)`;
+        }
+      });
+
+      requestAnimationFrame(parallaxLoop);
+    }
+    requestAnimationFrame(parallaxLoop);
+  </script>
+</body>
+</html>
