@@ -10,6 +10,10 @@ screen coordinates so execution can continue seamlessly without stalling.
 Debug screenshots with visual highlights (bounding boxes, click ripples, action tags)
 are saved directly into per-workflow subfolders:
     .ghost/memory/screenshots/<workflow_name>/
+
+A self-contained HTML replay report (debug_report.html) is written after each session,
+showing every step with annotated screenshots, focus crops, and Set-of-Marks overlays —
+matching the visual debug approach used in Microsoft Record-and-Run.
 """
 from __future__ import annotations
 
@@ -26,10 +30,15 @@ except ImportError:
 from agent.ghost.collector.ocr_winrt import OcrResult, WinRtOcrEngine
 from agent.ghost.collector.screen_capture import ScreenCapture
 from agent.ghost.collector.visual_annotator import VisualAnnotator
+from agent.ghost.collector.debug_report import WorkflowDebugReport, StepRecord
 
 
 class VisualGrounder:
-    """Visual Grounding engine for resilient desktop action execution."""
+    """Visual Grounding engine for resilient desktop action execution.
+    
+    Maintains a WorkflowDebugReport across a workflow session and exposes
+    `save_report()` to flush the self-contained HTML at the end of replay.
+    """
 
     def __init__(self, workflow_name: str = "default"):
         safe_name = re.sub(r"[^\w.-]+", "_", workflow_name or "default").strip("_") or "default"
@@ -38,6 +47,11 @@ class VisualGrounder:
         self.capturer = ScreenCapture(output_dir=self.workflow_dir)
         self.ocr_engine = WinRtOcrEngine()
         self.annotator = VisualAnnotator()
+        self._report = WorkflowDebugReport(workflow_name=workflow_name, output_dir=self.workflow_dir)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def find_target_point(
         self,
@@ -54,7 +68,7 @@ class VisualGrounder:
             target_name: The expected label, text, or button name (e.g., 'Search', 'Send', contact name).
             window_rect: Optional dict with keys 'left', 'top', 'width', 'height' to restrict screen capture.
             expected_type: Optional control hint ('button', 'edit', 'text').
-            save_debug: If True, saves annotated screenshot with bounding box and click ripple.
+            save_debug: If True, saves annotated screenshot, focus crop, and SoM image.
             step_index: Step number for debug filename ordering.
             action_kind: 'click', 'set_text', etc. for themed markings.
 
@@ -81,11 +95,19 @@ class VisualGrounder:
         # 1. Grab live frame
         frame = self.capturer.capture_frame(region=region)
         if frame is None:
+            self._report.add_step(StepRecord(
+                index=step_index, action=action_kind, label=target_name,
+                status="error", error="Screen capture returned None",
+            ))
             return None
 
         # 2. Run fast native WinRT OCR
         ocr_res: OcrResult = self.ocr_engine.recognize_image(frame)
         if not ocr_res.words and not ocr_res.lines:
+            self._report.add_step(StepRecord(
+                index=step_index, action=action_kind, label=target_name,
+                status="error", error="OCR returned no results",
+            ))
             return None
 
         # Offset if capture was in window region
@@ -131,6 +153,11 @@ class VisualGrounder:
                         best_score = 0.75
 
         if best_box is None:
+            self._report.add_step(StepRecord(
+                index=step_index, action=action_kind, label=target_name,
+                status="error", error=f"Target '{target_name}' not found in OCR results",
+                full_image=self._build_full(frame, None, None, action_kind, target_name, ocr_res, show_som=True),
+            ))
             return None
 
         # Compute center point in frame coordinates
@@ -142,20 +169,143 @@ class VisualGrounder:
         abs_x = reg_x + cx_local
         abs_y = reg_y + cy_local
 
-        # 4. Save debug screenshot with visual markings into workflow subfolder
+        # 4. Build annotated images and save debug artifacts
+        full_img = None
+        crop_img = None
+        som_img  = None
+
         if save_debug:
+            ocr_word_dicts = [w.to_dict() for w in ocr_res.words[:60]]
+
+            # Annotated full screenshot
+            full_img = self._build_full(frame, (cx_local, cy_local), best_box, action_kind, target_name, ocr_res)
+
+            # Focus crop (500×360 centred on target)
+            crop_img = self._build_crop(frame, (cx_local, cy_local), best_box)
+
+            # Set-of-Marks overlay
+            som_img = self._build_som(frame, ocr_word_dicts)
+
             try:
-                marked = self.annotator.annotate_action(
-                    image=frame,
-                    coords=(cx_local, cy_local),
-                    bbox=best_box,
-                    action_kind=action_kind,
-                    label=target_name,
-                    ocr_words=[w.to_dict() for w in ocr_res.words[:50]],
-                )
-                filename = f"step_{step_index:03d}_{action_kind}_{int(time.time())}.png"
-                marked.save(self.workflow_dir / filename, format="PNG")
+                ts = int(time.time())
+                base = f"step_{step_index:03d}_{action_kind}_{ts}"
+                if full_img:
+                    full_img.save(self.workflow_dir / f"{base}_full.png", format="PNG")
+                if crop_img:
+                    crop_img.save(self.workflow_dir / f"{base}_crop.png", format="PNG")
+                if som_img:
+                    som_img.save(self.workflow_dir / f"{base}_som.png", format="PNG")
             except Exception:
                 pass
 
+        # Record into the HTML report
+        self._report.add_step(StepRecord(
+            index=step_index,
+            action=action_kind,
+            label=target_name,
+            coords=(abs_x, abs_y),
+            bbox=best_box,
+            status="ok",
+            timestamp=time.time(),
+            full_image=full_img,
+            crop_image=crop_img,
+            som_image=som_img,
+        ))
+
         return (abs_x, abs_y)
+
+    def record_non_visual_step(
+        self,
+        step_index: int,
+        action: str,
+        label: str,
+        value: Optional[str] = None,
+        coords: Optional[Tuple[int, int]] = None,
+        status: str = "ok",
+        error: Optional[str] = None,
+        capture_screenshot: bool = True,
+    ) -> None:
+        """Record a step that succeeded via UIA (not visual grounding) into the debug report.
+        
+        Call this from StepRunner after a successful UIA click/type so the HTML
+        report shows ALL steps, not only the fallback ones.
+        """
+        full_img = None
+        if capture_screenshot:
+            try:
+                frame = self.capturer.capture_frame()
+                if frame is not None and coords:
+                    full_img = self.annotator.annotate_action(
+                        image=frame,
+                        coords=coords,
+                        action_kind=action,
+                        label=label,
+                    )
+            except Exception:
+                pass
+
+        self._report.add_step(StepRecord(
+            index=step_index,
+            action=action,
+            label=label,
+            value=value,
+            coords=coords,
+            status=status,
+            error=error,
+            timestamp=time.time(),
+            full_image=full_img,
+        ))
+
+    def save_report(self) -> Path:
+        """Write the HTML debug report and return its path."""
+        return self._report.save()
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _build_full(self, frame, coords, bbox, action_kind, label, ocr_res, show_som=False):
+        if Image is None:
+            return None
+        try:
+            ocr_words = [w.to_dict() for w in ocr_res.words[:60]]
+            return self.annotator.annotate_action(
+                image=frame,
+                coords=coords,
+                bbox=bbox,
+                action_kind=action_kind,
+                label=label,
+                ocr_words=ocr_words,
+                show_som=show_som,
+            )
+        except Exception:
+            return None
+
+    def _build_crop(self, frame, coords, bbox):
+        if Image is None:
+            return None
+        try:
+            return self.annotator.create_focus_crop(
+                image=frame,
+                target_point=coords,
+                bbox=bbox,
+                crop_size=(500, 360),
+            )
+        except Exception:
+            return None
+
+    def _build_som(self, frame, ocr_word_dicts):
+        if Image is None:
+            return None
+        try:
+            return self.annotator.annotate_action(
+                image=frame,
+                coords=None,
+                bbox=None,
+                action_kind="som",
+                label="",
+                ocr_words=ocr_word_dicts,
+                show_som=True,
+            )
+        except Exception:
+            return None
