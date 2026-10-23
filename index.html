@@ -3,7 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DigitalSoul</title>
+  <title>DigitalSoul — Autonomous Deterministic Desktop Execution</title>
+  <meta name="description" content="DigitalSoul learns human desktop workflows from consented observations and compiles deterministic, verifiable execution sequences with zero hallucination.">
+  <meta name="keywords" content="AI, desktop automation, deterministic workflows, browser-use, OmniRoute, workflow learning">
+  <meta property="og:title" content="DigitalSoul — Autonomous Deterministic Desktop Execution">
+  <meta property="og:description" content="Deterministic desktop automation learned from human work. Zero hallucination, strictly verified approvals.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/characters_transparent.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DigitalSoul — Autonomous Deterministic Desktop Execution">
+  <meta name="twitter:description" content="Deterministic desktop automation learned from human work.">
+  <meta name="twitter:image" content="assets/characters_transparent.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..700;1,400..700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -145,9 +156,81 @@
       box-shadow: 0 4px 12px rgba(28, 27, 23, 0.22);
     }
 
+    /* Hero Center Stage */
+    .hero-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 24px;
+      margin-top: -12px;
+      z-index: 2;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(58, 46, 14, 0.05);
+      border: 1px solid rgba(58, 46, 14, 0.12);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #9c6c2e;
+      margin-bottom: 14px;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #9c6c2e;
+    }
+
+    .hero-heading {
+      font-family: var(--font-display);
+      font-size: clamp(2.3rem, 4.4vw, 3.8rem);
+      font-weight: 400;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      color: var(--text);
+      max-width: 800px;
+      margin-bottom: 18px;
+    }
+
+    .hero-heading em {
+      font-style: italic;
+    }
+
+    .hero-visual {
+      position: relative;
+      width: min(100%, 720px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .hero-img {
+      width: 100%;
+      height: auto;
+      max-height: 330px;
+      object-fit: contain;
+      filter: drop-shadow(0 14px 26px rgba(58, 46, 14, 0.07));
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
+
     .scroll-hint {
       margin-top: auto;
-      margin-bottom: 36px;
+      margin-bottom: 30px;
       align-self: center;
       font-size: 0.8rem;
       font-family: var(--font-mono);
@@ -890,7 +973,159 @@
       color: var(--text-soft);
     }
 
-    .footer-spacer { height: 10vh; }
+    /* ==============================================================
+       Call to Action & Footer Section
+       ============================================================== */
+    .cta-section {
+      position: relative;
+      z-index: 2;
+      max-width: 1240px;
+      margin: 80px auto 40px;
+      padding: 0 24px;
+    }
+
+    .cta-box {
+      position: relative;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: clamp(48px, 6vw, 72px) clamp(28px, 4vw, 56px);
+      text-align: center;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(58, 46, 14, 0.04);
+    }
+
+    .cta-glow {
+      position: absolute;
+      top: -50%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 480px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(245, 222, 170, 0.35) 0%, transparent 70%);
+      pointer-events: none;
+      filter: blur(30px);
+    }
+
+    .cta-heading {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 3.8vw, 3.2rem);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin: 16px auto 14px;
+      max-width: 680px;
+    }
+
+    .cta-heading em { font-style: italic; }
+
+    .cta-sub {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: var(--text-soft);
+      max-width: 580px;
+      margin: 0 auto 32px;
+    }
+
+    .cta-actions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 30px;
+      background: #1c1b17;
+      color: #ffffeb;
+      border: 1px solid #1c1b17;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.96rem;
+      text-decoration: none;
+      box-shadow: 0 2px 8px rgba(28, 27, 23, 0.15);
+      transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      background: #333029;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(28, 27, 23, 0.24);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 13px 28px;
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-hover);
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.96rem;
+      text-decoration: none;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(58, 46, 14, 0.05);
+      border-color: var(--text);
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 40px 12px 20px;
+      border-top: 1px solid rgba(58, 46, 14, 0.08);
+      margin-top: 48px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .footer-logo {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--text);
+    }
+
+    .footer-copy {
+      font-size: 0.85rem;
+      color: var(--text-faint);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .footer-links a {
+      font-size: 0.88rem;
+      color: var(--text-soft);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--text);
+    }
+
+    @media (max-width: 640px) {
+      .footer { flex-direction: column; align-items: flex-start; }
+      .footer-left { flex-direction: column; align-items: flex-start; gap: 4px; }
+    }
   </style>
 </head>
 <body>
@@ -914,6 +1149,14 @@
       </a>
       <a href="#get-started" class="cta-btn">Get Started</a>
     </header>
+
+    <div class="hero-stage" id="heroStage">
+      <div class="hero-badge">Deterministic Desktop Execution</div>
+      <h1 class="hero-heading">Where Human Work Meets <em>Autonomous AI</em></h1>
+      <div class="hero-visual">
+        <img src="assets/characters_transparent.png" alt="Builders mastering AI workflows" class="hero-img" draggable="false" />
+      </div>
+    </div>
 
     <div class="scroll-hint">
       <span>Scroll to explore</span>
@@ -1180,7 +1423,40 @@
     </div>
   </section>
 
-  <div class="footer-spacer"></div>
+  <!-- Call To Action & Footer Section -->
+  <section class="cta-section" id="get-started">
+    <div class="cta-box">
+      <div class="cta-glow"></div>
+      <div class="system-tag">Developer Preview</div>
+      <h2 class="cta-heading">Ready to give your desktop <em>a Digital Soul</em>?</h2>
+      <p class="cta-sub">
+        Record repetitive browser and OS workflows once with complete consent. Verify synthesized actions, and execute deterministically forever.
+      </p>
+      <div class="cta-actions">
+        <a href="https://github.com/sakshamgupta005/DigitalSoul" target="_blank" rel="noopener noreferrer" class="btn-primary">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          Explore on GitHub
+        </a>
+        <a href="#how-it-works" class="btn-secondary">
+          View Architecture
+        </a>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer-left">
+        <span class="footer-logo">DigitalSoul</span>
+        <span class="footer-copy">© 2026 DigitalSoul Project. Open-source under MIT.</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/sakshamgupta005/DigitalSoul#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+        <a href="https://github.com/sakshamgupta005/DigitalSoul/blob/main/CONTRACTS.md" target="_blank" rel="noopener noreferrer">Contracts</a>
+        <a href="https://github.com/sakshamgupta005/DigitalSoul" target="_blank" rel="noopener noreferrer">Repository</a>
+      </div>
+    </footer>
+  </section>
 
   <script>
     // 1. Text Fill Scroll Animation
@@ -1325,7 +1601,7 @@
     // 3. Global Multi-Layer Parallax Controller
     const sunEl = document.querySelector('.hitodama-sun');
     const gridEl = document.querySelector('.hitodama-grid');
-    const heroContent = document.querySelector('.navbar');
+    const heroStage = document.getElementById('heroStage');
     const scrollHint = document.querySelector('.scroll-hint');
     const prodSection = document.getElementById('productivity');
     const toolCards = document.querySelectorAll('.tool-card');
@@ -1351,9 +1627,9 @@
       if (gridEl) gridEl.style.transform = `translate3d(0, ${currentScrollY * 0.08}px, 0)`;
 
       // 2. Hero subtle depth fade
-      if (heroContent && currentScrollY < window.innerHeight) {
-        heroContent.style.transform = `translate3d(0, ${currentScrollY * 0.15}px, 0)`;
-        heroContent.style.opacity = Math.max(0, 1 - currentScrollY / 500);
+      if (heroStage && currentScrollY < window.innerHeight) {
+        heroStage.style.transform = `translate3d(0, ${currentScrollY * 0.18}px, 0)`;
+        heroStage.style.opacity = Math.max(0, 1 - currentScrollY / 420);
       }
       if (scrollHint && currentScrollY < window.innerHeight) {
         scrollHint.style.opacity = Math.max(0, 1 - currentScrollY / 250);
